@@ -426,11 +426,13 @@ public:
             const auto point = nodeCentres[static_cast<size_t> (i)];
             const auto colour = selected ? green() : blue().withAlpha (0.72f);
             const auto size = selected ? 62.0f : 48.0f;
+            const auto laneCount = static_cast<int> ((*states)[static_cast<size_t> (i)].lanes.size());
 
             g.setColour (colour.withAlpha (selected ? 0.28f : 0.16f));
             g.fillEllipse (point.x - size * 0.5f, point.y - size * 0.5f, size, size);
             g.setColour (colour);
             g.drawEllipse (point.x - size * 0.5f, point.y - size * 0.5f, size, size, selected ? 2.0f : 1.2f);
+            drawLaneDots (g, point, size, laneCount, selected);
 
             g.setColour (ink());
             g.setFont (selected ? 15.0f : 13.0f);
@@ -478,6 +480,50 @@ public:
     }
 
 private:
+    static juce::Colour laneDotColour (int index)
+    {
+        static const std::array<juce::Colour, 5> colours
+        {
+            green(),
+            amber(),
+            blue(),
+            coral(),
+            juce::Colour (0xffb4d06c)
+        };
+
+        return colours[static_cast<size_t> (index % static_cast<int> (colours.size()))];
+    }
+
+    static void drawLaneDots (juce::Graphics& g, juce::Point<float> centre, float nodeSize, int laneCount, bool selected)
+    {
+        if (laneCount <= 0)
+            return;
+
+        const auto dotRadius = selected ? 4.0f : 3.25f;
+        const auto dotOrbitRadius = nodeSize * 0.5f + dotRadius + 2.0f;
+
+        for (int lane = 0; lane < laneCount; ++lane)
+        {
+            const auto angle = juce::MathConstants<float>::twoPi * (static_cast<float> (lane) / static_cast<float> (laneCount))
+                             - juce::MathConstants<float>::halfPi;
+            const juce::Point<float> dotCentre { centre.x + std::cos (angle) * dotOrbitRadius,
+                                                 centre.y + std::sin (angle) * dotOrbitRadius };
+            const auto colour = laneDotColour (lane);
+
+            g.setColour (juce::Colour (0xff101412).withAlpha (0.92f));
+            g.fillEllipse (dotCentre.x - dotRadius - 1.5f,
+                           dotCentre.y - dotRadius - 1.5f,
+                           (dotRadius + 1.5f) * 2.0f,
+                           (dotRadius + 1.5f) * 2.0f);
+
+            g.setColour (colour.withAlpha (selected ? 0.96f : 0.72f));
+            g.fillEllipse (dotCentre.x - dotRadius, dotCentre.y - dotRadius, dotRadius * 2.0f, dotRadius * 2.0f);
+
+            g.setColour (ink().withAlpha (selected ? 0.42f : 0.22f));
+            g.drawEllipse (dotCentre.x - dotRadius, dotCentre.y - dotRadius, dotRadius * 2.0f, dotRadius * 2.0f, 0.8f);
+        }
+    }
+
     const std::vector<Wf::StateSpec>* states = nullptr;
     std::vector<juce::Point<float>> nodeCentres;
     int selectedIndex = 0;
