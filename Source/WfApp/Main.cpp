@@ -153,8 +153,29 @@ public:
 
     bool loadState (const Wf::StateSpec& state)
     {
+        return loadStateWithControls (state,
+                                      lastMasterGain.load (std::memory_order_relaxed),
+                                      lastTempoHz.load (std::memory_order_relaxed),
+                                      lastIntensity.load (std::memory_order_relaxed),
+                                      lastBrightness.load (std::memory_order_relaxed),
+                                      lastOrbitPhase.load (std::memory_order_relaxed));
+    }
+
+    bool loadStateWithControls (const Wf::StateSpec& state,
+                                float masterGain,
+                                float tempoHz,
+                                float intensity,
+                                float brightness,
+                                float orbitPhase)
+    {
         if (! ready.load (std::memory_order_acquire))
             return false;
+
+        lastMasterGain.store (masterGain, std::memory_order_relaxed);
+        lastTempoHz.store (tempoHz, std::memory_order_relaxed);
+        lastIntensity.store (intensity, std::memory_order_relaxed);
+        lastBrightness.store (brightness, std::memory_order_relaxed);
+        lastOrbitPhase.store (orbitPhase, std::memory_order_relaxed);
 
         const auto previousActive = activeSlot.load (std::memory_order_acquire);
         const auto nextSlot = previousActive == 0 ? 1 : 0;
@@ -173,11 +194,11 @@ public:
             return false;
 
         applyControlsToSlot (incoming,
-                             lastMasterGain.load (std::memory_order_relaxed),
-                             lastTempoHz.load (std::memory_order_relaxed),
-                             lastIntensity.load (std::memory_order_relaxed),
-                             lastBrightness.load (std::memory_order_relaxed),
-                             lastOrbitPhase.load (std::memory_order_relaxed));
+                             masterGain,
+                             tempoHz,
+                             intensity,
+                             brightness,
+                             orbitPhase);
 
         incoming.inUse.store (true, std::memory_order_release);
         incoming.targetGain.store (1.0f, std::memory_order_release);
@@ -200,17 +221,19 @@ public:
         lastBrightness.store (brightness, std::memory_order_relaxed);
         lastOrbitPhase.store (orbitPhase, std::memory_order_relaxed);
 
-        for (auto& slot : slots)
-        {
-            if (! slot.inUse.load (std::memory_order_acquire))
-                continue;
+        const auto active = activeSlot.load (std::memory_order_acquire);
+        if (active < 0 || active >= static_cast<int> (slots.size()))
+            return;
 
-            if (! slot.indexesReady)
-                refreshWfParameterIndexes (slot);
+        auto& slot = slots[static_cast<size_t> (active)];
+        if (! slot.inUse.load (std::memory_order_acquire))
+            return;
 
-            if (slot.indexesReady)
-                applyControlsToSlot (slot, masterGain, tempoHz, intensity, brightness, orbitPhase);
-        }
+        if (! slot.indexesReady)
+            refreshWfParameterIndexes (slot);
+
+        if (slot.indexesReady)
+            applyControlsToSlot (slot, masterGain, tempoHz, intensity, brightness, orbitPhase);
     }
 
     juce::String diagnostics() const
@@ -613,8 +636,15 @@ private:
 
     void selectTopLevelState (int index)
     {
-        selectedTopLevelState = juce::jlimit (0, 1, index);
-        applyCurrentAudioControls();
+        const auto nextState = juce::jlimit (0, 1, index);
+        if (selectedTopLevelState == nextState)
+        {
+            refreshLabels();
+            return;
+        }
+
+        selectedTopLevelState = nextState;
+        loadSelectedContentForCurrentState();
         refreshLabels();
     }
 
@@ -666,8 +696,7 @@ private:
 
         selectedState = (index + static_cast<int> (states.size())) % static_cast<int> (states.size());
         orbitPhase = 0.0f;
-        audioCallback.loadState (states[static_cast<size_t> (selectedState)]);
-        applyCurrentAudioControls();
+        loadSelectedContentForCurrentState();
         refreshLabels();
     }
 
@@ -770,17 +799,42 @@ private:
         return selectedTopLevelState == 1 ? 0.5f : 1.0f;
     }
 
+    float getCurrentMasterGain() const
+    {
+        return running ? static_cast<float> (gainSlider.getValue()) : 0.0f;
+    }
+
+    float getCurrentTempoHz() const
+    {
+        if (states.empty())
+            return 1.0f;
+
+        const auto& state = states[static_cast<size_t> (selectedState)];
+        return static_cast<float> ((state.tempoBpm / 60.0)
+                                   * rateSlider.getValue()
+                                   * static_cast<double> (getTopLevelTempoScale()));
+    }
+
+    void loadSelectedContentForCurrentState()
+    {
+        if (states.empty())
+            return;
+
+        static_cast<void> (audioCallback.loadStateWithControls (states[static_cast<size_t> (selectedState)],
+                                                                getCurrentMasterGain(),
+                                                                getCurrentTempoHz(),
+                                                                static_cast<float> (intensitySlider.getValue()),
+                                                                static_cast<float> (brightnessSlider.getValue()),
+                                                                orbitPhase));
+    }
+
     void applyCurrentAudioControls()
     {
         if (states.empty())
             return;
 
-        const auto& state = states[static_cast<size_t> (selectedState)];
-        const auto rate = static_cast<float> (rateSlider.getValue());
-        const auto masterGain = running ? static_cast<float> (gainSlider.getValue()) : 0.0f;
-
-        audioCallback.setControls (masterGain,
-                                   static_cast<float> ((state.tempoBpm / 60.0) * static_cast<double> (rate) * static_cast<double> (getTopLevelTempoScale())),
+        audioCallback.setControls (getCurrentMasterGain(),
+                                   getCurrentTempoHz(),
                                    static_cast<float> (intensitySlider.getValue()),
                                    static_cast<float> (brightnessSlider.getValue()),
                                    orbitPhase);
