@@ -75,8 +75,16 @@ public:
     void audioDeviceStopped() override
     {
         ready.store (false, std::memory_order_release);
-        engine.release();
-        scratchOutput.setSize (0, 0);
+
+        for (auto& slot : slots)
+        {
+            slot.inUse.store (false, std::memory_order_release);
+            slot.targetGain.store (0.0f, std::memory_order_release);
+            slot.gain = 0.0f;
+            slot.engine.release();
+            slot.output.setSize (0, 0);
+            slot.indexesReady = false;
+        }
     }
 
     void audioDeviceIOCallbackWithContext (const float* const*,
@@ -91,84 +99,186 @@ public:
         if (! ready.load (std::memory_order_acquire)
             || outputChannelData == nullptr
             || numSamples <= 0
-            || numSamples > scratchOutput.getNumSamples()
+            || numSamples > preparedBlockSize.load (std::memory_order_relaxed)
             || numOutputChannels <= 0
-            || numOutputChannels > scratchOutput.getNumChannels())
+            || numOutputChannels > maxHostChannels)
             return;
 
         juce::ScopedNoDenormals noDenormals;
-        scratchOutput.clear (0, numSamples);
 
-        juce::AudioBuffer<float> outputView (scratchOutput.getArrayOfWritePointers(),
-                                             numOutputChannels,
-                                             numSamples);
-        engine.process (emptyInput, outputView);
+        for (auto& slot : slots)
+        {
+            if (! slot.inUse.load (std::memory_order_acquire)
+                || ! slot.engine.isReady()
+                || numSamples > slot.output.getNumSamples()
+                || numOutputChannels > slot.output.getNumChannels())
+                continue;
 
-        for (int channel = 0; channel < numOutputChannels; ++channel)
-            if (outputChannelData[channel] != nullptr)
-                juce::FloatVectorOperations::copy (outputChannelData[channel],
-                                                   scratchOutput.getReadPointer (channel),
-                                                   numSamples);
+            slot.output.clear (0, numSamples);
+            juce::AudioBuffer<float> slotView (slot.output.getArrayOfWritePointers(),
+                                               numOutputChannels,
+                                               numSamples);
+            slot.engine.process (emptyInput, slotView);
+
+            const auto startGain = slot.gain;
+            const auto targetGain = slot.targetGain.load (std::memory_order_acquire);
+            const auto step = static_cast<float> (static_cast<double> (numSamples)
+                                                  / juce::jmax (1.0, lastSampleRate.load (std::memory_order_relaxed) * tailFadeSeconds));
+            const auto endGain = targetGain > startGain
+                                   ? juce::jmin (targetGain, startGain + step)
+                                   : juce::jmax (targetGain, startGain - step);
+
+            for (int channel = 0; channel < numOutputChannels; ++channel)
+            {
+                auto* dst = outputChannelData[channel];
+                const auto* src = slot.output.getReadPointer (channel);
+
+                if (dst == nullptr || src == nullptr)
+                    continue;
+
+                for (int sample = 0; sample < numSamples; ++sample)
+                {
+                    const auto alpha = numSamples > 1 ? static_cast<float> (sample) / static_cast<float> (numSamples - 1) : 1.0f;
+                    dst[sample] += src[sample] * (startGain + (endGain - startGain) * alpha);
+                }
+            }
+
+            slot.gain = endGain;
+            if (targetGain <= 0.0f && endGain <= 0.0001f && slot.index != activeSlot.load (std::memory_order_acquire))
+                slot.inUse.store (false, std::memory_order_release);
+        }
     }
 
     bool loadState (const Wf::StateSpec& state)
     {
-        if (! engine.isReady())
+        if (! ready.load (std::memory_order_acquire))
             return false;
 
-        wfParameterIndexesReady.store (false, std::memory_order_release);
-        return engine.loadProgramAsync (Wf::buildStateProgram (state), Wf::makeWfParameterBindings());
+        const auto previousActive = activeSlot.load (std::memory_order_acquire);
+        const auto nextSlot = previousActive == 0 ? 1 : 0;
+        auto& incoming = slots[static_cast<size_t> (nextSlot)];
+
+        incoming.inUse.store (false, std::memory_order_release);
+        incoming.targetGain.store (0.0f, std::memory_order_release);
+        incoming.gain = 0.0f;
+        incoming.indexesReady = false;
+
+        if (! incoming.engine.loadProgram (Wf::buildStateProgram (state), Wf::makeWfParameterBindings()))
+            return false;
+
+        refreshWfParameterIndexes (incoming);
+        if (! incoming.indexesReady)
+            return false;
+
+        applyControlsToSlot (incoming,
+                             lastMasterGain.load (std::memory_order_relaxed),
+                             lastTempoHz.load (std::memory_order_relaxed),
+                             lastIntensity.load (std::memory_order_relaxed),
+                             lastBrightness.load (std::memory_order_relaxed),
+                             lastOrbitPhase.load (std::memory_order_relaxed));
+
+        incoming.inUse.store (true, std::memory_order_release);
+        incoming.targetGain.store (1.0f, std::memory_order_release);
+
+        if (previousActive >= 0)
+        {
+            auto& outgoing = slots[static_cast<size_t> (previousActive)];
+            outgoing.targetGain.store (0.0f, std::memory_order_release);
+        }
+
+        activeSlot.store (nextSlot, std::memory_order_release);
+        return true;
     }
 
     void setControls (float masterGain, float tempoHz, float intensity, float brightness, float orbitPhase)
     {
-        refreshWfParameterIndexesIfNeeded();
+        lastMasterGain.store (masterGain, std::memory_order_relaxed);
+        lastTempoHz.store (tempoHz, std::memory_order_relaxed);
+        lastIntensity.store (intensity, std::memory_order_relaxed);
+        lastBrightness.store (brightness, std::memory_order_relaxed);
+        lastOrbitPhase.store (orbitPhase, std::memory_order_relaxed);
 
-        if (wfParameterIndexesReady.load (std::memory_order_acquire))
+        for (auto& slot : slots)
         {
-            static_cast<void> (engine.setParameterValue (wfParameterIndexes[0], masterGain));
-            static_cast<void> (engine.setParameterValue (wfParameterIndexes[1], tempoHz));
-            static_cast<void> (engine.setParameterValue (wfParameterIndexes[2], intensity));
-            static_cast<void> (engine.setParameterValue (wfParameterIndexes[3], brightness));
-            static_cast<void> (engine.setParameterValue (wfParameterIndexes[4], orbitPhase));
+            if (! slot.inUse.load (std::memory_order_acquire))
+                continue;
+
+            if (! slot.indexesReady)
+                refreshWfParameterIndexes (slot);
+
+            if (slot.indexesReady)
+                applyControlsToSlot (slot, masterGain, tempoHz, intensity, brightness, orbitPhase);
         }
     }
 
     juce::String diagnostics() const
     {
-        return "blocks=" + juce::String (static_cast<juce::int64> (engine.getRenderedBlockCount()))
-             + " async=" + juce::String (static_cast<juce::int64> (engine.getAsyncProgramLoadCompletedCount()))
-             + " silent=" + juce::String (static_cast<juce::int64> (engine.getSilentProcessCount()))
+        uint64_t renderedBlocks = 0;
+        uint64_t silentBlocks = 0;
+        int voices = 0;
+
+        for (const auto& slot : slots)
+        {
+            renderedBlocks += slot.engine.getRenderedBlockCount();
+            silentBlocks += slot.engine.getSilentProcessCount();
+            if (slot.inUse.load (std::memory_order_acquire))
+                ++voices;
+        }
+
+        return "blocks=" + juce::String (static_cast<juce::int64> (renderedBlocks))
+             + " voices=" + juce::String (voices)
+             + " silent=" + juce::String (static_cast<juce::int64> (silentBlocks))
              + " sr=" + juce::String (lastSampleRate.load (std::memory_order_relaxed), 0)
              + " bs=" + juce::String (lastReportedBlockSize.load (std::memory_order_relaxed));
     }
 
 private:
+    struct EngineSlot
+    {
+        int index = 0;
+        EmbeddedChucKEngine engine;
+        juce::AudioBuffer<float> output;
+        std::array<int, 5> parameterIndexes { -1, -1, -1, -1, -1 };
+        bool indexesReady = false;
+        float gain = 0.0f;
+        std::atomic<float> targetGain { 0.0f };
+        std::atomic<bool> inUse { false };
+    };
+
     bool prepare (double sampleRate, int reportedBlockSize)
     {
         ready.store (false, std::memory_order_release);
-        engine.release();
-        wfParameterIndexesReady.store (false, std::memory_order_release);
 
         const auto blockSize = juce::jlimit (64,
                                              EmbeddedChucKEngine::maximumBlockSizeLimit,
                                              juce::jmax (reportedBlockSize * 4, fallbackBlockSize));
         lastSampleRate.store (sampleRate, std::memory_order_relaxed);
         lastReportedBlockSize.store (reportedBlockSize, std::memory_order_relaxed);
+        preparedBlockSize.store (blockSize, std::memory_order_relaxed);
 
-        scratchOutput.setSize (maxHostChannels, blockSize, false, false, true);
-        scratchOutput.clear();
+        bool prepared = true;
+        for (int slotIndex = 0; slotIndex < static_cast<int> (slots.size()); ++slotIndex)
+        {
+            auto& slot = slots[static_cast<size_t> (slotIndex)];
+            slot.index = slotIndex;
+            slot.inUse.store (false, std::memory_order_release);
+            slot.targetGain.store (0.0f, std::memory_order_release);
+            slot.gain = 0.0f;
+            slot.indexesReady = false;
+            slot.engine.release();
+            slot.output.setSize (maxHostChannels, blockSize, false, false, true);
+            slot.output.clear();
+            prepared = slot.engine.prepare (sampleRate, blockSize, 0, engineOutputChannels) && prepared;
+        }
 
-        const auto prepared = engine.prepare (sampleRate, blockSize, 0, engineOutputChannels);
+        activeSlot.store (-1, std::memory_order_release);
         ready.store (prepared, std::memory_order_release);
         return prepared;
     }
 
-    void refreshWfParameterIndexesIfNeeded()
+    void refreshWfParameterIndexes (EngineSlot& slot)
     {
-        if (wfParameterIndexesReady.load (std::memory_order_acquire)
-            || engine.isAsyncProgramLoadActive()
-            || engine.getParameterCount() != 5)
+        if (slot.indexesReady || slot.engine.getParameterCount() != 5)
             return;
 
         const std::array<juce::String, 5> names
@@ -183,23 +293,37 @@ private:
         std::array<int, 5> indexes {};
         for (int i = 0; i < static_cast<int> (names.size()); ++i)
         {
-            indexes[static_cast<size_t> (i)] = engine.getParameterIndex (names[static_cast<size_t> (i)]);
+            indexes[static_cast<size_t> (i)] = slot.engine.getParameterIndex (names[static_cast<size_t> (i)]);
             if (indexes[static_cast<size_t> (i)] < 0)
                 return;
         }
 
-        wfParameterIndexes = indexes;
-        wfParameterIndexesReady.store (true, std::memory_order_release);
+        slot.parameterIndexes = indexes;
+        slot.indexesReady = true;
     }
 
-    EmbeddedChucKEngine engine;
+    static void applyControlsToSlot (EngineSlot& slot, float masterGain, float tempoHz, float intensity, float brightness, float orbitPhase)
+    {
+        static_cast<void> (slot.engine.setParameterValue (slot.parameterIndexes[0], masterGain));
+        static_cast<void> (slot.engine.setParameterValue (slot.parameterIndexes[1], tempoHz));
+        static_cast<void> (slot.engine.setParameterValue (slot.parameterIndexes[2], intensity));
+        static_cast<void> (slot.engine.setParameterValue (slot.parameterIndexes[3], brightness));
+        static_cast<void> (slot.engine.setParameterValue (slot.parameterIndexes[4], orbitPhase));
+    }
+
     juce::AudioBuffer<float> emptyInput;
-    juce::AudioBuffer<float> scratchOutput;
-    std::array<int, 5> wfParameterIndexes { -1, -1, -1, -1, -1 };
+    std::array<EngineSlot, 2> slots;
+    static constexpr double tailFadeSeconds = 0.42;
     std::atomic<bool> ready { false };
-    std::atomic<bool> wfParameterIndexesReady { false };
+    std::atomic<int> activeSlot { -1 };
+    std::atomic<int> preparedBlockSize { 0 };
     std::atomic<double> lastSampleRate { 0.0 };
     std::atomic<int> lastReportedBlockSize { 0 };
+    std::atomic<float> lastMasterGain { 0.18f };
+    std::atomic<float> lastTempoHz { 1.0f };
+    std::atomic<float> lastIntensity { 0.58f };
+    std::atomic<float> lastBrightness { 0.48f };
+    std::atomic<float> lastOrbitPhase { 0.0f };
 };
 
 class OrbitCanvas final : public juce::Component
