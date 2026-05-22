@@ -358,6 +358,12 @@ public:
             return;
 
         const auto count = static_cast<int> (states->size());
+        g.setColour (mutedInk().withAlpha (0.74f));
+        g.setFont (14.0f);
+        g.drawText ("states",
+                    area.withHeight (24.0f).toNearestInt(),
+                    juce::Justification::centredLeft);
+
         nodeCentres.clear();
         nodeCentres.reserve (static_cast<size_t> (count));
 
@@ -476,7 +482,7 @@ public:
         setupSlider (brightnessSlider, "Colour", 0.0, 1.0, 0.48, blue());
 
         addAndMakeVisible (laneHeader);
-        laneHeader.setText ("tracks", juce::dontSendNotification);
+        laneHeader.setText ("tracks in selected state", juce::dontSendNotification);
         laneHeader.setFont (juce::FontOptions (14.0f, juce::Font::bold));
         styleLabel (laneHeader, 0.78f);
 
@@ -606,14 +612,19 @@ private:
     void refreshLabels()
     {
         const auto& state = states[static_cast<size_t> (selectedState)];
-        selectedLabel.setText (state.name + "  " + juce::String (state.tempoBpm, 1) + " bpm", juce::dontSendNotification);
+        selectedLabel.setText ("State " + juce::String (selectedState + 1)
+                               + " of " + juce::String (static_cast<int> (states.size()))
+                               + "  " + state.name
+                               + "  " + juce::String (state.tempoBpm, 1) + " bpm",
+                               juce::dontSendNotification);
 
         for (int i = 0; i < static_cast<int> (laneLabels.size()); ++i)
         {
             const auto& track = state.tracks[static_cast<size_t> (i)];
-            laneLabels[static_cast<size_t> (i)].setText (juce::String (i + 1) + "  " + track.name
-                                                         + " / " + track.lanes[0].role
-                                                         + " + " + track.lanes[1].role,
+            laneLabels[static_cast<size_t> (i)].setText ("Track " + juce::String (i + 1)
+                                                         + "  " + track.name
+                                                         + ": " + track.lanes[0].name
+                                                         + " + " + track.lanes[1].name,
                                                          juce::dontSendNotification);
         }
 
