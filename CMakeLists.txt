@@ -155,9 +155,9 @@ target_link_libraries(WeldChucK
         juce::juce_recommended_warning_flags)
 
 juce_add_gui_app(wf
-    PRODUCT_NAME "wf weld"
+    PRODUCT_NAME "ChucK-ME"
     COMPANY_NAME "Codex"
-    BUNDLE_ID "com.codex.wfweld")
+    BUNDLE_ID "com.codex.chuckme")
 
 target_sources(wf
     PRIVATE

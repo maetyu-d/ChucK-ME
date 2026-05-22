@@ -47,7 +47,7 @@ Run it from a terminal. It starts the default audio device, runs the embedded Ch
 The Stage 1 GUI app is built at:
 
 ```sh
-build/wf_artefacts/Release/wf weld.app
+build/wf_artefacts/Release/ChucK-ME.app
 ```
 
 Run the headless engine self-test with:

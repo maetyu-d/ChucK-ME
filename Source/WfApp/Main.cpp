@@ -550,7 +550,7 @@ public:
         topLevelStates[0] = Wf::makeDefaultStates();
         topLevelStates[1] = Wf::makeDefaultStates();
 
-        titleLabel.setText ("wf:: weld", juce::dontSendNotification);
+        titleLabel.setText ("ChucK-ME", juce::dontSendNotification);
         titleLabel.setFont (juce::FontOptions (24.0f, juce::Font::bold));
         styleLabel (titleLabel);
         addAndMakeVisible (titleLabel);
@@ -1912,7 +1912,7 @@ private:
 class WfApplication final : public juce::JUCEApplication
 {
 public:
-    const juce::String getApplicationName() override { return "wf:: weld"; }
+    const juce::String getApplicationName() override { return "ChucK-ME"; }
     const juce::String getApplicationVersion() override { return "0.1.0"; }
     bool moreThanOneInstanceAllowed() override { return true; }
 
