@@ -10,6 +10,8 @@
 #include <cmath>
 #include <limits>
 #include <random>
+#include <regex>
+#include <string>
 
 namespace
 {
@@ -460,6 +462,18 @@ public:
 
         setupButton (stateButton1, "State 1", green(), [this] { selectTopLevelState (0); });
         setupButton (stateButton2, "State 2", blue(), [this] { selectTopLevelState (1); });
+        setupButton (runScriptButton, "Run", amber(), [this] { runGlobalScript(); });
+
+        globalScriptEditor.setMultiLine (true);
+        globalScriptEditor.setReturnKeyStartsNewLine (true);
+        globalScriptEditor.setText ("Start with State 1 for 8 bars, then State 2 for 4 bars, then stop", juce::dontSendNotification);
+        globalScriptEditor.setColour (juce::TextEditor::backgroundColourId, panelSoft());
+        globalScriptEditor.setColour (juce::TextEditor::textColourId, ink());
+        globalScriptEditor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.24f));
+        globalScriptEditor.setColour (juce::TextEditor::focusedOutlineColourId, amber().withAlpha (0.72f));
+        globalScriptEditor.setColour (juce::TextEditor::highlightColourId, amber().withAlpha (0.24f));
+        globalScriptEditor.setFont (juce::FontOptions (14.0f));
+        addAndMakeVisible (globalScriptEditor);
 
         selectedLabel.setFont (juce::FontOptions (18.0f, juce::Font::bold));
         styleLabel (selectedLabel);
@@ -517,6 +531,7 @@ public:
         auto content = area.reduced (18);
         auto top = content.removeFromTop (48);
         auto stateRow = content.removeFromTop (30);
+        auto scriptRow = content.removeFromTop (70);
         g.setColour (mutedInk().withAlpha (0.18f));
         g.drawLine (static_cast<float> (content.getX()),
                     static_cast<float> (top.getBottom()),
@@ -527,6 +542,11 @@ public:
                     static_cast<float> (stateRow.getBottom()),
                     static_cast<float> (stateRow.getRight()),
                     static_cast<float> (stateRow.getBottom()),
+                    1.0f);
+        g.drawLine (static_cast<float> (scriptRow.getX()),
+                    static_cast<float> (scriptRow.getBottom()),
+                    static_cast<float> (scriptRow.getRight()),
+                    static_cast<float> (scriptRow.getBottom()),
                     1.0f);
     }
 
@@ -541,6 +561,10 @@ public:
         stateRow.removeFromLeft (10);
         stateButton1.setBounds (stateRow.removeFromLeft (96).reduced (0, 2));
         stateButton2.setBounds (stateRow.removeFromLeft (96).reduced (8, 2));
+        auto scriptRow = area.removeFromTop (70);
+        scriptRow.removeFromLeft (10);
+        runScriptButton.setBounds (scriptRow.removeFromRight (86).reduced (8, 16));
+        globalScriptEditor.setBounds (scriptRow.reduced (0, 8));
         area.removeFromTop (12);
         auto controls = area.removeFromBottom (118);
         auto right = area.removeFromRight (260);
@@ -590,7 +614,49 @@ private:
     void selectTopLevelState (int index)
     {
         selectedTopLevelState = juce::jlimit (0, 1, index);
+        applyCurrentAudioControls();
         refreshLabels();
+    }
+
+    struct GlobalScriptStep
+    {
+        int stateIndex = 0;
+        double bars = 1.0;
+    };
+
+    std::vector<GlobalScriptStep> parseGlobalScript() const
+    {
+        std::vector<GlobalScriptStep> parsed;
+        const auto text = globalScriptEditor.getText().toStdString();
+        const std::regex stepRegex ("state\\s*([12])[\\s\\S]*?(\\d+(?:\\.\\d+)?)\\s*bars?",
+                                    std::regex_constants::icase);
+
+        for (std::sregex_iterator it (text.begin(), text.end(), stepRegex), end; it != end; ++it)
+        {
+            const auto stateIndex = std::stoi ((*it)[1].str()) - 1;
+            const auto bars = std::stod ((*it)[2].str());
+
+            if (stateIndex >= 0 && stateIndex <= 1 && bars > 0.0)
+                parsed.push_back ({ stateIndex, bars });
+        }
+
+        return parsed;
+    }
+
+    void runGlobalScript()
+    {
+        globalScriptSteps = parseGlobalScript();
+
+        if (globalScriptSteps.empty())
+            return;
+
+        scriptStepIndex = 0;
+        scriptStepElapsedBars = 0.0;
+        scriptShouldStopAtEnd = globalScriptEditor.getText().containsIgnoreCase ("stop");
+        scriptRunning = true;
+        running = true;
+        playButton.setButtonText ("Stop");
+        selectTopLevelState (globalScriptSteps.front().stateIndex);
     }
 
     void selectState (int index)
@@ -648,10 +714,12 @@ private:
 
         const auto& state = states[static_cast<size_t> (selectedState)];
         const auto rate = static_cast<float> (rateSlider.getValue());
+        const auto tempoScale = getTopLevelTempoScale();
 
         if (running)
         {
-            orbitPhase += static_cast<float> (deltaSeconds * (state.tempoBpm / 60.0) * 0.25 * static_cast<double> (rate));
+            orbitPhase += static_cast<float> (deltaSeconds * (state.tempoBpm / 60.0) * 0.25 * static_cast<double> (rate) * static_cast<double> (tempoScale));
+            advanceGlobalScript (deltaSeconds, state.tempoBpm, rate, tempoScale);
 
             if (orbitPhase >= 1.0f)
             {
@@ -666,6 +734,42 @@ private:
         orbitCanvas.setState (&states, selectedState, orbitPhase, running);
     }
 
+    void advanceGlobalScript (double deltaSeconds, double tempoBpm, float rate, float tempoScale)
+    {
+        if (! scriptRunning || scriptStepIndex >= globalScriptSteps.size())
+            return;
+
+        scriptStepElapsedBars += deltaSeconds * (tempoBpm / 60.0) * static_cast<double> (rate) * static_cast<double> (tempoScale) / 4.0;
+
+        if (scriptStepElapsedBars < globalScriptSteps[scriptStepIndex].bars)
+            return;
+
+        ++scriptStepIndex;
+        scriptStepElapsedBars = 0.0;
+
+        if (scriptStepIndex >= globalScriptSteps.size())
+        {
+            scriptRunning = false;
+
+            if (scriptShouldStopAtEnd)
+            {
+                running = false;
+                playButton.setButtonText ("Play");
+                applyCurrentAudioControls();
+                refreshLabels();
+            }
+
+            return;
+        }
+
+        selectTopLevelState (globalScriptSteps[scriptStepIndex].stateIndex);
+    }
+
+    float getTopLevelTempoScale() const
+    {
+        return selectedTopLevelState == 1 ? 0.5f : 1.0f;
+    }
+
     void applyCurrentAudioControls()
     {
         if (states.empty())
@@ -676,7 +780,7 @@ private:
         const auto masterGain = running ? static_cast<float> (gainSlider.getValue()) : 0.0f;
 
         audioCallback.setControls (masterGain,
-                                   static_cast<float> ((state.tempoBpm / 60.0) * static_cast<double> (rate)),
+                                   static_cast<float> ((state.tempoBpm / 60.0) * static_cast<double> (rate) * static_cast<double> (getTopLevelTempoScale())),
                                    static_cast<float> (intensitySlider.getValue()),
                                    static_cast<float> (brightnessSlider.getValue()),
                                    orbitPhase);
@@ -696,6 +800,7 @@ private:
     OrbitCanvas orbitCanvas;
     juce::TextButton stateButton1;
     juce::TextButton stateButton2;
+    juce::TextButton runScriptButton;
     juce::TextButton playButton;
     juce::TextButton previousButton;
     juce::TextButton nextButton;
@@ -704,9 +809,15 @@ private:
     juce::Slider rateSlider;
     juce::Slider intensitySlider;
     juce::Slider brightnessSlider;
+    juce::TextEditor globalScriptEditor;
 
     int selectedTopLevelState = 0;
     int selectedState = 0;
+    std::vector<GlobalScriptStep> globalScriptSteps;
+    size_t scriptStepIndex = 0;
+    double scriptStepElapsedBars = 0.0;
+    bool scriptRunning = false;
+    bool scriptShouldStopAtEnd = false;
     float orbitPhase = 0.0f;
     bool running = true;
     double lastTimerMs = 0.0;
