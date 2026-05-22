@@ -529,6 +529,22 @@ public:
         globalScriptEditor.setFont (juce::FontOptions (14.0f));
         addAndMakeVisible (globalScriptEditor);
 
+        laneCodeHeader.setText ("lane code", juce::dontSendNotification);
+        laneCodeHeader.setFont (juce::FontOptions (14.0f, juce::Font::bold));
+        styleLabel (laneCodeHeader, 0.82f);
+        addAndMakeVisible (laneCodeHeader);
+
+        laneCodeEditor.setMultiLine (true);
+        laneCodeEditor.setReturnKeyStartsNewLine (true);
+        laneCodeEditor.setReadOnly (true);
+        laneCodeEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff101412));
+        laneCodeEditor.setColour (juce::TextEditor::textColourId, ink());
+        laneCodeEditor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.22f));
+        laneCodeEditor.setColour (juce::TextEditor::focusedOutlineColourId, mutedInk().withAlpha (0.34f));
+        laneCodeEditor.setColour (juce::TextEditor::highlightColourId, blue().withAlpha (0.24f));
+        laneCodeEditor.setFont (juce::FontOptions (13.0f));
+        addAndMakeVisible (laneCodeEditor);
+
         selectedLabel.setFont (juce::FontOptions (18.0f, juce::Font::bold));
         styleLabel (selectedLabel);
         addAndMakeVisible (selectedLabel);
@@ -604,18 +620,18 @@ public:
         laneHeader.setFont (juce::FontOptions (14.0f, juce::Font::bold));
         styleLabel (laneHeader, 0.78f);
 
-        for (auto& label : laneLabels)
+        for (int i = 0; i < static_cast<int> (laneButtons.size()); ++i)
         {
-            addAndMakeVisible (label);
-            label.setFont (juce::FontOptions (14.0f));
-            styleLabel (label);
+            auto& button = laneButtons[static_cast<size_t> (i)];
+            setupButton (button, juce::String (i + 1), blue(), [this, i] { selectLane (i); });
+            button.setClickingTogglesState (false);
         }
 
         audioDeviceManager.initialiseWithDefaultDevices (0, 2);
         audioDeviceManager.addAudioCallback (&audioCallback);
 
         selectState (0);
-        setSize (980, 760);
+        setSize (1240, 760);
         startTimerHz (30);
     }
 
@@ -686,9 +702,13 @@ public:
         globalScriptEditor.setBounds (scriptRow.reduced (0, 8));
         area.removeFromTop (12);
         auto controls = area.removeFromBottom (118);
+        auto codePane = area.removeFromLeft (280);
+        area.removeFromLeft (18);
         auto right = area.removeFromRight (260);
         area.removeFromRight (18);
 
+        laneCodeHeader.setBounds (codePane.removeFromTop (24));
+        laneCodeEditor.setBounds (codePane);
         orbitCanvas.setBounds (area);
         stateSettingsLabel.setBounds (right.removeFromTop (24));
         stateTempoLabel.setBounds (right.removeFromTop (22));
@@ -702,8 +722,8 @@ public:
         selectedLabel.setBounds (right.removeFromTop (34));
         laneHeader.setBounds (right.removeFromTop (28));
 
-        for (auto& label : laneLabels)
-            label.setBounds (right.removeFromTop (34).reduced (0, 3));
+        for (auto& button : laneButtons)
+            button.setBounds (right.removeFromTop (34).reduced (0, 3));
 
         controls.removeFromTop (8);
         auto transport = controls.removeFromTop (42);
@@ -869,6 +889,12 @@ private:
         selectState (distribution (random));
     }
 
+    void selectLane (int index)
+    {
+        selectedLane = juce::jlimit (0, static_cast<int> (laneButtons.size()) - 1, index);
+        refreshLabels();
+    }
+
     void refreshLabels()
     {
         syncViewedStateControls();
@@ -883,14 +909,43 @@ private:
         const auto& state = states[static_cast<size_t> (selectedState)];
         selectedLabel.setText (state.name + "  " + juce::String (state.tempoBpm, 1) + " bpm", juce::dontSendNotification);
 
-        for (int i = 0; i < static_cast<int> (laneLabels.size()); ++i)
+        for (int i = 0; i < static_cast<int> (laneButtons.size()); ++i)
         {
             const auto& lane = state.lanes[static_cast<size_t> (i)];
-            laneLabels[static_cast<size_t> (i)].setText (juce::String (i + 1) + "  " + lane.name + " / " + lane.role,
-                                                         juce::dontSendNotification);
+            auto& button = laneButtons[static_cast<size_t> (i)];
+            button.setButtonText (juce::String (i + 1) + "  " + lane.name + " / " + lane.role);
+            button.setToggleState (selectedLane == i, juce::dontSendNotification);
         }
 
+        updateLaneCode();
         orbitCanvas.setState (&states, selectedState, orbitPhase, running);
+    }
+
+    void updateLaneCode()
+    {
+        if (states.empty())
+            return;
+
+        const auto& state = states[static_cast<size_t> (selectedState)];
+        const auto laneIndex = static_cast<size_t> (juce::jlimit (0, static_cast<int> (state.lanes.size()) - 1, selectedLane));
+        laneCodeEditor.setText (makeLaneCode (state.lanes[laneIndex]), juce::dontSendNotification);
+    }
+
+    static juce::String makeLaneCode (const Wf::LaneSpec& lane)
+    {
+        juce::String code;
+        code << "// " << lane.name << "\n";
+        code << "// role: " << lane.role << "\n";
+        code << "// baseHz: " << Wf::chuckFloat (lane.baseHz)
+             << "  volume: " << Wf::chuckFloat (lane.volume)
+             << "  pulseTicks: " << lane.pulseTicks
+             << "  openTicks: " << lane.openTicks << "\n\n";
+        code << "// generated lane declaration\n";
+        Wf::appendLaneDeclaration (code, lane, 0);
+        code << "// generated lane control fragment\n";
+        code << "// expects host variables: tick, stepPhase, intensity, bright, orbit\n";
+        Wf::appendLaneControl (code, lane, 0);
+        return code;
     }
 
     void syncViewedStateControls()
@@ -1037,9 +1092,10 @@ private:
     juce::Label stateSettingsLabel;
     juce::Label stateTempoLabel;
     juce::Label stateTimeSigLabel;
+    juce::Label laneCodeHeader;
     juce::Label selectedLabel;
     juce::Label laneHeader;
-    std::array<juce::Label, 5> laneLabels;
+    std::array<juce::TextButton, 5> laneButtons;
 
     OrbitCanvas orbitCanvas;
     std::array<juce::TextButton, maxTopLevelStates> stateButtons;
@@ -1056,6 +1112,7 @@ private:
     juce::ComboBox timeSigNumeratorBox;
     juce::ComboBox timeSigDenominatorBox;
     juce::TextEditor globalScriptEditor;
+    juce::TextEditor laneCodeEditor;
     std::array<float, maxTopLevelStates> topLevelTempoScales
     {
         1.0f, 0.5f, 1.0f, 1.0f,
@@ -1081,6 +1138,7 @@ private:
     int viewedTopLevelState = 0;
     int performingTopLevelState = 0;
     int selectedState = 0;
+    int selectedLane = 0;
     std::vector<GlobalScriptStep> globalScriptSteps;
     size_t scriptStepIndex = 0;
     double scriptStepElapsedBars = 0.0;
