@@ -458,6 +458,11 @@ public:
         styleLabel (statusLabel, 0.72f);
         addAndMakeVisible (statusLabel);
 
+        stateRowLabel.setText ("State 1", juce::dontSendNotification);
+        stateRowLabel.setFont (juce::FontOptions (15.0f, juce::Font::bold));
+        styleLabel (stateRowLabel, 0.90f);
+        addAndMakeVisible (stateRowLabel);
+
         selectedLabel.setFont (juce::FontOptions (18.0f, juce::Font::bold));
         styleLabel (selectedLabel);
         addAndMakeVisible (selectedLabel);
@@ -513,11 +518,17 @@ public:
 
         auto content = area.reduced (18);
         auto top = content.removeFromTop (48);
+        auto stateRow = content.removeFromTop (30);
         g.setColour (mutedInk().withAlpha (0.18f));
         g.drawLine (static_cast<float> (content.getX()),
                     static_cast<float> (top.getBottom()),
                     static_cast<float> (content.getRight()),
                     static_cast<float> (top.getBottom()),
+                    1.0f);
+        g.drawLine (static_cast<float> (stateRow.getX()),
+                    static_cast<float> (stateRow.getBottom()),
+                    static_cast<float> (stateRow.getRight()),
+                    static_cast<float> (stateRow.getBottom()),
                     1.0f);
     }
 
@@ -528,7 +539,9 @@ public:
         titleLabel.setBounds (header.removeFromLeft (260));
         statusLabel.setBounds (header);
 
-        area.removeFromTop (18);
+        auto stateRow = area.removeFromTop (30);
+        stateRowLabel.setBounds (stateRow.reduced (10, 2));
+        area.removeFromTop (12);
         auto controls = area.removeFromBottom (118);
         auto right = area.removeFromRight (260);
         area.removeFromRight (18);
@@ -667,6 +680,7 @@ private:
 
     juce::Label titleLabel;
     juce::Label statusLabel;
+    juce::Label stateRowLabel;
     juce::Label selectedLabel;
     juce::Label laneHeader;
     std::array<juce::Label, 5> laneLabels;
