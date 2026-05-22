@@ -23,7 +23,6 @@ constexpr int maxTopLevelStates = 16;
 constexpr int maxTrackLanes = 8;
 constexpr auto laneDeclarationMarker = "// wf::declaration";
 constexpr auto laneControlMarker = "// wf::control";
-constexpr double laneCodeApplyDelayMs = 420.0;
 
 juce::Colour ink() { return juce::Colour (0xffeef3ee); }
 juce::Colour mutedInk() { return juce::Colour (0xff9da8a2); }
@@ -620,6 +619,9 @@ public:
         laneCodeEditor.onTextChange = [this] { markLaneCodeEdited(); };
         addAndMakeVisible (laneCodeEditor);
 
+        setupButton (laneCodeRunButton, "Run", green(), [this] { applyLaneCodeEdit(); });
+        laneCodeRunButton.setEnabled (false);
+
         selectedLabel.setFont (juce::FontOptions (18.0f, juce::Font::bold));
         styleLabel (selectedLabel);
         addAndMakeVisible (selectedLabel);
@@ -800,7 +802,9 @@ public:
         duplicateLaneButton.setBounds (laneActionRow.removeFromLeft (112).reduced (0, 2));
         deleteLaneButton.setBounds (laneActionRow.removeFromLeft (92).reduced (8, 2));
         codePane.removeFromTop (10);
-        laneCodeHeader.setBounds (codePane.removeFromTop (24));
+        auto laneCodeHeaderRow = codePane.removeFromTop (28);
+        laneCodeRunButton.setBounds (laneCodeHeaderRow.removeFromRight (62).reduced (0, 3));
+        laneCodeHeader.setBounds (laneCodeHeaderRow);
         laneCodeEditor.setBounds (codePane);
         orbitCanvas.setBounds (area);
         stateSettingsLabel.setBounds (right.removeFromTop (24));
@@ -1166,6 +1170,7 @@ private:
 
             syncEditControls (nullptr, nullptr);
             updateLaneCodeHeader ("lane code", mutedInk().withAlpha (0.22f));
+            laneCodeRunButton.setEnabled (false);
             setLaneCodeEditorText ("// Click New to create this state.");
             orbitCanvas.setState (nullptr, 0, orbitPhase, running);
             return;
@@ -1216,6 +1221,7 @@ private:
         if (state.lanes.empty())
         {
             updateLaneCodeHeader ("lane code", mutedInk().withAlpha (0.22f));
+            laneCodeRunButton.setEnabled (false);
             setLaneCodeEditorText ("// This track has no lanes.");
             return;
         }
@@ -1233,6 +1239,7 @@ private:
         laneCodeTrackIndex = selectedState;
         laneCodeLaneIndex = selectedLane;
         laneCodeDirty = false;
+        laneCodeRunButton.setEnabled (false);
         laneCodeLastValidatedText = laneCodeEditor.getText();
         updateLaneCodeHeader ("lane code", mutedInk().withAlpha (0.22f));
     }
@@ -1487,18 +1494,14 @@ private:
             return;
 
         laneCodeDirty = true;
-        laneCodeLastEditMs = juce::Time::getMillisecondCounterHiRes();
-        updateLaneCodeHeader ("lane code - editing", amber().withAlpha (0.62f));
+        laneCodeRunButton.setEnabled (true);
+        updateLaneCodeHeader ("lane code - edited", amber().withAlpha (0.62f));
     }
 
-    void maybeApplyLaneCodeEdit (double nowMs)
+    void applyLaneCodeEdit()
     {
-        if (! laneCodeDirty || nowMs - laneCodeLastEditMs < laneCodeApplyDelayMs)
-            return;
-
-        laneCodeDirty = false;
         const auto text = laneCodeEditor.getText();
-        if (text == laneCodeLastValidatedText)
+        if (! laneCodeDirty && text == laneCodeLastValidatedText)
             return;
 
         laneCodeLastValidatedText = text;
@@ -1510,6 +1513,8 @@ private:
         const auto parsed = parseLaneCode (text);
         if (! parsed.has_value())
         {
+            laneCodeDirty = true;
+            laneCodeRunButton.setEnabled (true);
             updateLaneCodeHeader ("lane code - invalid", coral().withAlpha (0.74f));
             return;
         }
@@ -1522,6 +1527,8 @@ private:
         juce::String validationError;
         if (! validateLaneProgram (candidateTrack, validationError))
         {
+            laneCodeDirty = true;
+            laneCodeRunButton.setEnabled (true);
             updateLaneCodeHeader ("lane code - invalid", coral().withAlpha (0.74f));
             return;
         }
@@ -1529,6 +1536,8 @@ private:
         auto& lane = track->lanes[static_cast<size_t> (selectedLane)];
         lane.customDeclarationCode = parsed->declaration;
         lane.customControlCode = parsed->control;
+        laneCodeDirty = false;
+        laneCodeRunButton.setEnabled (false);
         updateLaneCodeHeader ("lane code - live", green().withAlpha (0.58f));
 
         if (viewedTopLevelState == performingTopLevelState && selectedState == performingTrackIndex)
@@ -1579,7 +1588,6 @@ private:
             }
         }
 
-        maybeApplyLaneCodeEdit (now);
         applyCurrentAudioControls();
 
         statusLabel.setText (juce::String (running ? "running  " : "stopped  ") + audioCallback.diagnostics(), juce::dontSendNotification);
@@ -1836,6 +1844,7 @@ private:
     juce::TextButton soloLaneButton;
     juce::TextButton duplicateLaneButton;
     juce::TextButton deleteLaneButton;
+    juce::TextButton laneCodeRunButton;
     juce::Slider gainSlider;
     juce::Slider rateSlider;
     juce::Slider intensitySlider;
@@ -1884,7 +1893,6 @@ private:
     bool suppressEditCallbacks = false;
     bool suppressLaneCodeCallbacks = false;
     bool laneCodeDirty = false;
-    double laneCodeLastEditMs = 0.0;
     juce::String laneCodeLastValidatedText;
     int laneCodeViewedTopLevelState = -1;
     int laneCodeTrackIndex = -1;
