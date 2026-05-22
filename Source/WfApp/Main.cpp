@@ -21,6 +21,9 @@ constexpr int fallbackBlockSize = 4096;
 constexpr int engineOutputChannels = 2;
 constexpr int maxTopLevelStates = 16;
 constexpr int maxTrackLanes = 8;
+constexpr float defaultPlaybackRate = 1.0f;
+constexpr float defaultIntensity = 0.58f;
+constexpr float defaultBrightness = 0.48f;
 constexpr auto laneDeclarationMarker = "// wf::declaration";
 constexpr auto laneControlMarker = "// wf::control";
 
@@ -556,6 +559,14 @@ public:
         styleLabel (statusLabel, 0.72f);
         addAndMakeVisible (statusLabel);
 
+        volumeLabel.setText ("volume", juce::dontSendNotification);
+        volumeLabel.setFont (juce::FontOptions (13.0f, juce::Font::bold));
+        styleLabel (volumeLabel, 0.78f);
+        addAndMakeVisible (volumeLabel);
+
+        setupSlider (gainSlider, "Volume", 0.0, 0.8, 0.18, green());
+        gainSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 56, 22);
+
         for (int i = 0; i < maxTopLevelStates; ++i)
         {
             auto& button = stateButtons[static_cast<size_t> (i)];
@@ -693,11 +704,6 @@ public:
         setupButton (nextButton, "Next", blue(), [this] { selectState (selectedState + 1); });
         setupButton (shuffleButton, "Pick", amber(), [this] { pickState(); });
 
-        setupSlider (gainSlider, "Gain", 0.0, 0.8, 0.18, green());
-        setupSlider (rateSlider, "Rate", 0.35, 2.25, 1.0, amber());
-        setupSlider (intensitySlider, "Density", 0.0, 1.0, 0.58, coral());
-        setupSlider (brightnessSlider, "Colour", 0.0, 1.0, 0.48, blue());
-
         addAndMakeVisible (laneHeader);
         laneHeader.setText ("lanes", juce::dontSendNotification);
         laneHeader.setFont (juce::FontOptions (14.0f, juce::Font::bold));
@@ -761,6 +767,9 @@ public:
         auto area = getLocalBounds().reduced (34);
         auto header = area.removeFromTop (44);
         titleLabel.setBounds (header.removeFromLeft (260));
+        auto volumeArea = header.removeFromRight (270);
+        volumeLabel.setBounds (volumeArea.removeFromLeft (66).reduced (0, 11));
+        gainSlider.setBounds (volumeArea.reduced (0, 7));
         statusLabel.setBounds (header);
 
         auto stateRow = area.removeFromTop (60);
@@ -784,7 +793,7 @@ public:
         runScriptButton.setBounds (scriptRow.removeFromRight (86).reduced (8, 16));
         globalScriptEditor.setBounds (scriptRow.reduced (0, 8));
         area.removeFromTop (12);
-        auto controls = area.removeFromBottom (118);
+        auto controls = area.removeFromBottom (52);
         auto codePane = area.removeFromLeft (280);
         area.removeFromLeft (18);
         auto right = area.removeFromRight (260);
@@ -840,14 +849,6 @@ public:
         previousButton.setBounds (transport.removeFromLeft (82).reduced (6, 4));
         nextButton.setBounds (transport.removeFromLeft (82).reduced (6, 4));
         shuffleButton.setBounds (transport.removeFromLeft (82).reduced (6, 4));
-
-        auto sliderRow = controls.removeFromTop (62);
-        auto left = sliderRow.removeFromLeft (sliderRow.getWidth() / 2).reduced (0, 2);
-        auto rightSliders = sliderRow.reduced (12, 2);
-        gainSlider.setBounds (left.removeFromTop (30));
-        rateSlider.setBounds (left.removeFromTop (30));
-        intensitySlider.setBounds (rightSliders.removeFromTop (30));
-        brightnessSlider.setBounds (rightSliders.removeFromTop (30));
     }
 
 private:
@@ -1577,7 +1578,7 @@ private:
         const auto deltaSeconds = lastTimerMs > 0.0 ? juce::jlimit (0.0, 0.1, (now - lastTimerMs) * 0.001) : 0.0;
         lastTimerMs = now;
 
-        const auto rate = static_cast<float> (rateSlider.getValue());
+        const auto rate = defaultPlaybackRate;
         const auto tempoBpm = getPerformingTempoBpm();
 
         if (running)
@@ -1791,7 +1792,7 @@ private:
         if (getPerformingTracks() == nullptr)
             return 1.0f;
 
-        return static_cast<float> ((getPerformingTempoBpm() / 60.0) * rateSlider.getValue());
+        return static_cast<float> ((getPerformingTempoBpm() / 60.0) * defaultPlaybackRate);
     }
 
     void loadSelectedContentForCurrentState()
@@ -1804,8 +1805,8 @@ private:
         static_cast<void> (audioCallback.loadStateWithControls ((*performingTracks)[static_cast<size_t> (performingTrackIndex)],
                                                                 getCurrentMasterGain(),
                                                                 getCurrentTempoHz(),
-                                                                static_cast<float> (intensitySlider.getValue()),
-                                                                static_cast<float> (brightnessSlider.getValue()),
+                                                                defaultIntensity,
+                                                                defaultBrightness,
                                                                 orbitPhase));
     }
 
@@ -1816,8 +1817,8 @@ private:
 
         audioCallback.setControls (getCurrentMasterGain(),
                                    getCurrentTempoHz(),
-                                   static_cast<float> (intensitySlider.getValue()),
-                                   static_cast<float> (brightnessSlider.getValue()),
+                                   defaultIntensity,
+                                   defaultBrightness,
                                    orbitPhase);
     }
 
@@ -1828,6 +1829,7 @@ private:
 
     juce::Label titleLabel;
     juce::Label statusLabel;
+    juce::Label volumeLabel;
     juce::Label stateSettingsLabel;
     juce::Label stateTempoLabel;
     juce::Label stateTimeSigLabel;
@@ -1853,9 +1855,6 @@ private:
     juce::TextButton deleteLaneButton;
     juce::TextButton laneCodeRunButton;
     juce::Slider gainSlider;
-    juce::Slider rateSlider;
-    juce::Slider intensitySlider;
-    juce::Slider brightnessSlider;
     juce::Slider stateTempoSlider;
     juce::ComboBox timeSigNumeratorBox;
     juce::ComboBox timeSigDenominatorBox;
