@@ -122,5 +122,30 @@ int main()
         return 6;
     }
 
+    auto snareState = drumState;
+    snareState.lanes[0].name = "snare check";
+    snareState.lanes[0].role = "snare";
+
+    if (! engine.loadProgram (Wf::buildStateProgram (snareState), bindings))
+    {
+        std::cerr << "snare-only program failed: " << engine.getLastError() << '\n';
+        return 7;
+    }
+
+    static_cast<void> (engine.setParameterValue ("hostMasterGain", 0.28f));
+    static_cast<void> (engine.setParameterValue ("hostTempoHz", static_cast<float> (snareState.tempoBpm / 60.0)));
+    static_cast<void> (engine.setParameterValue ("hostIntensity", 0.78f));
+    static_cast<void> (engine.setParameterValue ("hostBrightness", 0.64f));
+    static_cast<void> (engine.setParameterValue ("hostOrbitPhase", 0.4f));
+
+    const auto snareEnergy = renderEnergy (engine, input, output, 160);
+    if (snareEnergy < 2.0
+        || engine.getRenderExceptionCount() != 0
+        || engine.getInternalErrorCount() != 0)
+    {
+        std::cerr << "snare render too quiet or unstable: " << snareEnergy << '\n';
+        return 8;
+    }
+
     return 0;
 }
