@@ -94,21 +94,22 @@ inline void appendLaneDeclaration (juce::String& program, const LaneSpec& lane, 
 
     if (lane.role == "bass")
     {
-        program << "SawOsc lane" << suffix << " => LPF filter" << suffix << " => Gain laneGain" << suffix << " => master;\n";
+        program << "SawOsc lane" << suffix << " => LPF filter" << suffix << " => Gain laneGain" << suffix << " => Gain laneSmooth" << suffix << " => master;\n";
         program << "0.64 => filter" << suffix << ".Q;\n";
     }
     else if (lane.role == "chord")
     {
-        program << "SinOsc lane" << suffix << "a => Gain laneGain" << suffix << " => master;\n";
+        program << "SinOsc lane" << suffix << "a => Gain laneGain" << suffix << " => Gain laneSmooth" << suffix << " => master;\n";
         program << "SinOsc lane" << suffix << "b => laneGain" << suffix << ";\n";
         program << "SinOsc lane" << suffix << "c => laneGain" << suffix << ";\n";
     }
     else
     {
-        program << "TriOsc lane" << suffix << " => Gain laneGain" << suffix << " => master;\n";
+        program << "TriOsc lane" << suffix << " => Gain laneGain" << suffix << " => Gain laneSmooth" << suffix << " => master;\n";
     }
 
-    program << "0.0 => laneGain" << suffix << ".gain;\n\n";
+    program << "1.0 => laneGain" << suffix << ".gain;\n";
+    program << "0.0 => laneSmooth" << suffix << ".gain;\n\n";
 }
 
 inline void appendLaneControl (juce::String& program, const LaneSpec& lane, int index)
@@ -121,9 +122,10 @@ inline void appendLaneControl (juce::String& program, const LaneSpec& lane, int 
 
     program << "    tick % " << pulseTicks << " => int laneStep" << suffix << ";\n";
     program << "    if (laneStep" << suffix << " < " << openTicks << ")\n";
-    program << "        " << volume << " * (0.45 + intensity * 0.85) => laneLevel" << suffix << ";\n";
+    program << "        " << volume << " * (0.40 + intensity * 0.72) => laneTarget" << suffix << ";\n";
     program << "    else\n";
-    program << "        " << volume << " * (0.04 + orbit * 0.10) => laneLevel" << suffix << ";\n";
+    program << "        " << volume << " * (0.035 + orbit * 0.08) => laneTarget" << suffix << ";\n";
+    program << "    laneLevel" << suffix << " + ((laneTarget" << suffix << " - laneLevel" << suffix << ") * 0.075) => laneLevel" << suffix << ";\n";
 
     if (lane.role == "bass")
     {
@@ -145,7 +147,7 @@ inline void appendLaneControl (juce::String& program, const LaneSpec& lane, int 
         program << "    " << baseHz << " * (0.96 + bright * 0.22 + orbit * 0.06) => lane" << suffix << ".freq;\n";
     }
 
-    program << "    laneLevel" << suffix << " => laneGain" << suffix << ".gain;\n\n";
+    program << "    laneLevel" << suffix << " => laneSmooth" << suffix << ".gain;\n\n";
 }
 
 inline juce::String buildStateProgram (const StateSpec& state)
@@ -163,6 +165,12 @@ inline juce::String buildStateProgram (const StateSpec& state)
     program << "0.0 => float laneLevel2;\n";
     program << "0.0 => float laneLevel3;\n";
     program << "0.0 => float laneLevel4;\n\n";
+    program << "0.0 => float laneTarget0;\n";
+    program << "0.0 => float laneTarget1;\n";
+    program << "0.0 => float laneTarget2;\n";
+    program << "0.0 => float laneTarget3;\n";
+    program << "0.0 => float laneTarget4;\n\n";
+    program << "0.0 => float smoothedMaster;\n\n";
     program << "while (true)\n";
     program << "{\n";
     program << "    Math.max(0.0, Math.min(hostMasterGain, 0.8)) => float masterLevel;\n";
@@ -170,7 +178,8 @@ inline juce::String buildStateProgram (const StateSpec& state)
     program << "    Math.max(0.0, Math.min(hostIntensity, 1.0)) => float intensity;\n";
     program << "    Math.max(0.0, Math.min(hostBrightness, 1.0)) => float bright;\n";
     program << "    Math.max(0.0, Math.min(hostOrbitPhase, 1.0)) => float orbit;\n";
-    program << "    masterLevel => master.gain;\n";
+    program << "    smoothedMaster + ((masterLevel - smoothedMaster) * 0.055) => smoothedMaster;\n";
+    program << "    smoothedMaster => master.gain;\n";
     program << "    tick + 1 => tick;\n\n";
 
     for (int i = 0; i < static_cast<int> (state.lanes.size()); ++i)

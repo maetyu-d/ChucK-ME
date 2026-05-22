@@ -6,6 +6,7 @@
 #include "WfChucKPrograms.h"
 
 #include <atomic>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <random>
@@ -115,23 +116,31 @@ public:
         if (! engine.isReady())
             return false;
 
+        wfParameterIndexesReady.store (false, std::memory_order_release);
         return engine.loadProgramAsync (Wf::buildStateProgram (state), Wf::makeWfParameterBindings());
     }
 
     void setControls (float masterGain, float tempoHz, float intensity, float brightness, float orbitPhase)
     {
-        static_cast<void> (engine.setParameterValue ("hostMasterGain", masterGain));
-        static_cast<void> (engine.setParameterValue ("hostTempoHz", tempoHz));
-        static_cast<void> (engine.setParameterValue ("hostIntensity", intensity));
-        static_cast<void> (engine.setParameterValue ("hostBrightness", brightness));
-        static_cast<void> (engine.setParameterValue ("hostOrbitPhase", orbitPhase));
+        refreshWfParameterIndexesIfNeeded();
+
+        if (wfParameterIndexesReady.load (std::memory_order_acquire))
+        {
+            static_cast<void> (engine.setParameterValue (wfParameterIndexes[0], masterGain));
+            static_cast<void> (engine.setParameterValue (wfParameterIndexes[1], tempoHz));
+            static_cast<void> (engine.setParameterValue (wfParameterIndexes[2], intensity));
+            static_cast<void> (engine.setParameterValue (wfParameterIndexes[3], brightness));
+            static_cast<void> (engine.setParameterValue (wfParameterIndexes[4], orbitPhase));
+        }
     }
 
     juce::String diagnostics() const
     {
         return "blocks=" + juce::String (static_cast<juce::int64> (engine.getRenderedBlockCount()))
              + " async=" + juce::String (static_cast<juce::int64> (engine.getAsyncProgramLoadCompletedCount()))
-             + " silent=" + juce::String (static_cast<juce::int64> (engine.getSilentProcessCount()));
+             + " silent=" + juce::String (static_cast<juce::int64> (engine.getSilentProcessCount()))
+             + " sr=" + juce::String (lastSampleRate.load (std::memory_order_relaxed), 0)
+             + " bs=" + juce::String (lastReportedBlockSize.load (std::memory_order_relaxed));
     }
 
 private:
@@ -139,10 +148,13 @@ private:
     {
         ready.store (false, std::memory_order_release);
         engine.release();
+        wfParameterIndexesReady.store (false, std::memory_order_release);
 
         const auto blockSize = juce::jlimit (64,
                                              EmbeddedChucKEngine::maximumBlockSizeLimit,
-                                             juce::jmax (reportedBlockSize, fallbackBlockSize));
+                                             juce::jmax (reportedBlockSize * 4, fallbackBlockSize));
+        lastSampleRate.store (sampleRate, std::memory_order_relaxed);
+        lastReportedBlockSize.store (reportedBlockSize, std::memory_order_relaxed);
 
         scratchOutput.setSize (maxHostChannels, blockSize, false, false, true);
         scratchOutput.clear();
@@ -152,10 +164,42 @@ private:
         return prepared;
     }
 
+    void refreshWfParameterIndexesIfNeeded()
+    {
+        if (wfParameterIndexesReady.load (std::memory_order_acquire)
+            || engine.isAsyncProgramLoadActive()
+            || engine.getParameterCount() != 5)
+            return;
+
+        const std::array<juce::String, 5> names
+        {
+            "hostMasterGain",
+            "hostTempoHz",
+            "hostIntensity",
+            "hostBrightness",
+            "hostOrbitPhase"
+        };
+
+        std::array<int, 5> indexes {};
+        for (int i = 0; i < static_cast<int> (names.size()); ++i)
+        {
+            indexes[static_cast<size_t> (i)] = engine.getParameterIndex (names[static_cast<size_t> (i)]);
+            if (indexes[static_cast<size_t> (i)] < 0)
+                return;
+        }
+
+        wfParameterIndexes = indexes;
+        wfParameterIndexesReady.store (true, std::memory_order_release);
+    }
+
     EmbeddedChucKEngine engine;
     juce::AudioBuffer<float> emptyInput;
     juce::AudioBuffer<float> scratchOutput;
+    std::array<int, 5> wfParameterIndexes { -1, -1, -1, -1, -1 };
     std::atomic<bool> ready { false };
+    std::atomic<bool> wfParameterIndexesReady { false };
+    std::atomic<double> lastSampleRate { 0.0 };
+    std::atomic<int> lastReportedBlockSize { 0 };
 };
 
 class OrbitCanvas final : public juce::Component
