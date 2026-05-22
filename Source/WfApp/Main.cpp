@@ -9,6 +9,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <random>
 #include <regex>
 #include <string>
@@ -520,7 +521,7 @@ public:
 
         globalScriptEditor.setMultiLine (true);
         globalScriptEditor.setReturnKeyStartsNewLine (true);
-        globalScriptEditor.setText ("playState(1, 8);\nplayState(2, 4);\nstop();", juce::dontSendNotification);
+        globalScriptEditor.setText ("tempo(88); timeSig(4, 4); playState(1, 8);\ntempo(44); playState(2, 4);\nstop();", juce::dontSendNotification);
         globalScriptEditor.setColour (juce::TextEditor::backgroundColourId, panelSoft());
         globalScriptEditor.setColour (juce::TextEditor::textColourId, ink());
         globalScriptEditor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.24f));
@@ -799,51 +800,106 @@ private:
     {
         int stateIndex = 0;
         double bars = 1.0;
+        std::optional<float> tempoBpm;
+        std::optional<int> timeSigNumerator;
+        std::optional<int> timeSigDenominator;
     };
 
     std::vector<GlobalScriptStep> parseGlobalScript() const
     {
         std::vector<GlobalScriptStep> parsed;
         const auto text = globalScriptEditor.getText().toStdString();
-        const std::regex playStateRegex ("playState\\s*\\(\\s*(1[0-6]|[1-9])\\s*,\\s*(\\d+(?:\\.\\d+)?)\\s*\\)",
-                                         std::regex_constants::icase);
-
-        for (std::sregex_iterator it (text.begin(), text.end(), playStateRegex), end; it != end; ++it)
-        {
-            const auto stateIndex = std::stoi ((*it)[1].str()) - 1;
-            const auto bars = std::stod ((*it)[2].str());
-
-            if (isTopLevelStatePopulated (stateIndex) && bars > 0.0)
-                parsed.push_back ({ stateIndex, bars });
-        }
-
-        if (! parsed.empty())
-            return parsed;
-
-        const std::regex tokenRegex ("state\\s*\\(\\s*(1[0-6]|[1-9])\\s*\\)|(\\d+(?:\\.\\d+)?)\\s*::\\s*bar",
-                                     std::regex_constants::icase);
+        const std::regex tokenRegex (
+            R"((?:playState\s*\(\s*(1[0-6]|[1-9])\s*,\s*(\d+(?:\.\d+)?)\s*(?:,\s*(?:tempo\s*=\s*)?(\d+(?:\.\d+)?))?\s*(?:,\s*(?:(?:timeSig|meter)\s*=\s*)?(\d{1,2})\s*(?:/|,)\s*(2|4|8|16))?\s*\))|(?:state\s*\(\s*(1[0-6]|[1-9])\s*\))|(?:(\d+(?:\.\d+)?)\s*::\s*bar)|(?:(?:tempo|bpm)\s*\(\s*(\d+(?:\.\d+)?)\s*\))|(?:(?:timeSig|meter)\s*\(\s*(\d{1,2})\s*,\s*(2|4|8|16)\s*\)))",
+            std::regex_constants::icase);
         int pendingStateIndex = -1;
+        std::optional<float> pendingTempoBpm;
+        std::optional<int> pendingTimeSigNumerator;
+        std::optional<int> pendingTimeSigDenominator;
+
+        auto addStep = [&] (int stateIndex,
+                            double bars,
+                            std::optional<float> stepTempoBpm,
+                            std::optional<int> stepTimeSigNumerator,
+                            std::optional<int> stepTimeSigDenominator)
+        {
+            if (! isTopLevelStatePopulated (stateIndex) || bars <= 0.0)
+                return;
+
+            parsed.push_back ({ stateIndex,
+                                bars,
+                                stepTempoBpm.has_value() ? stepTempoBpm : pendingTempoBpm,
+                                stepTimeSigNumerator.has_value() ? stepTimeSigNumerator : pendingTimeSigNumerator,
+                                stepTimeSigDenominator.has_value() ? stepTimeSigDenominator : pendingTimeSigDenominator });
+        };
 
         for (std::sregex_iterator it (text.begin(), text.end(), tokenRegex), end; it != end; ++it)
         {
             if ((*it)[1].matched)
             {
                 pendingStateIndex = std::stoi ((*it)[1].str()) - 1;
+                const auto bars = std::stod ((*it)[2].str());
+                const auto stepTempoBpm = (*it)[3].matched
+                    ? std::optional<float> (sanitizeScriptTempo (std::stof ((*it)[3].str())))
+                    : std::optional<float>();
+                const auto stepNumerator = (*it)[4].matched
+                    ? std::optional<int> (sanitizeScriptTimeSigNumerator (std::stoi ((*it)[4].str())))
+                    : std::optional<int>();
+                const auto stepDenominator = (*it)[5].matched
+                    ? std::optional<int> (sanitizeScriptTimeSigDenominator (std::stoi ((*it)[5].str())))
+                    : std::optional<int>();
+
+                addStep (pendingStateIndex, bars, stepTempoBpm, stepNumerator, stepDenominator);
+                pendingStateIndex = -1;
                 continue;
             }
 
-            if ((*it)[2].matched && pendingStateIndex >= 0)
+            if ((*it)[6].matched)
             {
-                const auto bars = std::stod ((*it)[2].str());
+                pendingStateIndex = std::stoi ((*it)[6].str()) - 1;
+                continue;
+            }
 
-                if (isTopLevelStatePopulated (pendingStateIndex) && bars > 0.0)
-                    parsed.push_back ({ pendingStateIndex, bars });
-
+            if ((*it)[7].matched && pendingStateIndex >= 0)
+            {
+                const auto bars = std::stod ((*it)[7].str());
+                addStep (pendingStateIndex, bars, {}, {}, {});
                 pendingStateIndex = -1;
+                continue;
+            }
+
+            if ((*it)[8].matched)
+            {
+                pendingTempoBpm = sanitizeScriptTempo (std::stof ((*it)[8].str()));
+                continue;
+            }
+
+            if ((*it)[9].matched && (*it)[10].matched)
+            {
+                pendingTimeSigNumerator = sanitizeScriptTimeSigNumerator (std::stoi ((*it)[9].str()));
+                pendingTimeSigDenominator = sanitizeScriptTimeSigDenominator (std::stoi ((*it)[10].str()));
             }
         }
 
         return parsed;
+    }
+
+    static float sanitizeScriptTempo (float tempoBpm)
+    {
+        return juce::jlimit (30.0f, 220.0f, tempoBpm);
+    }
+
+    static int sanitizeScriptTimeSigNumerator (int numerator)
+    {
+        return juce::jlimit (1, 16, numerator);
+    }
+
+    static int sanitizeScriptTimeSigDenominator (int denominator)
+    {
+        if (denominator == 2 || denominator == 4 || denominator == 8 || denominator == 16)
+            return denominator;
+
+        return 4;
     }
 
     void runGlobalScript()
@@ -859,7 +915,7 @@ private:
         scriptRunning = true;
         running = true;
         playButton.setButtonText ("Stop");
-        setPerformingTopLevelState (globalScriptSteps.front().stateIndex);
+        applyGlobalScriptStep (globalScriptSteps.front());
     }
 
     void selectState (int index)
@@ -1020,20 +1076,40 @@ private:
             return;
         }
 
-        setPerformingTopLevelState (globalScriptSteps[scriptStepIndex].stateIndex);
+        applyGlobalScriptStep (globalScriptSteps[scriptStepIndex]);
     }
 
     float getPerformingTempoBpm() const
     {
+        if (scriptRunning && scriptStepIndex < globalScriptSteps.size() && globalScriptSteps[scriptStepIndex].tempoBpm.has_value())
+            return *globalScriptSteps[scriptStepIndex].tempoBpm;
+
         return topLevelTemposBpm[static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, performingTopLevelState))];
     }
 
     double getPerformingQuarterNotesPerBar() const
     {
         const auto index = static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, performingTopLevelState));
-        const auto numerator = static_cast<double> (topLevelTimeSigNumerators[index]);
-        const auto denominator = static_cast<double> (juce::jmax (1, topLevelTimeSigDenominators[index]));
+        const auto numerator = static_cast<double> (scriptRunning
+                                                        && scriptStepIndex < globalScriptSteps.size()
+                                                        && globalScriptSteps[scriptStepIndex].timeSigNumerator.has_value()
+                                                    ? *globalScriptSteps[scriptStepIndex].timeSigNumerator
+                                                    : topLevelTimeSigNumerators[index]);
+        const auto denominator = static_cast<double> (juce::jmax (1, scriptRunning
+                                                                      && scriptStepIndex < globalScriptSteps.size()
+                                                                      && globalScriptSteps[scriptStepIndex].timeSigDenominator.has_value()
+                                                                  ? *globalScriptSteps[scriptStepIndex].timeSigDenominator
+                                                                  : topLevelTimeSigDenominators[index]));
         return numerator * 4.0 / denominator;
+    }
+
+    void applyGlobalScriptStep (const GlobalScriptStep& step)
+    {
+        const auto wasPerformingState = performingTopLevelState;
+        setPerformingTopLevelState (step.stateIndex);
+
+        if (wasPerformingState == performingTopLevelState)
+            applyCurrentAudioControls();
     }
 
     static bool isTopLevelStatePopulated (int index)
