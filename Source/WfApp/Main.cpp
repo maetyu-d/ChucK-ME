@@ -899,20 +899,22 @@ private:
         refreshLabels();
     }
 
-    void setPerformingTopLevelState (int index)
+    void setPerformingTopLevelState (int index, bool restartFromFirstTrack = false)
     {
         const auto nextState = juce::jlimit (0, maxTopLevelStates - 1, index);
         if (! isTopLevelStatePopulated (nextState))
             return;
 
-        if (performingTopLevelState == nextState)
+        if (performingTopLevelState == nextState && ! restartFromFirstTrack)
         {
             refreshLabels();
             return;
         }
 
         performingTopLevelState = nextState;
-        performingTrackIndex = juce::jlimit (0, getPerformingTrackCount() - 1, performingTrackIndex);
+        performingTrackIndex = restartFromFirstTrack
+            ? 0
+            : juce::jlimit (0, getPerformingTrackCount() - 1, performingTrackIndex);
         trackElapsedBars = 0.0;
         orbitPhase = 0.0f;
 
@@ -1708,11 +1710,7 @@ private:
 
     void applyGlobalScriptStep (const GlobalScriptStep& step)
     {
-        const auto wasPerformingState = performingTopLevelState;
-        setPerformingTopLevelState (step.stateIndex);
-
-        if (wasPerformingState == performingTopLevelState)
-            applyCurrentAudioControls();
+        setPerformingTopLevelState (step.stateIndex, true);
     }
 
     bool isTopLevelStatePopulated (int index) const
