@@ -41,40 +41,40 @@ inline std::vector<StateSpec> makeDefaultStates()
 {
     return
     {
-        { "Pocket City", 112.0, {{
-            { "Tick machine", "pulse", 523.25f, 0.20f, 24, 7 },
-            { "Pocket bass", "bass", 65.41f, 0.34f, 48, 18 },
-            { "Signal melody", "lead", 261.63f, 0.24f, 36, 13 },
-            { "Glass chorus", "chord", 130.81f, 0.20f, 96, 48 },
-            { "Static halo", "air", 1046.50f, 0.09f, 144, 72 }
+        { "Pocket City", 88.0, {{
+            { "808 street", "drum", 45.0f, 0.58f, 16, 1 },
+            { "Pocket bass", "bass", 65.41f, 0.34f, 2, 1 },
+            { "Signal arp", "arp", 261.63f, 0.24f, 1, 1 },
+            { "Glass chorus", "chord", 130.81f, 0.20f, 8, 5 },
+            { "Static halo", "air", 1046.50f, 0.07f, 12, 6 }
         }}},
-        { "Chrome Avenue", 118.0, {{
-            { "Metro ticks", "pulse", 587.33f, 0.21f, 22, 6 },
-            { "Rubber motor", "bass", 73.42f, 0.35f, 44, 17 },
-            { "Window hook", "lead", 293.66f, 0.25f, 33, 12 },
-            { "Warm display", "chord", 146.83f, 0.21f, 88, 44 },
-            { "Thin skyline", "air", 1174.66f, 0.09f, 132, 64 }
+        { "Chrome Avenue", 92.0, {{
+            { "808 avenue", "drum", 46.5f, 0.60f, 16, 1 },
+            { "Rubber motor", "bass", 73.42f, 0.35f, 2, 1 },
+            { "Window arp", "arp", 293.66f, 0.25f, 1, 1 },
+            { "Warm display", "chord", 146.83f, 0.21f, 8, 5 },
+            { "Thin skyline", "air", 1174.66f, 0.07f, 12, 6 }
         }}},
-        { "Battery Love", 122.0, {{
-            { "Relay hats", "pulse", 659.25f, 0.22f, 20, 6 },
-            { "Battery bass", "bass", 82.41f, 0.36f, 40, 16 },
-            { "Simple song", "lead", 329.63f, 0.27f, 30, 11 },
-            { "Major lights", "chord", 164.81f, 0.22f, 80, 40 },
-            { "Soft carrier", "air", 1318.51f, 0.08f, 120, 60 }
+        { "Battery Love", 96.0, {{
+            { "808 relay", "drum", 43.8f, 0.62f, 16, 1 },
+            { "Battery bass", "bass", 82.41f, 0.36f, 2, 1 },
+            { "Simple arp", "arp", 329.63f, 0.27f, 1, 1 },
+            { "Major lights", "chord", 164.81f, 0.22f, 8, 5 },
+            { "Soft carrier", "air", 1318.51f, 0.07f, 12, 6 }
         }}},
-        { "Pocket Choir", 108.0, {{
-            { "Tiny clock", "pulse", 493.88f, 0.19f, 26, 8 },
-            { "Round bass", "bass", 61.74f, 0.32f, 52, 20 },
-            { "Choir lead", "lead", 246.94f, 0.24f, 39, 14 },
-            { "Soft buttons", "chord", 123.47f, 0.22f, 104, 52 },
-            { "Air tape", "air", 987.77f, 0.08f, 156, 76 }
+        { "Pocket Choir", 84.0, {{
+            { "808 choir", "drum", 44.2f, 0.56f, 16, 1 },
+            { "Round bass", "bass", 61.74f, 0.32f, 2, 1 },
+            { "Choir arp", "arp", 246.94f, 0.24f, 1, 1 },
+            { "Soft buttons", "chord", 123.47f, 0.22f, 8, 5 },
+            { "Air tape", "air", 987.77f, 0.07f, 12, 6 }
         }}},
-        { "Neon Postcard", 116.0, {{
-            { "Card punch", "pulse", 554.37f, 0.21f, 23, 7 },
-            { "Postcard bass", "bass", 69.30f, 0.34f, 46, 18 },
-            { "Neon reply", "lead", 277.18f, 0.26f, 35, 12 },
-            { "Blue chord", "chord", 138.59f, 0.21f, 92, 46 },
-            { "Tape star", "air", 1108.73f, 0.08f, 138, 68 }
+        { "Neon Postcard", 90.0, {{
+            { "808 postcard", "drum", 45.6f, 0.59f, 16, 1 },
+            { "Postcard bass", "bass", 69.30f, 0.34f, 2, 1 },
+            { "Neon arp", "arp", 277.18f, 0.26f, 1, 1 },
+            { "Blue chord", "chord", 138.59f, 0.21f, 8, 5 },
+            { "Tape star", "air", 1108.73f, 0.07f, 12, 6 }
         }}}
     };
 }
@@ -97,18 +97,18 @@ inline float transposeHz (float frequency, int semitones)
 inline std::array<int, 8> sequenceForRole (const juce::String& role)
 {
     if (role == "bass")
-        return { 0, 0, 7, 0, 5, 5, 7, 10 };
+        return { 0, 0, 7, 0, 0, 5, 7, 10 };
 
     if (role == "chord")
-        return { 0, 5, 7, 9, 0, 12, 7, 5 };
+        return { 0, 0, 5, 5, 7, 7, 9, 12 };
 
     if (role == "pulse")
-        return { 24, 24, 31, 24, 28, 24, 31, 36 };
+        return { 24, 31, 28, 31, 24, 36, 31, 28 };
 
     if (role == "air")
-        return { 12, 19, 16, 12, 14, 21, 19, 16 };
+        return { 12, 19, 24, 19, 16, 21, 24, 28 };
 
-    return { 12, 16, 19, 16, 14, 12, 7, 11 };
+    return { 12, 16, 19, 24, 19, 16, 14, 19 };
 }
 
 inline void appendSequencePicker (juce::String& program, const LaneSpec& lane, const juce::String& suffix)
@@ -135,6 +135,16 @@ inline void appendLaneDeclaration (juce::String& program, const LaneSpec& lane, 
         program << "SawOsc lane" << suffix << " => LPF filter" << suffix << " => Gain laneGain" << suffix << " => Gain laneSmooth" << suffix << " => master;\n";
         program << "0.64 => filter" << suffix << ".Q;\n";
     }
+    else if (lane.role == "drum")
+    {
+        program << "SinOsc lane" << suffix << "Kick => Gain lane" << suffix << "KickGain => master;\n";
+        program << "TriOsc lane" << suffix << "Snare => Gain lane" << suffix << "SnareGain => master;\n";
+        program << "TriOsc lane" << suffix << "Hat => Gain lane" << suffix << "HatGain => master;\n";
+        program << "0.0 => lane" << suffix << "KickGain.gain;\n";
+        program << "0.0 => lane" << suffix << "SnareGain.gain;\n";
+        program << "0.0 => lane" << suffix << "HatGain.gain;\n\n";
+        return;
+    }
     else if (lane.role == "chord")
     {
         program << "SinOsc lane" << suffix << "a => Gain laneGain" << suffix << " => Gain laneSmooth" << suffix << " => master;\n";
@@ -158,6 +168,28 @@ inline void appendLaneControl (juce::String& program, const LaneSpec& lane, int 
     const auto volume = chuckFloat (lane.volume);
 
     program << "    tick % " << pulseTicks << " => int laneStep" << suffix << ";\n";
+
+    if (lane.role == "drum")
+    {
+        program << "    tick % 16 => int drumStep" << suffix << ";\n";
+        program << "    0.0 => float kickEnv" << suffix << ";\n";
+        program << "    0.0 => float snareEnv" << suffix << ";\n";
+        program << "    0.0 => float hatEnv" << suffix << ";\n";
+        program << "    if (drumStep" << suffix << " == 0 || drumStep" << suffix << " == 7 || drumStep" << suffix << " == 10)\n";
+        program << "        (1.0 - stepPhase) * (1.0 - stepPhase) => kickEnv" << suffix << ";\n";
+        program << "    if (drumStep" << suffix << " == 4 || drumStep" << suffix << " == 12)\n";
+        program << "        (1.0 - stepPhase) * 0.52 => snareEnv" << suffix << ";\n";
+        program << "    if (drumStep" << suffix << " == 2 || drumStep" << suffix << " == 6 || drumStep" << suffix << " == 8 || drumStep" << suffix << " == 14)\n";
+        program << "        (1.0 - stepPhase) * 0.32 => hatEnv" << suffix << ";\n";
+        program << "    " << chuckFloat (lane.baseHz) << " + (kickEnv" << suffix << " * 82.0) => lane" << suffix << "Kick.freq;\n";
+        program << "    176.0 + (snareEnv" << suffix << " * 62.0) => lane" << suffix << "Snare.freq;\n";
+        program << "    6800.0 + (bright * 2200.0) => lane" << suffix << "Hat.freq;\n";
+        program << "    " << volume << " * (0.52 + intensity * 0.62) * kickEnv" << suffix << " => lane" << suffix << "KickGain.gain;\n";
+        program << "    " << volume << " * 0.42 * snareEnv" << suffix << " => lane" << suffix << "SnareGain.gain;\n";
+        program << "    " << volume << " * 0.18 * hatEnv" << suffix << " => lane" << suffix << "HatGain.gain;\n\n";
+        return;
+    }
+
     appendSequencePicker (program, lane, suffix);
 
     program << "    if (laneStep" << suffix << " < " << openTicks << ")\n";
@@ -181,6 +213,10 @@ inline void appendLaneControl (juce::String& program, const LaneSpec& lane, int 
     {
         program << "    laneFreq" << suffix << " * (0.72 + bright * 0.24 + orbit * 0.035) => lane" << suffix << ".freq;\n";
     }
+    else if (lane.role == "arp")
+    {
+        program << "    laneFreq" << suffix << " * (0.99 + bright * 0.035 + orbit * 0.012) => lane" << suffix << ".freq;\n";
+    }
     else
     {
         program << "    laneFreq" << suffix << " * (0.98 + bright * 0.05 + orbit * 0.018) => lane" << suffix << ".freq;\n";
@@ -199,6 +235,7 @@ inline juce::String buildStateProgram (const StateSpec& state)
         appendLaneDeclaration (program, state.lanes[static_cast<size_t> (i)], i);
 
     program << "0 => int tick;\n";
+    program << "0.0 => float stepPhase;\n";
     program << "0.0 => float laneLevel0;\n";
     program << "0.0 => float laneLevel1;\n";
     program << "0.0 => float laneLevel2;\n";
@@ -224,7 +261,12 @@ inline juce::String buildStateProgram (const StateSpec& state)
     program << "    Math.max(0.0, Math.min(hostOrbitPhase, 1.0)) => float orbit;\n";
     program << "    smoothedMaster + ((masterLevel - smoothedMaster) * 0.055) => smoothedMaster;\n";
     program << "    smoothedMaster => master.gain;\n";
-    program << "    tick + 1 => tick;\n\n";
+    program << "    stepPhase + (tempo * 0.020) => stepPhase;\n";
+    program << "    if (stepPhase >= 1.0)\n";
+    program << "    {\n";
+    program << "        tick + 1 => tick;\n";
+    program << "        stepPhase - 1.0 => stepPhase;\n";
+    program << "    }\n\n";
 
     for (int i = 0; i < static_cast<int> (state.lanes.size()); ++i)
         appendLaneControl (program, state.lanes[static_cast<size_t> (i)], i);
