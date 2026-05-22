@@ -465,7 +465,7 @@ public:
         orbitCanvas.onStateSelected = [this] (int index) { selectState (index); };
         addAndMakeVisible (orbitCanvas);
 
-        setupButton (playButton, "Pause", green(), [this] { toggleRunning(); });
+        setupButton (playButton, "Stop", green(), [this] { toggleRunning(); });
         setupButton (previousButton, "Prev", blue(), [this] { selectState (selectedState - 1); });
         setupButton (nextButton, "Next", blue(), [this] { selectState (selectedState + 1); });
         setupButton (shuffleButton, "Pick", amber(), [this] { pickState(); });
@@ -582,13 +582,15 @@ private:
         selectedState = (index + static_cast<int> (states.size())) % static_cast<int> (states.size());
         orbitPhase = 0.0f;
         audioCallback.loadState (states[static_cast<size_t> (selectedState)]);
+        applyCurrentAudioControls();
         refreshLabels();
     }
 
     void toggleRunning()
     {
         running = ! running;
-        playButton.setButtonText (running ? "Pause" : "Play");
+        playButton.setButtonText (running ? "Stop" : "Play");
+        applyCurrentAudioControls();
         refreshLabels();
     }
 
@@ -636,14 +638,26 @@ private:
             }
         }
 
-        audioCallback.setControls (static_cast<float> (gainSlider.getValue()),
+        applyCurrentAudioControls();
+
+        statusLabel.setText (juce::String (running ? "running  " : "stopped  ") + audioCallback.diagnostics(), juce::dontSendNotification);
+        orbitCanvas.setState (&states, selectedState, orbitPhase, running);
+    }
+
+    void applyCurrentAudioControls()
+    {
+        if (states.empty())
+            return;
+
+        const auto& state = states[static_cast<size_t> (selectedState)];
+        const auto rate = static_cast<float> (rateSlider.getValue());
+        const auto masterGain = running ? static_cast<float> (gainSlider.getValue()) : 0.0f;
+
+        audioCallback.setControls (masterGain,
                                    static_cast<float> ((state.tempoBpm / 60.0) * static_cast<double> (rate)),
                                    static_cast<float> (intensitySlider.getValue()),
                                    static_cast<float> (brightnessSlider.getValue()),
                                    orbitPhase);
-
-        statusLabel.setText (juce::String (running ? "running  " : "paused  ") + audioCallback.diagnostics(), juce::dontSendNotification);
-        orbitCanvas.setState (&states, selectedState, orbitPhase, running);
     }
 
     WfAudioCallback audioCallback;
