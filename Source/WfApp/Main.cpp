@@ -795,12 +795,12 @@ public:
         trackNameRow.removeFromLeft (8);
         trackNameEditor.setBounds (trackNameRow.reduced (0, 2));
         codePane.removeFromTop (6);
+        laneNameEditor.setBounds (codePane.removeFromTop (28));
+        codePane.removeFromTop (8);
         auto trackEditRow = codePane.removeFromTop (30);
         trackDurationLabel.setBounds (trackEditRow.removeFromLeft (152).reduced (0, 2));
         trackEditRow.removeFromLeft (8);
         trackDurationEditor.setBounds (trackEditRow.removeFromLeft (74).reduced (0, 2));
-        codePane.removeFromTop (8);
-        laneNameEditor.setBounds (codePane.removeFromTop (28));
         codePane.removeFromTop (6);
         auto laneEditRow = codePane.removeFromTop (30);
         muteLaneButton.setBounds (laneEditRow.removeFromLeft (72).reduced (6, 2));
