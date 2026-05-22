@@ -219,6 +219,7 @@ public:
                              brightness,
                              orbitPhase);
 
+        incoming.gain = previousActive < 0 ? 1.0f : 0.0f;
         incoming.inUse.store (true, std::memory_order_release);
         incoming.targetGain.store (1.0f, std::memory_order_release);
 

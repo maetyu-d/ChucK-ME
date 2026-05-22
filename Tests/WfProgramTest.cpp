@@ -222,13 +222,24 @@ int main()
     static_cast<void> (engine.setParameterValue ("hostBrightness", 0.56f));
     static_cast<void> (engine.setParameterValue ("hostOrbitPhase", 0.2f));
 
+    output.clear();
+    engine.process (input, output);
+    const auto firstDrumBlockEnergy = bufferEnergy (output);
+    if (firstDrumBlockEnergy <= 0.001
+        || engine.getRenderExceptionCount() != 0
+        || engine.getInternalErrorCount() != 0)
+    {
+        std::cerr << "drum first block missed downbeat: " << firstDrumBlockEnergy << '\n';
+        return 14;
+    }
+
     const auto drumEnergy = renderEnergy (engine, input, output, 160);
     if (drumEnergy < 12.0
         || engine.getRenderExceptionCount() != 0
         || engine.getInternalErrorCount() != 0)
     {
         std::cerr << "drum render too quiet or unstable: " << drumEnergy << '\n';
-        return 14;
+        return 15;
     }
 
     auto snareState = drumState;
@@ -238,7 +249,7 @@ int main()
     if (! engine.loadProgram (Wf::buildStateProgram (snareState), bindings))
     {
         std::cerr << "snare-only program failed: " << engine.getLastError() << '\n';
-        return 15;
+        return 16;
     }
 
     static_cast<void> (engine.setParameterValue ("hostMasterGain", 0.28f));
@@ -253,7 +264,7 @@ int main()
         || engine.getInternalErrorCount() != 0)
     {
         std::cerr << "snare render too quiet or unstable: " << snareEnergy << '\n';
-        return 16;
+        return 17;
     }
 
     auto emptyLaneState = states.front();
@@ -263,7 +274,7 @@ int main()
     if (! engine.loadProgram (Wf::buildStateProgram (emptyLaneState), bindings))
     {
         std::cerr << "empty-lane program failed: " << engine.getLastError() << '\n';
-        return 17;
+        return 18;
     }
 
     static_cast<void> (engine.setParameterValue ("hostMasterGain", 0.4f));
@@ -278,7 +289,7 @@ int main()
         || engine.getInternalErrorCount() != 0)
     {
         std::cerr << "empty-lane render leaked or failed: " << emptyLaneEnergy << '\n';
-        return 18;
+        return 19;
     }
 
     return 0;

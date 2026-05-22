@@ -300,6 +300,7 @@ inline juce::String buildStateProgram (const StateSpec& state)
         appendLaneDeclaration (program, effectiveLane (state.lanes[static_cast<size_t> (i)]), i);
 
     program << "0 => int tick;\n";
+    program << "1 => int firstFrame;\n";
     program << "0.0 => float stepPhase;\n";
 
     for (const auto name : { "laneLevel", "laneFreq", "laneTarget", "kickLevel", "kickClick", "snareLevel", "snareSnap", "snareClap", "hatLevel" })
@@ -327,6 +328,11 @@ inline juce::String buildStateProgram (const StateSpec& state)
     program << "        tick + 1 => tick;\n";
     program << "        stepPhase - 1.0 => stepPhase;\n";
     program << "        1 => didTick;\n";
+    program << "    }\n\n";
+    program << "    if (firstFrame == 1)\n";
+    program << "    {\n";
+    program << "        1 => didTick;\n";
+    program << "        0 => firstFrame;\n";
     program << "    }\n\n";
 
     for (int i = 0; i < static_cast<int> (state.lanes.size()); ++i)
