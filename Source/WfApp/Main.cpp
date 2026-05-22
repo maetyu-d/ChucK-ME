@@ -67,6 +67,14 @@ void styleSlider (juce::Slider& slider, juce::Colour colour)
     slider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
 }
 
+void styleComboBox (juce::ComboBox& comboBox)
+{
+    comboBox.setColour (juce::ComboBox::backgroundColourId, panelSoft());
+    comboBox.setColour (juce::ComboBox::textColourId, ink());
+    comboBox.setColour (juce::ComboBox::outlineColourId, mutedInk().withAlpha (0.26f));
+    comboBox.setColour (juce::ComboBox::arrowColourId, ink());
+}
+
 void styleLabel (juce::Label& label, float alpha = 1.0f)
 {
     label.setColour (juce::Label::textColourId, ink().withAlpha (alpha));
@@ -525,6 +533,59 @@ public:
         styleLabel (selectedLabel);
         addAndMakeVisible (selectedLabel);
 
+        stateSettingsLabel.setFont (juce::FontOptions (14.0f, juce::Font::bold));
+        styleLabel (stateSettingsLabel, 0.82f);
+        addAndMakeVisible (stateSettingsLabel);
+
+        styleLabel (stateTempoLabel, 0.76f);
+        addAndMakeVisible (stateTempoLabel);
+
+        setupSlider (stateTempoSlider, "State tempo", 0.25, 2.0, 1.0, amber());
+        stateTempoSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 62, 22);
+        stateTempoSlider.onValueChange = [this]
+        {
+            if (suppressStateControlCallbacks)
+                return;
+
+            topLevelTempoScales[static_cast<size_t> (viewedTopLevelState)] = static_cast<float> (stateTempoSlider.getValue());
+            refreshLabels();
+
+            if (viewedTopLevelState == performingTopLevelState)
+                applyCurrentAudioControls();
+        };
+
+        styleLabel (stateTimeSigLabel, 0.76f);
+        addAndMakeVisible (stateTimeSigLabel);
+
+        for (int numerator = 1; numerator <= 16; ++numerator)
+            timeSigNumeratorBox.addItem (juce::String (numerator), numerator);
+
+        for (const auto denominator : { 2, 4, 8, 16 })
+            timeSigDenominatorBox.addItem (juce::String (denominator), denominator);
+
+        styleComboBox (timeSigNumeratorBox);
+        styleComboBox (timeSigDenominatorBox);
+        addAndMakeVisible (timeSigNumeratorBox);
+        addAndMakeVisible (timeSigDenominatorBox);
+
+        timeSigNumeratorBox.onChange = [this]
+        {
+            if (suppressStateControlCallbacks)
+                return;
+
+            topLevelTimeSigNumerators[static_cast<size_t> (viewedTopLevelState)] = timeSigNumeratorBox.getSelectedId();
+            refreshLabels();
+        };
+
+        timeSigDenominatorBox.onChange = [this]
+        {
+            if (suppressStateControlCallbacks)
+                return;
+
+            topLevelTimeSigDenominators[static_cast<size_t> (viewedTopLevelState)] = timeSigDenominatorBox.getSelectedId();
+            refreshLabels();
+        };
+
         orbitCanvas.onStateSelected = [this] (int index) { selectState (index); };
         addAndMakeVisible (orbitCanvas);
 
@@ -554,7 +615,7 @@ public:
         audioDeviceManager.addAudioCallback (&audioCallback);
 
         selectState (0);
-        setSize (980, 640);
+        setSize (980, 760);
         startTimerHz (30);
     }
 
@@ -629,6 +690,15 @@ public:
         area.removeFromRight (18);
 
         orbitCanvas.setBounds (area);
+        stateSettingsLabel.setBounds (right.removeFromTop (24));
+        stateTempoLabel.setBounds (right.removeFromTop (22));
+        stateTempoSlider.setBounds (right.removeFromTop (30));
+        stateTimeSigLabel.setBounds (right.removeFromTop (22));
+        auto timeSigRow = right.removeFromTop (30);
+        timeSigNumeratorBox.setBounds (timeSigRow.removeFromLeft (78));
+        timeSigRow.removeFromLeft (8);
+        timeSigDenominatorBox.setBounds (timeSigRow.removeFromLeft (78));
+        right.removeFromTop (10);
         selectedLabel.setBounds (right.removeFromTop (34));
         laneHeader.setBounds (right.removeFromTop (28));
 
@@ -677,11 +747,13 @@ private:
 
         if (viewedTopLevelState == nextState)
         {
+            syncViewedStateControls();
             refreshLabels();
             return;
         }
 
         viewedTopLevelState = nextState;
+        syncViewedStateControls();
         refreshLabels();
     }
 
@@ -799,6 +871,8 @@ private:
 
     void refreshLabels()
     {
+        syncViewedStateControls();
+
         for (int i = 0; i < maxTopLevelStates; ++i)
         {
             auto& button = stateButtons[static_cast<size_t> (i)];
@@ -817,6 +891,22 @@ private:
         }
 
         orbitCanvas.setState (&states, selectedState, orbitPhase, running);
+    }
+
+    void syncViewedStateControls()
+    {
+        juce::ScopedValueSetter<bool> guard (suppressStateControlCallbacks, true);
+        const auto index = static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, viewedTopLevelState));
+        const auto tempoScale = topLevelTempoScales[index];
+        const auto numerator = topLevelTimeSigNumerators[index];
+        const auto denominator = topLevelTimeSigDenominators[index];
+
+        stateSettingsLabel.setText ("State " + juce::String (viewedTopLevelState + 1) + " settings", juce::dontSendNotification);
+        stateTempoLabel.setText ("Tempo  x" + juce::String (tempoScale, 2), juce::dontSendNotification);
+        stateTimeSigLabel.setText ("Time signature  " + juce::String (numerator) + "/" + juce::String (denominator), juce::dontSendNotification);
+        stateTempoSlider.setValue (tempoScale, juce::dontSendNotification);
+        timeSigNumeratorBox.setSelectedId (numerator, juce::dontSendNotification);
+        timeSigDenominatorBox.setSelectedId (denominator, juce::dontSendNotification);
     }
 
     void timerCallback() override
@@ -852,7 +942,7 @@ private:
         if (! scriptRunning || scriptStepIndex >= globalScriptSteps.size())
             return;
 
-        scriptStepElapsedBars += deltaSeconds * (tempoBpm / 60.0) * static_cast<double> (rate) * static_cast<double> (tempoScale) / 4.0;
+        scriptStepElapsedBars += deltaSeconds * (tempoBpm / 60.0) * static_cast<double> (rate) * static_cast<double> (tempoScale) / getPerformingQuarterNotesPerBar();
 
         if (scriptStepElapsedBars < globalScriptSteps[scriptStepIndex].bars)
             return;
@@ -881,6 +971,14 @@ private:
     float getTopLevelTempoScale() const
     {
         return topLevelTempoScales[static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, performingTopLevelState))];
+    }
+
+    double getPerformingQuarterNotesPerBar() const
+    {
+        const auto index = static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, performingTopLevelState));
+        const auto numerator = static_cast<double> (topLevelTimeSigNumerators[index]);
+        const auto denominator = static_cast<double> (juce::jmax (1, topLevelTimeSigDenominators[index]));
+        return numerator * 4.0 / denominator;
     }
 
     static bool isTopLevelStatePopulated (int index)
@@ -936,6 +1034,9 @@ private:
 
     juce::Label titleLabel;
     juce::Label statusLabel;
+    juce::Label stateSettingsLabel;
+    juce::Label stateTempoLabel;
+    juce::Label stateTimeSigLabel;
     juce::Label selectedLabel;
     juce::Label laneHeader;
     std::array<juce::Label, 5> laneLabels;
@@ -951,6 +1052,9 @@ private:
     juce::Slider rateSlider;
     juce::Slider intensitySlider;
     juce::Slider brightnessSlider;
+    juce::Slider stateTempoSlider;
+    juce::ComboBox timeSigNumeratorBox;
+    juce::ComboBox timeSigDenominatorBox;
     juce::TextEditor globalScriptEditor;
     std::array<float, maxTopLevelStates> topLevelTempoScales
     {
@@ -958,6 +1062,20 @@ private:
         1.0f, 1.0f, 1.0f, 1.0f,
         1.0f, 1.0f, 1.0f, 1.0f,
         1.0f, 1.0f, 1.0f, 1.0f
+    };
+    std::array<int, maxTopLevelStates> topLevelTimeSigNumerators
+    {
+        4, 4, 4, 4,
+        4, 4, 4, 4,
+        4, 4, 4, 4,
+        4, 4, 4, 4
+    };
+    std::array<int, maxTopLevelStates> topLevelTimeSigDenominators
+    {
+        4, 4, 4, 4,
+        4, 4, 4, 4,
+        4, 4, 4, 4,
+        4, 4, 4, 4
     };
 
     int viewedTopLevelState = 0;
@@ -968,6 +1086,7 @@ private:
     double scriptStepElapsedBars = 0.0;
     bool scriptRunning = false;
     bool scriptShouldStopAtEnd = false;
+    bool suppressStateControlCallbacks = false;
     float orbitPhase = 0.0f;
     bool running = true;
     double lastTimerMs = 0.0;
