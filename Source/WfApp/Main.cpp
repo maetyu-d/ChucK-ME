@@ -380,6 +380,10 @@ public:
         selectedIndex = selectedIndexToUse;
         phase = phaseToUse;
         running = runningToUse;
+
+        if (states == nullptr || states->empty())
+            nodeCentres.clear();
+
         repaint();
     }
 
@@ -813,8 +817,6 @@ private:
     void selectViewedTopLevelState (int index)
     {
         const auto nextState = juce::jlimit (0, maxTopLevelStates - 1, index);
-        if (! isTopLevelStatePopulated (nextState))
-            return;
 
         if (viewedTopLevelState == nextState)
         {
@@ -824,7 +826,9 @@ private:
         }
 
         viewedTopLevelState = nextState;
-        selectedState = juce::jlimit (0, getViewedTrackCount() - 1, selectedState);
+        if (isTopLevelStatePopulated (viewedTopLevelState))
+            selectedState = juce::jlimit (0, getViewedTrackCount() - 1, selectedState);
+
         syncViewedStateControls();
         refreshLabels();
     }
@@ -862,8 +866,12 @@ private:
 
     void createTopLevelState()
     {
-        const auto target = firstEmptyTopLevelState();
-        if (target < 0)
+        auto target = viewedTopLevelState;
+
+        if (isTopLevelStatePopulated (target))
+            target = firstEmptyTopLevelState();
+
+        if (target < 0 || target >= maxTopLevelStates)
             return;
 
         auto created = Wf::makeDefaultStates();
@@ -875,6 +883,9 @@ private:
         topLevelTemposBpm[static_cast<size_t> (target)] = 88.0f;
         topLevelTimeSigNumerators[static_cast<size_t> (target)] = 4;
         topLevelTimeSigDenominators[static_cast<size_t> (target)] = 4;
+        viewedTopLevelState = target;
+        selectedState = 0;
+        selectedLane = 0;
         selectViewedTopLevelState (target);
     }
 
@@ -1068,7 +1079,7 @@ private:
             else
                 styleEmptyStateButton (button);
 
-            button.setEnabled (isTopLevelStatePopulated (i));
+            button.setEnabled (true);
             button.setToggleState (viewedTopLevelState == i, juce::dontSendNotification);
         }
 
@@ -1078,7 +1089,23 @@ private:
 
         const auto* viewedTracks = getViewedTracks();
         if (viewedTracks == nullptr || viewedTracks->empty())
+        {
+            selectedLabel.setText ("Empty state", juce::dontSendNotification);
+
+            for (auto& button : laneButtons)
+            {
+                button.setButtonText ("");
+                button.setToggleState (false, juce::dontSendNotification);
+                button.setEnabled (false);
+            }
+
+            laneCodeEditor.setText ("// Click New to create this state.", juce::dontSendNotification);
+            orbitCanvas.setState (nullptr, 0, orbitPhase, running);
             return;
+        }
+
+        for (auto& button : laneButtons)
+            button.setEnabled (true);
 
         selectedState = juce::jlimit (0, static_cast<int> (viewedTracks->size()) - 1, selectedState);
         const auto& state = (*viewedTracks)[static_cast<size_t> (selectedState)];
@@ -1131,8 +1158,9 @@ private:
         const auto tempoBpm = topLevelTemposBpm[index];
         const auto numerator = topLevelTimeSigNumerators[index];
         const auto denominator = topLevelTimeSigDenominators[index];
+        const auto populated = isTopLevelStatePopulated (viewedTopLevelState);
 
-        stateSettingsLabel.setText ("State " + juce::String (viewedTopLevelState + 1) + " settings", juce::dontSendNotification);
+        stateSettingsLabel.setText ("State " + juce::String (viewedTopLevelState + 1) + (populated ? " settings" : " empty"), juce::dontSendNotification);
         stateTempoLabel.setText ("Tempo  " + juce::String (tempoBpm, 1) + " bpm", juce::dontSendNotification);
         stateTimeSigLabel.setText ("Time signature  " + juce::String (numerator) + "/" + juce::String (denominator), juce::dontSendNotification);
         stateTempoSlider.setValue (tempoBpm, juce::dontSendNotification);
