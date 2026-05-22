@@ -75,26 +75,12 @@ inline std::vector<StateSpec> makeDefaultStates()
 {
     return
     {
-        { "State A", 88.0, {{
+        { "State 1", 88.0, {{
             makeTrack ("Pocket City", "pocket", 45.0f, 65.41f, 261.63f, 130.81f, 1046.50f, 0.40f),
             makeTrack ("Chrome Avenue", "chrome", 46.5f, 73.42f, 293.66f, 146.83f, 1174.66f, 0.45f),
             makeTrack ("Battery Love", "battery", 43.8f, 82.41f, 329.63f, 164.81f, 1318.51f, 0.52f),
             makeTrack ("Pocket Choir", "choir", 44.2f, 61.74f, 246.94f, 123.47f, 987.77f, 0.34f),
             makeTrack ("Neon Postcard", "neon", 45.6f, 69.30f, 277.18f, 138.59f, 1108.73f, 0.46f)
-        }}},
-        { "State B", 92.0, {{
-            makeTrack ("Pocket City", "pocket", 47.7f, 73.42f, 293.66f, 146.83f, 1174.66f, 0.50f),
-            makeTrack ("Chrome Avenue", "chrome", 48.4f, 82.41f, 329.63f, 164.81f, 1318.51f, 0.56f),
-            makeTrack ("Battery Love", "battery", 45.1f, 87.31f, 349.23f, 174.61f, 1396.91f, 0.60f),
-            makeTrack ("Pocket Choir", "choir", 46.0f, 69.30f, 277.18f, 138.59f, 1108.73f, 0.42f),
-            makeTrack ("Neon Postcard", "neon", 47.1f, 77.78f, 311.13f, 155.56f, 1244.51f, 0.54f)
-        }}},
-        { "State C", 84.0, {{
-            makeTrack ("Pocket City", "pocket", 42.9f, 58.27f, 233.08f, 116.54f, 932.33f, 0.32f),
-            makeTrack ("Chrome Avenue", "chrome", 44.0f, 65.41f, 261.63f, 130.81f, 1046.50f, 0.40f),
-            makeTrack ("Battery Love", "battery", 41.6f, 55.00f, 220.00f, 110.00f, 880.00f, 0.36f),
-            makeTrack ("Pocket Choir", "choir", 43.4f, 61.74f, 246.94f, 123.47f, 987.77f, 0.50f),
-            makeTrack ("Neon Postcard", "neon", 44.7f, 67.35f, 269.40f, 134.70f, 1077.60f, 0.38f)
         }}}
     };
 }

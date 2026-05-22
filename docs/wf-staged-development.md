@@ -17,7 +17,7 @@ Current scope:
 
 - A new JUCE GUI app target: `wf`
 - Fresh orbit/state canvas
-- Three original starter states
+- One starter state named `State 1`
 - Five tracks per state, with five generated ChucK lanes per track
 - Basic transport: play/stop, previous, next, pick
 - Live controls for gain, rate, density, and colour
