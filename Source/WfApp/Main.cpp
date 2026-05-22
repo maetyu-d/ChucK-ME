@@ -588,15 +588,11 @@ public:
         setupTextEditor (trackNameEditor, "Track name");
         trackNameEditor.onTextChange = [this] { applyTrackNameEdit(); };
 
+        setupTextEditor (trackDurationEditor, "Bars");
+        trackDurationEditor.onTextChange = [this] { applyTrackDurationEdit(); };
+
         setupTextEditor (laneNameEditor, "Lane name");
         laneNameEditor.onTextChange = [this] { applyLaneNameEdit(); };
-
-        for (const auto role : { "drum", "bass", "arp", "chord", "air", "snare", "pulse" })
-            laneRoleBox.addItem (role, laneRoleBox.getNumItems() + 1);
-
-        styleComboBox (laneRoleBox);
-        laneRoleBox.onChange = [this] { applyLaneRoleEdit(); };
-        addAndMakeVisible (laneRoleBox);
 
         setupButton (muteLaneButton, "Mute", coral(), [this] { toggleSelectedLaneMute(); });
         setupButton (soloLaneButton, "Solo", amber(), [this] { toggleSelectedLaneSolo(); });
@@ -779,10 +775,12 @@ public:
 
         trackNameEditor.setBounds (codePane.removeFromTop (28));
         codePane.removeFromTop (6);
+        auto trackEditRow = codePane.removeFromTop (30);
+        trackDurationEditor.setBounds (trackEditRow.removeFromLeft (92).reduced (0, 2));
+        codePane.removeFromTop (8);
         laneNameEditor.setBounds (codePane.removeFromTop (28));
         codePane.removeFromTop (6);
         auto laneEditRow = codePane.removeFromTop (30);
-        laneRoleBox.setBounds (laneEditRow.removeFromLeft (110).reduced (0, 2));
         muteLaneButton.setBounds (laneEditRow.removeFromLeft (72).reduced (6, 2));
         soloLaneButton.setBounds (laneEditRow.removeFromLeft (72).reduced (6, 2));
         codePane.removeFromTop (4);
@@ -891,6 +889,8 @@ private:
 
         performingTopLevelState = nextState;
         performingTrackIndex = juce::jlimit (0, getPerformingTrackCount() - 1, performingTrackIndex);
+        trackElapsedBars = 0.0;
+        orbitPhase = 0.0f;
 
         if (viewedTopLevelState == performingTopLevelState)
             selectedState = performingTrackIndex;
@@ -1081,6 +1081,7 @@ private:
         if (viewedTopLevelState == performingTopLevelState)
         {
             performingTrackIndex = selectedState;
+            trackElapsedBars = 0.0;
             loadSelectedContentForCurrentState();
         }
 
@@ -1175,7 +1176,7 @@ private:
                 else if (lane.muted)
                     prefix << "M ";
 
-                button.setButtonText (juce::String (i + 1) + "  " + prefix + lane.name + " / " + lane.role);
+                button.setButtonText (juce::String (i + 1) + "  " + prefix + lane.name);
                 button.setEnabled (true);
                 button.setToggleState (selectedLane == i, juce::dontSendNotification);
             }
@@ -1217,8 +1218,8 @@ private:
         const auto hasLane = lane != nullptr;
 
         trackNameEditor.setEnabled (hasTrack);
+        trackDurationEditor.setEnabled (hasTrack);
         laneNameEditor.setEnabled (hasLane);
-        laneRoleBox.setEnabled (hasLane);
         muteLaneButton.setEnabled (hasLane);
         soloLaneButton.setEnabled (hasLane);
         duplicateLaneButton.setEnabled (hasLane && track != nullptr && static_cast<int> (track->lanes.size()) < maxTrackLanes);
@@ -1227,18 +1228,24 @@ private:
         if (! trackNameEditor.hasKeyboardFocus (true))
             trackNameEditor.setText (hasTrack ? track->name : juce::String(), juce::dontSendNotification);
 
+        if (! trackDurationEditor.hasKeyboardFocus (true))
+        {
+            if (hasTrack && track->durationBars.has_value())
+                trackDurationEditor.setText (juce::String (*track->durationBars, 2), juce::dontSendNotification);
+            else
+                trackDurationEditor.setText ({}, juce::dontSendNotification);
+        }
+
         if (! laneNameEditor.hasKeyboardFocus (true))
             laneNameEditor.setText (hasLane ? lane->name : juce::String(), juce::dontSendNotification);
 
         if (hasLane)
         {
-            laneRoleBox.setText (lane->role, juce::dontSendNotification);
             muteLaneButton.setToggleState (lane->muted, juce::dontSendNotification);
             soloLaneButton.setToggleState (lane->solo, juce::dontSendNotification);
         }
         else
         {
-            laneRoleBox.setSelectedId (0, juce::dontSendNotification);
             muteLaneButton.setToggleState (false, juce::dontSendNotification);
             soloLaneButton.setToggleState (false, juce::dontSendNotification);
         }
@@ -1256,6 +1263,29 @@ private:
         }
     }
 
+    void applyTrackDurationEdit()
+    {
+        if (suppressEditCallbacks)
+            return;
+
+        if (auto* track = getSelectedViewedTrack())
+        {
+            const auto text = trackDurationEditor.getText().trim();
+            if (text.isEmpty())
+                track->durationBars.reset();
+            else
+            {
+                const auto bars = text.getDoubleValue();
+                if (bars > 0.0)
+                    track->durationBars = juce::jlimit (0.25, 128.0, bars);
+                else
+                    track->durationBars.reset();
+            }
+
+            refreshAfterStructureEdit (false);
+        }
+    }
+
     void applyLaneNameEdit()
     {
         if (suppressEditCallbacks)
@@ -1265,18 +1295,6 @@ private:
         {
             lane->name = laneNameEditor.getText().trim().isNotEmpty() ? laneNameEditor.getText().trim() : "Lane";
             refreshAfterStructureEdit (false);
-        }
-    }
-
-    void applyLaneRoleEdit()
-    {
-        if (suppressEditCallbacks)
-            return;
-
-        if (auto* lane = getSelectedViewedLane())
-        {
-            lane->role = laneRoleBox.getText();
-            refreshAfterStructureEdit (true);
         }
     }
 
@@ -1334,7 +1352,6 @@ private:
     {
         juce::String code;
         code << "// " << lane.name << "\n";
-        code << "// role: " << lane.role << "\n";
         code << "// baseHz: " << Wf::chuckFloat (lane.baseHz)
              << "  volume: " << Wf::chuckFloat (lane.volume)
              << "  pulseTicks: " << lane.pulseTicks
@@ -1375,13 +1392,19 @@ private:
 
         if (running)
         {
-            orbitPhase += static_cast<float> (deltaSeconds * (tempoBpm / 60.0) * 0.25 * static_cast<double> (rate));
+            trackElapsedBars += deltaSeconds * (tempoBpm / 60.0) * static_cast<double> (rate) / getPerformingQuarterNotesPerBar();
             advanceGlobalScript (deltaSeconds, tempoBpm, rate);
 
-            if (orbitPhase >= 1.0f)
+            if (const auto durationBars = getPerformingTrackDurationBars())
             {
-                orbitPhase -= std::floor (orbitPhase);
-                advancePerformingTrack();
+                orbitPhase = static_cast<float> (juce::jlimit (0.0, 1.0, trackElapsedBars / *durationBars));
+
+                if (trackElapsedBars >= *durationBars)
+                    advancePerformingTrack();
+            }
+            else
+            {
+                orbitPhase = static_cast<float> (std::fmod (trackElapsedBars, 1.0));
             }
         }
 
@@ -1399,6 +1422,8 @@ private:
             return;
 
         performingTrackIndex = (performingTrackIndex + 1) % static_cast<int> (performingTracks->size());
+        trackElapsedBars = 0.0;
+        orbitPhase = 0.0f;
 
         if (viewedTopLevelState == performingTopLevelState)
             selectedState = performingTrackIndex;
@@ -1460,6 +1485,19 @@ private:
                                                                   ? *globalScriptSteps[scriptStepIndex].timeSigDenominator
                                                                   : topLevelTimeSigDenominators[index]));
         return numerator * 4.0 / denominator;
+    }
+
+    std::optional<double> getPerformingTrackDurationBars() const
+    {
+        const auto* performingTracks = getPerformingTracks();
+        if (performingTracks == nullptr || performingTracks->empty())
+            return {};
+
+        const auto index = static_cast<size_t> (juce::jlimit (0, static_cast<int> (performingTracks->size()) - 1, performingTrackIndex));
+        if (! (*performingTracks)[index].durationBars.has_value())
+            return {};
+
+        return juce::jmax (0.25, *(*performingTracks)[index].durationBars);
     }
 
     void applyGlobalScriptStep (const GlobalScriptStep& step)
@@ -1614,10 +1652,10 @@ private:
     juce::Slider stateTempoSlider;
     juce::ComboBox timeSigNumeratorBox;
     juce::ComboBox timeSigDenominatorBox;
-    juce::ComboBox laneRoleBox;
     juce::TextEditor globalScriptEditor;
     juce::TextEditor laneCodeEditor;
     juce::TextEditor trackNameEditor;
+    juce::TextEditor trackDurationEditor;
     juce::TextEditor laneNameEditor;
     std::array<float, maxTopLevelStates> topLevelTemposBpm
     {
@@ -1654,6 +1692,7 @@ private:
     bool suppressStateControlCallbacks = false;
     bool suppressEditCallbacks = false;
     float orbitPhase = 0.0f;
+    double trackElapsedBars = 0.0;
     bool running = true;
     double lastTimerMs = 0.0;
 };

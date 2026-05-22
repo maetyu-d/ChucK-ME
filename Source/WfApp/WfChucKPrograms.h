@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <optional>
 #include <vector>
 
 namespace Wf
@@ -26,6 +27,7 @@ struct StateSpec
     juce::String name;
     double tempoBpm = 104.0;
     std::vector<LaneSpec> lanes {};
+    std::optional<double> durationBars;
 };
 
 inline std::vector<EmbeddedChucKEngine::ParameterBinding> makeWfParameterBindings()
@@ -50,35 +52,35 @@ inline std::vector<StateSpec> makeDefaultStates()
             { "Signal arp", "arp", 261.63f, 0.24f, 1, 1 },
             { "Glass chorus", "chord", 130.81f, 0.20f, 8, 5 },
             { "Static halo", "air", 1046.50f, 0.07f, 12, 6 }
-        }}},
+        }}, 1.0 },
         { "Chrome Avenue", 92.0, {{
             { "808 avenue", "drum", 46.5f, 0.60f, 16, 1 },
             { "Rubber motor", "bass", 73.42f, 0.35f, 2, 1 },
             { "Window arp", "arp", 293.66f, 0.25f, 1, 1 },
             { "Warm display", "chord", 146.83f, 0.21f, 8, 5 },
             { "Thin skyline", "air", 1174.66f, 0.07f, 12, 6 }
-        }}},
+        }}, 1.0 },
         { "Battery Love", 96.0, {{
             { "808 relay", "drum", 43.8f, 0.62f, 16, 1 },
             { "Battery bass", "bass", 82.41f, 0.36f, 2, 1 },
             { "Simple arp", "arp", 329.63f, 0.27f, 1, 1 },
             { "Major lights", "chord", 164.81f, 0.22f, 8, 5 },
             { "Soft carrier", "air", 1318.51f, 0.07f, 12, 6 }
-        }}},
+        }}, 1.0 },
         { "Pocket Choir", 84.0, {{
             { "808 choir", "drum", 44.2f, 0.56f, 16, 1 },
             { "Round bass", "bass", 61.74f, 0.32f, 2, 1 },
             { "Choir arp", "arp", 246.94f, 0.24f, 1, 1 },
             { "Soft buttons", "chord", 123.47f, 0.22f, 8, 5 },
             { "Air tape", "air", 987.77f, 0.07f, 12, 6 }
-        }}},
+        }}, 1.0 },
         { "Neon Postcard", 90.0, {{
             { "808 postcard", "drum", 45.6f, 0.59f, 16, 1 },
             { "Postcard bass", "bass", 69.30f, 0.34f, 2, 1 },
             { "Neon arp", "arp", 277.18f, 0.26f, 1, 1 },
             { "Blue chord", "chord", 138.59f, 0.21f, 8, 5 },
             { "Tape star", "air", 1108.73f, 0.07f, 12, 6 }
-        }}}
+        }}, 1.0 }
     };
 }
 
