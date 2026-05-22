@@ -579,7 +579,7 @@ public:
                 styleEmptyStateButton (button);
         }
 
-        setupButton (runScriptButton, "Run", amber(), [this] { runGlobalScript(); });
+        setupButton (runScriptButton, running ? "Stop" : "Play", amber(), [this] { toggleMainTransport(); });
         setupButton (newStateButton, "New", blue(), [this] { createTopLevelState(); });
         setupButton (duplicateStateButton, "Duplicate", amber(), [this] { duplicateViewedTopLevelState(); });
 
@@ -699,7 +699,7 @@ public:
         orbitCanvas.onStateSelected = [this] (int index) { selectState (index); };
         addAndMakeVisible (orbitCanvas);
 
-        setupButton (playButton, "Stop", green(), [this] { toggleRunning(); });
+        setupButton (playButton, running ? "Stop" : "Play", green(), [this] { toggleMainTransport(); });
         setupButton (previousButton, "Prev", blue(), [this] { selectState (selectedState - 1); });
         setupButton (nextButton, "Next", blue(), [this] { selectState (selectedState + 1); });
         setupButton (shuffleButton, "Pick", amber(), [this] { pickState(); });
@@ -1080,20 +1080,52 @@ private:
         return 4;
     }
 
-    void runGlobalScript()
+    void toggleMainTransport()
+    {
+        if (running)
+            stopMainTransport();
+        else
+            playFromBeginning();
+    }
+
+    void playFromBeginning()
     {
         globalScriptSteps = parseGlobalScript();
-
-        if (globalScriptSteps.empty())
-            return;
-
         scriptStepIndex = 0;
         scriptStepElapsedBars = 0.0;
         scriptShouldStopAtEnd = globalScriptEditor.getText().containsIgnoreCase ("stop");
-        scriptRunning = true;
         running = true;
-        playButton.setButtonText ("Stop");
-        applyGlobalScriptStep (globalScriptSteps.front());
+        syncTransportButtons();
+
+        if (globalScriptSteps.empty())
+        {
+            scriptRunning = false;
+            setPerformingTopLevelState (performingTopLevelState, true);
+        }
+        else
+        {
+            scriptRunning = true;
+            applyGlobalScriptStep (globalScriptSteps.front());
+        }
+
+        applyCurrentAudioControls();
+        refreshLabels();
+    }
+
+    void stopMainTransport()
+    {
+        scriptRunning = false;
+        running = false;
+        syncTransportButtons();
+        applyCurrentAudioControls();
+        refreshLabels();
+    }
+
+    void syncTransportButtons()
+    {
+        const auto text = running ? "Stop" : "Play";
+        runScriptButton.setButtonText (text);
+        playButton.setButtonText (text);
     }
 
     void selectState (int index)
@@ -1112,14 +1144,6 @@ private:
             loadSelectedContentForCurrentState();
         }
 
-        refreshLabels();
-    }
-
-    void toggleRunning()
-    {
-        running = ! running;
-        playButton.setButtonText (running ? "Stop" : "Play");
-        applyCurrentAudioControls();
         refreshLabels();
     }
 
@@ -1586,16 +1610,19 @@ private:
             trackElapsedBars += deltaSeconds * (tempoBpm / 60.0) * static_cast<double> (rate) / getPerformingQuarterNotesPerBar();
             advanceGlobalScript (deltaSeconds, tempoBpm, rate);
 
-            if (const auto durationBars = getPerformingTrackDurationBars())
+            if (running)
             {
-                orbitPhase = static_cast<float> (juce::jlimit (0.0, 1.0, trackElapsedBars / *durationBars));
+                if (const auto durationBars = getPerformingTrackDurationBars())
+                {
+                    orbitPhase = static_cast<float> (juce::jlimit (0.0, 1.0, trackElapsedBars / *durationBars));
 
-                if (trackElapsedBars >= *durationBars)
-                    advancePerformingTrack();
-            }
-            else
-            {
-                orbitPhase = static_cast<float> (std::fmod (trackElapsedBars, 1.0));
+                    if (trackElapsedBars >= *durationBars)
+                        advancePerformingTrack();
+                }
+                else
+                {
+                    orbitPhase = static_cast<float> (std::fmod (trackElapsedBars, 1.0));
+                }
             }
         }
 
@@ -1642,10 +1669,7 @@ private:
 
             if (scriptShouldStopAtEnd)
             {
-                running = false;
-                playButton.setButtonText ("Play");
-                applyCurrentAudioControls();
-                refreshLabels();
+                stopMainTransport();
             }
 
             return;
