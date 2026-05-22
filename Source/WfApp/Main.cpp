@@ -19,6 +19,7 @@ constexpr int maxHostChannels = 16;
 constexpr int fallbackBlockSize = 4096;
 constexpr int engineOutputChannels = 2;
 constexpr int maxTopLevelStates = 16;
+constexpr int populatedTopLevelStates = 2;
 
 juce::Colour ink() { return juce::Colour (0xffeef3ee); }
 juce::Colour mutedInk() { return juce::Colour (0xff9da8a2); }
@@ -45,6 +46,14 @@ void styleButton (juce::TextButton& button, juce::Colour colour)
     button.setColour (juce::TextButton::buttonOnColourId, colour.withAlpha (0.22f));
     button.setColour (juce::TextButton::textColourOffId, ink());
     button.setColour (juce::TextButton::textColourOnId, ink());
+}
+
+void styleEmptyStateButton (juce::TextButton& button)
+{
+    button.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff141815));
+    button.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff141815));
+    button.setColour (juce::TextButton::textColourOffId, mutedInk().withAlpha (0.32f));
+    button.setColour (juce::TextButton::textColourOnId, mutedInk().withAlpha (0.32f));
 }
 
 void styleSlider (juce::Slider& slider, juce::Colour colour)
@@ -491,6 +500,12 @@ public:
                          "State " + juce::String (i + 1),
                          i == 0 ? green() : blue(),
                          [this, i] { selectTopLevelState (i); });
+
+            if (! isTopLevelStatePopulated (i))
+            {
+                styleEmptyStateButton (button);
+                button.setEnabled (false);
+            }
         }
 
         setupButton (runScriptButton, "Run", amber(), [this] { runGlobalScript(); });
@@ -657,6 +672,9 @@ private:
     void selectTopLevelState (int index)
     {
         const auto nextState = juce::jlimit (0, maxTopLevelStates - 1, index);
+        if (! isTopLevelStatePopulated (nextState))
+            return;
+
         if (selectedTopLevelState == nextState)
         {
             refreshLabels();
@@ -686,7 +704,7 @@ private:
             const auto stateIndex = std::stoi ((*it)[1].str()) - 1;
             const auto bars = std::stod ((*it)[2].str());
 
-            if (stateIndex >= 0 && stateIndex < maxTopLevelStates && bars > 0.0)
+            if (isTopLevelStatePopulated (stateIndex) && bars > 0.0)
                 parsed.push_back ({ stateIndex, bars });
         }
 
@@ -740,7 +758,11 @@ private:
     void refreshLabels()
     {
         for (int i = 0; i < maxTopLevelStates; ++i)
-            stateButtons[static_cast<size_t> (i)].setToggleState (selectedTopLevelState == i, juce::dontSendNotification);
+        {
+            auto& button = stateButtons[static_cast<size_t> (i)];
+            button.setEnabled (isTopLevelStatePopulated (i));
+            button.setToggleState (selectedTopLevelState == i, juce::dontSendNotification);
+        }
 
         const auto& state = states[static_cast<size_t> (selectedState)];
         selectedLabel.setText (state.name + "  " + juce::String (state.tempoBpm, 1) + " bpm", juce::dontSendNotification);
@@ -817,6 +839,11 @@ private:
     float getTopLevelTempoScale() const
     {
         return topLevelTempoScales[static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, selectedTopLevelState))];
+    }
+
+    static bool isTopLevelStatePopulated (int index)
+    {
+        return index >= 0 && index < populatedTopLevelStates;
     }
 
     float getCurrentMasterGain() const
