@@ -27,6 +27,8 @@ Consumers include the public umbrella header:
 
 The console executable is now only a host/test harness around that library. The `weld_chuck_engine` static archive contains the embedded engine object and exposes its JUCE/ChucK link requirements through CMake, so a plugin or app shell can depend on `WeldChucK::Engine` without compiling or linking the console harness.
 
+The repo also contains the first fresh `wf` app stage: a new orbit/lane GUI sketch that uses the embedded ChucK engine directly. It uses the broad concepts of the earlier `of::` work, but it is not a direct port and does not copy the old SuperCollider bridge, old UI source, old demo names, or old scripts. See `docs/wf-staged-development.md`.
+
 ## Build
 
 ```sh
@@ -42,6 +44,12 @@ build/WeldChucK_artefacts/Release/WeldChucK
 
 Run it from a terminal. It starts the default audio device, runs the embedded ChucK program inside the JUCE callback, and quits when you press return.
 
+The Stage 1 GUI app is built at:
+
+```sh
+build/wf_artefacts/Release/wf weld.app
+```
+
 Run the headless engine self-test with:
 
 ```sh
@@ -55,6 +63,7 @@ build/WeldChucK_artefacts/Release/WeldChucK --async-program-test
 build/WeldChucK_artefacts/Release/WeldChucK --boundary-test
 build/WeldChucK_artefacts/Release/WeldChucK --concurrency-test
 build/WeldChucKEngineBoundaryTest
+build/WfProgramTest
 /Users/user/.local/opt/cmake/CMake.app/Contents/bin/ctest --test-dir build --output-on-failure
 ```
 
@@ -82,6 +91,6 @@ Prepare-time exceptions are caught and reported as startup failure. Render-time 
 
 The engine rejects unsupported block sizes and channel counts before allocation, validates its prepared buffer invariants before every render, tears down ChucK defensively during release, and contains render exceptions by muting the engine. It also exposes lock-free diagnostic counters for silent callbacks, oversized blocks, render exceptions, sanitised samples, sanitised controls, internal invariant failures, rendered blocks, rendered frames, program load successes, program load failures, queued async loads, completed async loads, and coalesced async drops; the console host prints the most important counters on exit.
 
-The tests cover cold and released engines, repeated prepare/release cycles, short and wide buffers, null and mixed-null callback channels, oversized callbacks, rejected device sample rates and block sizes, malformed input samples, deterministic fuzzed buffer/control combinations, transactional good/bad ChucK program loads, async good/bad/coalesced program loads, custom/empty/invalid parameter binding transactions, indexed control writes racing with reloads, reload storms while rendering, maximum accepted block/channel boundaries, a separate engine-library consumer target, diagnostic counter accuracy, callback exception containment staying dormant, and render calls racing against prepare/release/control updates.
+The tests cover cold and released engines, repeated prepare/release cycles, short and wide buffers, null and mixed-null callback channels, oversized callbacks, rejected device sample rates and block sizes, malformed input samples, deterministic fuzzed buffer/control combinations, transactional good/bad ChucK program loads, async good/bad/coalesced program loads, custom/empty/invalid parameter binding transactions, indexed control writes racing with reloads, reload storms while rendering, maximum accepted block/channel boundaries, a separate engine-library consumer target, fresh `wf` generated state programs, diagnostic counter accuracy, callback exception containment staying dormant, and render calls racing against prepare/release/control updates.
 
 ChucK is included under its dual MIT/GPL licensing. See `third_party/chuck/LICENSE.MIT` and `third_party/chuck/LICENSE.GPL`.

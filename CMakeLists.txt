@@ -154,10 +154,46 @@ target_link_libraries(WeldChucK
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
 
+juce_add_gui_app(wf
+    PRODUCT_NAME "wf weld"
+    COMPANY_NAME "Codex"
+    BUNDLE_ID "com.codex.wfweld")
+
+target_sources(wf
+    PRIVATE
+        Source/WfApp/Main.cpp
+        Source/WfApp/WfChucKPrograms.h)
+
+target_include_directories(wf
+    PRIVATE
+        Source/WfApp)
+
+target_link_libraries(wf
+    PRIVATE
+        WeldChucK::Engine
+        juce::juce_audio_devices
+        juce::juce_gui_extra
+    PUBLIC
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags)
+
 add_executable(WeldChucKEngineBoundaryTest
     Tests/EngineBoundaryTest.cpp)
 
 target_link_libraries(WeldChucKEngineBoundaryTest
+    PRIVATE
+        WeldChucK::Engine
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags)
+
+add_executable(WfProgramTest
+    Tests/WfProgramTest.cpp)
+
+target_include_directories(WfProgramTest
+    PRIVATE
+        Source/WfApp)
+
+target_link_libraries(WfProgramTest
     PRIVATE
         WeldChucK::Engine
         juce::juce_recommended_lto_flags
@@ -173,6 +209,7 @@ add_test(NAME WeldChucKAsyncProgramTest COMMAND WeldChucK --async-program-test)
 add_test(NAME WeldChucKBoundaryTest COMMAND WeldChucK --boundary-test)
 add_test(NAME WeldChucKConcurrencyTest COMMAND WeldChucK --concurrency-test)
 add_test(NAME WeldChucKEngineBoundaryTest COMMAND WeldChucKEngineBoundaryTest)
+add_test(NAME WfProgramTest COMMAND WfProgramTest)
 
 set_tests_properties(WeldChucKSelfTest
                      WeldChucKStressTest
@@ -184,9 +221,10 @@ set_tests_properties(WeldChucKSelfTest
                      WeldChucKBoundaryTest
                      WeldChucKConcurrencyTest
                      WeldChucKEngineBoundaryTest
+                     WfProgramTest
     PROPERTIES
         TIMEOUT 30)
 
 add_custom_target(check
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
-    DEPENDS WeldChucK WeldChucKEngineBoundaryTest)
+    DEPENDS WeldChucK wf WeldChucKEngineBoundaryTest WfProgramTest)
