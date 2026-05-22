@@ -499,7 +499,7 @@ public:
             setupButton (button,
                          "State " + juce::String (i + 1),
                          i == 0 ? green() : blue(),
-                         [this, i] { selectTopLevelState (i); });
+                         [this, i] { selectViewedTopLevelState (i); });
 
             if (! isTopLevelStatePopulated (i))
             {
@@ -669,19 +669,35 @@ private:
         addAndMakeVisible (slider);
     }
 
-    void selectTopLevelState (int index)
+    void selectViewedTopLevelState (int index)
     {
         const auto nextState = juce::jlimit (0, maxTopLevelStates - 1, index);
         if (! isTopLevelStatePopulated (nextState))
             return;
 
-        if (selectedTopLevelState == nextState)
+        if (viewedTopLevelState == nextState)
         {
             refreshLabels();
             return;
         }
 
-        selectedTopLevelState = nextState;
+        viewedTopLevelState = nextState;
+        refreshLabels();
+    }
+
+    void setPerformingTopLevelState (int index)
+    {
+        const auto nextState = juce::jlimit (0, maxTopLevelStates - 1, index);
+        if (! isTopLevelStatePopulated (nextState))
+            return;
+
+        if (performingTopLevelState == nextState)
+        {
+            refreshLabels();
+            return;
+        }
+
+        performingTopLevelState = nextState;
         loadSelectedContentForCurrentState();
         refreshLabels();
     }
@@ -750,7 +766,7 @@ private:
         scriptRunning = true;
         running = true;
         playButton.setButtonText ("Stop");
-        selectTopLevelState (globalScriptSteps.front().stateIndex);
+        setPerformingTopLevelState (globalScriptSteps.front().stateIndex);
     }
 
     void selectState (int index)
@@ -787,7 +803,7 @@ private:
         {
             auto& button = stateButtons[static_cast<size_t> (i)];
             button.setEnabled (isTopLevelStatePopulated (i));
-            button.setToggleState (selectedTopLevelState == i, juce::dontSendNotification);
+            button.setToggleState (viewedTopLevelState == i, juce::dontSendNotification);
         }
 
         const auto& state = states[static_cast<size_t> (selectedState)];
@@ -859,12 +875,12 @@ private:
             return;
         }
 
-        selectTopLevelState (globalScriptSteps[scriptStepIndex].stateIndex);
+        setPerformingTopLevelState (globalScriptSteps[scriptStepIndex].stateIndex);
     }
 
     float getTopLevelTempoScale() const
     {
-        return topLevelTempoScales[static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, selectedTopLevelState))];
+        return topLevelTempoScales[static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, performingTopLevelState))];
     }
 
     static bool isTopLevelStatePopulated (int index)
@@ -944,7 +960,8 @@ private:
         1.0f, 1.0f, 1.0f, 1.0f
     };
 
-    int selectedTopLevelState = 0;
+    int viewedTopLevelState = 0;
+    int performingTopLevelState = 0;
     int selectedState = 0;
     std::vector<GlobalScriptStep> globalScriptSteps;
     size_t scriptStepIndex = 0;
