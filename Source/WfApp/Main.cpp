@@ -512,7 +512,7 @@ public:
 
         globalScriptEditor.setMultiLine (true);
         globalScriptEditor.setReturnKeyStartsNewLine (true);
-        globalScriptEditor.setText ("Start with State 1 for 8 bars, then State 2 for 4 bars, then stop", juce::dontSendNotification);
+        globalScriptEditor.setText ("playState(1, 8);\nplayState(2, 4);\nstop();", juce::dontSendNotification);
         globalScriptEditor.setColour (juce::TextEditor::backgroundColourId, panelSoft());
         globalScriptEditor.setColour (juce::TextEditor::textColourId, ink());
         globalScriptEditor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.24f));
@@ -696,16 +696,42 @@ private:
     {
         std::vector<GlobalScriptStep> parsed;
         const auto text = globalScriptEditor.getText().toStdString();
-        const std::regex stepRegex ("state\\s*(1[0-6]|[1-9])[\\s\\S]*?(\\d+(?:\\.\\d+)?)\\s*bars?",
-                                    std::regex_constants::icase);
+        const std::regex playStateRegex ("playState\\s*\\(\\s*(1[0-6]|[1-9])\\s*,\\s*(\\d+(?:\\.\\d+)?)\\s*\\)",
+                                         std::regex_constants::icase);
 
-        for (std::sregex_iterator it (text.begin(), text.end(), stepRegex), end; it != end; ++it)
+        for (std::sregex_iterator it (text.begin(), text.end(), playStateRegex), end; it != end; ++it)
         {
             const auto stateIndex = std::stoi ((*it)[1].str()) - 1;
             const auto bars = std::stod ((*it)[2].str());
 
             if (isTopLevelStatePopulated (stateIndex) && bars > 0.0)
                 parsed.push_back ({ stateIndex, bars });
+        }
+
+        if (! parsed.empty())
+            return parsed;
+
+        const std::regex tokenRegex ("state\\s*\\(\\s*(1[0-6]|[1-9])\\s*\\)|(\\d+(?:\\.\\d+)?)\\s*::\\s*bar",
+                                     std::regex_constants::icase);
+        int pendingStateIndex = -1;
+
+        for (std::sregex_iterator it (text.begin(), text.end(), tokenRegex), end; it != end; ++it)
+        {
+            if ((*it)[1].matched)
+            {
+                pendingStateIndex = std::stoi ((*it)[1].str()) - 1;
+                continue;
+            }
+
+            if ((*it)[2].matched && pendingStateIndex >= 0)
+            {
+                const auto bars = std::stod ((*it)[2].str());
+
+                if (isTopLevelStatePopulated (pendingStateIndex) && bars > 0.0)
+                    parsed.push_back ({ pendingStateIndex, bars });
+
+                pendingStateIndex = -1;
+            }
         }
 
         return parsed;
