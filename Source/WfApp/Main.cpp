@@ -556,14 +556,15 @@ public:
         styleLabel (stateTempoLabel, 0.76f);
         addAndMakeVisible (stateTempoLabel);
 
-        setupSlider (stateTempoSlider, "State tempo", 0.25, 2.0, 1.0, amber());
+        setupSlider (stateTempoSlider, "State tempo", 30.0, 220.0, 88.0, amber());
+        stateTempoSlider.setSkewFactorFromMidPoint (100.0);
         stateTempoSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 62, 22);
         stateTempoSlider.onValueChange = [this]
         {
             if (suppressStateControlCallbacks)
                 return;
 
-            topLevelTempoScales[static_cast<size_t> (viewedTopLevelState)] = static_cast<float> (stateTempoSlider.getValue());
+            topLevelTemposBpm[static_cast<size_t> (viewedTopLevelState)] = static_cast<float> (stateTempoSlider.getValue());
             refreshLabels();
 
             if (viewedTopLevelState == performingTopLevelState)
@@ -907,7 +908,7 @@ private:
         }
 
         const auto& state = states[static_cast<size_t> (selectedState)];
-        selectedLabel.setText (state.name + "  " + juce::String (state.tempoBpm, 1) + " bpm", juce::dontSendNotification);
+        selectedLabel.setText (state.name, juce::dontSendNotification);
 
         for (int i = 0; i < static_cast<int> (laneButtons.size()); ++i)
         {
@@ -952,14 +953,14 @@ private:
     {
         juce::ScopedValueSetter<bool> guard (suppressStateControlCallbacks, true);
         const auto index = static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, viewedTopLevelState));
-        const auto tempoScale = topLevelTempoScales[index];
+        const auto tempoBpm = topLevelTemposBpm[index];
         const auto numerator = topLevelTimeSigNumerators[index];
         const auto denominator = topLevelTimeSigDenominators[index];
 
         stateSettingsLabel.setText ("State " + juce::String (viewedTopLevelState + 1) + " settings", juce::dontSendNotification);
-        stateTempoLabel.setText ("Tempo  x" + juce::String (tempoScale, 2), juce::dontSendNotification);
+        stateTempoLabel.setText ("Tempo  " + juce::String (tempoBpm, 1) + " bpm", juce::dontSendNotification);
         stateTimeSigLabel.setText ("Time signature  " + juce::String (numerator) + "/" + juce::String (denominator), juce::dontSendNotification);
-        stateTempoSlider.setValue (tempoScale, juce::dontSendNotification);
+        stateTempoSlider.setValue (tempoBpm, juce::dontSendNotification);
         timeSigNumeratorBox.setSelectedId (numerator, juce::dontSendNotification);
         timeSigDenominatorBox.setSelectedId (denominator, juce::dontSendNotification);
     }
@@ -970,14 +971,13 @@ private:
         const auto deltaSeconds = lastTimerMs > 0.0 ? juce::jlimit (0.0, 0.1, (now - lastTimerMs) * 0.001) : 0.0;
         lastTimerMs = now;
 
-        const auto& state = states[static_cast<size_t> (selectedState)];
         const auto rate = static_cast<float> (rateSlider.getValue());
-        const auto tempoScale = getTopLevelTempoScale();
+        const auto tempoBpm = getPerformingTempoBpm();
 
         if (running)
         {
-            orbitPhase += static_cast<float> (deltaSeconds * (state.tempoBpm / 60.0) * 0.25 * static_cast<double> (rate) * static_cast<double> (tempoScale));
-            advanceGlobalScript (deltaSeconds, state.tempoBpm, rate, tempoScale);
+            orbitPhase += static_cast<float> (deltaSeconds * (tempoBpm / 60.0) * 0.25 * static_cast<double> (rate));
+            advanceGlobalScript (deltaSeconds, tempoBpm, rate);
 
             if (orbitPhase >= 1.0f)
             {
@@ -992,12 +992,12 @@ private:
         orbitCanvas.setState (&states, selectedState, orbitPhase, running);
     }
 
-    void advanceGlobalScript (double deltaSeconds, double tempoBpm, float rate, float tempoScale)
+    void advanceGlobalScript (double deltaSeconds, double tempoBpm, float rate)
     {
         if (! scriptRunning || scriptStepIndex >= globalScriptSteps.size())
             return;
 
-        scriptStepElapsedBars += deltaSeconds * (tempoBpm / 60.0) * static_cast<double> (rate) * static_cast<double> (tempoScale) / getPerformingQuarterNotesPerBar();
+        scriptStepElapsedBars += deltaSeconds * (tempoBpm / 60.0) * static_cast<double> (rate) / getPerformingQuarterNotesPerBar();
 
         if (scriptStepElapsedBars < globalScriptSteps[scriptStepIndex].bars)
             return;
@@ -1023,9 +1023,9 @@ private:
         setPerformingTopLevelState (globalScriptSteps[scriptStepIndex].stateIndex);
     }
 
-    float getTopLevelTempoScale() const
+    float getPerformingTempoBpm() const
     {
-        return topLevelTempoScales[static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, performingTopLevelState))];
+        return topLevelTemposBpm[static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, performingTopLevelState))];
     }
 
     double getPerformingQuarterNotesPerBar() const
@@ -1051,10 +1051,7 @@ private:
         if (states.empty())
             return 1.0f;
 
-        const auto& state = states[static_cast<size_t> (selectedState)];
-        return static_cast<float> ((state.tempoBpm / 60.0)
-                                   * rateSlider.getValue()
-                                   * static_cast<double> (getTopLevelTempoScale()));
+        return static_cast<float> ((getPerformingTempoBpm() / 60.0) * rateSlider.getValue());
     }
 
     void loadSelectedContentForCurrentState()
@@ -1113,12 +1110,12 @@ private:
     juce::ComboBox timeSigDenominatorBox;
     juce::TextEditor globalScriptEditor;
     juce::TextEditor laneCodeEditor;
-    std::array<float, maxTopLevelStates> topLevelTempoScales
+    std::array<float, maxTopLevelStates> topLevelTemposBpm
     {
-        1.0f, 0.5f, 1.0f, 1.0f,
-        1.0f, 1.0f, 1.0f, 1.0f,
-        1.0f, 1.0f, 1.0f, 1.0f,
-        1.0f, 1.0f, 1.0f, 1.0f
+        88.0f, 44.0f, 88.0f, 88.0f,
+        88.0f, 88.0f, 88.0f, 88.0f,
+        88.0f, 88.0f, 88.0f, 88.0f,
+        88.0f, 88.0f, 88.0f, 88.0f
     };
     std::array<int, maxTopLevelStates> topLevelTimeSigNumerators
     {
