@@ -588,6 +588,11 @@ public:
         styleLabel (laneCodeHeader, 0.82f);
         addAndMakeVisible (laneCodeHeader);
 
+        trackNameLabel.setText ("name", juce::dontSendNotification);
+        trackNameLabel.setFont (juce::FontOptions (13.0f, juce::Font::bold));
+        styleLabel (trackNameLabel, 0.72f);
+        addAndMakeVisible (trackNameLabel);
+
         setupTextEditor (trackNameEditor, "Track name");
         trackNameEditor.onTextChange = [this] { applyTrackNameEdit(); };
 
@@ -785,7 +790,10 @@ public:
         auto right = area.removeFromRight (260);
         area.removeFromRight (18);
 
-        trackNameEditor.setBounds (codePane.removeFromTop (28));
+        auto trackNameRow = codePane.removeFromTop (30);
+        trackNameLabel.setBounds (trackNameRow.removeFromLeft (74).reduced (0, 2));
+        trackNameRow.removeFromLeft (8);
+        trackNameEditor.setBounds (trackNameRow.reduced (0, 2));
         codePane.removeFromTop (6);
         auto trackEditRow = codePane.removeFromTop (30);
         trackDurationLabel.setBounds (trackEditRow.removeFromLeft (152).reduced (0, 2));
@@ -1826,6 +1834,7 @@ private:
     juce::Label stateTempoLabel;
     juce::Label stateTimeSigLabel;
     juce::Label laneCodeHeader;
+    juce::Label trackNameLabel;
     juce::Label trackDurationLabel;
     juce::Label selectedLabel;
     juce::Label laneHeader;
