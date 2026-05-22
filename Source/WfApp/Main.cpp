@@ -623,11 +623,8 @@ private:
             const auto& track = state.tracks[static_cast<size_t> (i)];
             laneLabels[static_cast<size_t> (i)].setText ("Track " + juce::String (i + 1)
                                                          + "  " + track.name
-                                                         + ": " + track.lanes[0].role
-                                                         + " / " + track.lanes[1].role
-                                                         + " / " + track.lanes[2].role
-                                                         + " / " + track.lanes[3].role
-                                                         + " / " + track.lanes[4].role,
+                                                         + ": " + track.lanes[0].name
+                                                         + " + " + track.lanes[1].name,
                                                          juce::dontSendNotification);
         }
 
