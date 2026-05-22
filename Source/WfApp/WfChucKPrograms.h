@@ -142,6 +142,7 @@ inline void appendLaneDeclaration (juce::String& program, const LaneSpec& lane, 
         program << "TriOsc lane" << suffix << "Click => Gain lane" << suffix << "ClickGain => master;\n";
         program << "TriOsc lane" << suffix << "SnareBody => Gain lane" << suffix << "SnareBodyGain => master;\n";
         program << "SinOsc lane" << suffix << "SnareSnap => Gain lane" << suffix << "SnareSnapGain => master;\n";
+        program << "SqrOsc lane" << suffix << "SnareDrive => Gain lane" << suffix << "SnareDriveGain => master;\n";
         program << "Noise lane" << suffix << "SnareNoise => Gain lane" << suffix << "SnareNoiseGain => master;\n";
         program << "Noise lane" << suffix << "SnareClap => Gain lane" << suffix << "SnareClapGain => master;\n";
         program << "Noise lane" << suffix << "HatNoise => Gain lane" << suffix << "HatGain => master;\n";
@@ -150,6 +151,7 @@ inline void appendLaneDeclaration (juce::String& program, const LaneSpec& lane, 
         program << "0.0 => lane" << suffix << "ClickGain.gain;\n";
         program << "0.0 => lane" << suffix << "SnareBodyGain.gain;\n";
         program << "0.0 => lane" << suffix << "SnareSnapGain.gain;\n";
+        program << "0.0 => lane" << suffix << "SnareDriveGain.gain;\n";
         program << "0.0 => lane" << suffix << "SnareNoiseGain.gain;\n";
         program << "0.0 => lane" << suffix << "SnareClapGain.gain;\n";
         program << "0.0 => lane" << suffix << "HatGain.gain;\n\n";
@@ -217,13 +219,15 @@ inline void appendLaneControl (juce::String& program, const LaneSpec& lane, int 
         program << "    920.0 + (bright * 2400.0) => lane" << suffix << "Click.freq;\n";
         program << "    174.0 + (snareLevel" << suffix << " * 98.0) => lane" << suffix << "SnareBody.freq;\n";
         program << "    1650.0 + (bright * 1850.0) => lane" << suffix << "SnareSnap.freq;\n";
+        program << "    265.0 + (snareSnap" << suffix << " * 760.0) + (bright * 520.0) => lane" << suffix << "SnareDrive.freq;\n";
         program << "    " << volume << " * (0.96 + intensity * 0.92) * kickLevel" << suffix << " => lane" << suffix << "KickGain.gain;\n";
         program << "    " << volume << " * (0.52 + intensity * 0.42) * kickLevel" << suffix << " => lane" << suffix << "SubGain.gain;\n";
         program << "    " << volume << " * (0.30 + bright * 0.28) * kickClick" << suffix << " => lane" << suffix << "ClickGain.gain;\n";
-        program << "    " << volume << " * (0.50 + intensity * 0.32) * snareLevel" << suffix << " => lane" << suffix << "SnareBodyGain.gain;\n";
-        program << "    " << volume << " * (0.34 + bright * 0.32) * snareSnap" << suffix << " => lane" << suffix << "SnareSnapGain.gain;\n";
-        program << "    " << volume << " * (0.38 + bright * 0.28) * snareLevel" << suffix << " => lane" << suffix << "SnareNoiseGain.gain;\n";
-        program << "    " << volume << " * (0.18 + bright * 0.16) * snareClap" << suffix << " => lane" << suffix << "SnareClapGain.gain;\n";
+        program << "    " << volume << " * (0.60 + intensity * 0.38) * snareLevel" << suffix << " => lane" << suffix << "SnareBodyGain.gain;\n";
+        program << "    " << volume << " * (0.41 + bright * 0.38) * snareSnap" << suffix << " => lane" << suffix << "SnareSnapGain.gain;\n";
+        program << "    " << volume << " * (0.18 + bright * 0.14) * (snareSnap" << suffix << " + (snareClap" << suffix << " * 0.32)) => lane" << suffix << "SnareDriveGain.gain;\n";
+        program << "    " << volume << " * (0.46 + bright * 0.34) * snareLevel" << suffix << " => lane" << suffix << "SnareNoiseGain.gain;\n";
+        program << "    " << volume << " * (0.22 + bright * 0.19) * snareClap" << suffix << " => lane" << suffix << "SnareClapGain.gain;\n";
         program << "    " << volume << " * (0.045 + bright * 0.065) * hatLevel" << suffix << " => lane" << suffix << "HatGain.gain;\n\n";
         return;
     }

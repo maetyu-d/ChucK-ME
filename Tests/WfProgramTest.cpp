@@ -139,7 +139,7 @@ int main()
     static_cast<void> (engine.setParameterValue ("hostOrbitPhase", 0.4f));
 
     const auto snareEnergy = renderEnergy (engine, input, output, 160);
-    if (snareEnergy < 2.0
+    if (snareEnergy < 2.4
         || engine.getRenderExceptionCount() != 0
         || engine.getInternalErrorCount() != 0)
     {
