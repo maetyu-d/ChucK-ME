@@ -6,12 +6,30 @@
 #include <array>
 #include <cmath>
 #include <optional>
+#include <utility>
 #include <vector>
 
 namespace Wf
 {
 struct LaneSpec
 {
+    LaneSpec() = default;
+
+    LaneSpec (juce::String laneName,
+              juce::String laneRole,
+              float laneBaseHz,
+              float laneVolume,
+              int lanePulseTicks,
+              int laneOpenTicks)
+        : name (std::move (laneName)),
+          role (std::move (laneRole)),
+          baseHz (laneBaseHz),
+          volume (laneVolume),
+          pulseTicks (lanePulseTicks),
+          openTicks (laneOpenTicks)
+    {
+    }
+
     juce::String name;
     juce::String role;
     float baseHz = 220.0f;
@@ -20,6 +38,8 @@ struct LaneSpec
     int openTicks = 18;
     bool muted = false;
     bool solo = false;
+    std::optional<juce::String> customDeclarationCode;
+    std::optional<juce::String> customControlCode;
 };
 
 struct TrackDurationSpec
@@ -278,6 +298,28 @@ inline void appendLaneControl (juce::String& program, const LaneSpec& lane, int 
     program << "    laneLevel" << suffix << " => laneSmooth" << suffix << ".gain;\n\n";
 }
 
+inline void appendLaneDeclarationForProgram (juce::String& program, const LaneSpec& lane, int index)
+{
+    if (lane.customDeclarationCode.has_value())
+    {
+        program << *lane.customDeclarationCode << "\n\n";
+        return;
+    }
+
+    appendLaneDeclaration (program, lane, index);
+}
+
+inline void appendLaneControlForProgram (juce::String& program, const LaneSpec& lane, int index)
+{
+    if (lane.customControlCode.has_value())
+    {
+        program << *lane.customControlCode << "\n\n";
+        return;
+    }
+
+    appendLaneControl (program, lane, index);
+}
+
 inline juce::String buildStateProgram (const StateSpec& state)
 {
     juce::String program;
@@ -297,7 +339,7 @@ inline juce::String buildStateProgram (const StateSpec& state)
     };
 
     for (int i = 0; i < static_cast<int> (state.lanes.size()); ++i)
-        appendLaneDeclaration (program, effectiveLane (state.lanes[static_cast<size_t> (i)]), i);
+        appendLaneDeclarationForProgram (program, effectiveLane (state.lanes[static_cast<size_t> (i)]), i);
 
     program << "0 => int tick;\n";
     program << "1 => int firstFrame;\n";
@@ -336,7 +378,7 @@ inline juce::String buildStateProgram (const StateSpec& state)
     program << "    }\n\n";
 
     for (int i = 0; i < static_cast<int> (state.lanes.size()); ++i)
-        appendLaneControl (program, effectiveLane (state.lanes[static_cast<size_t> (i)]), i);
+        appendLaneControlForProgram (program, effectiveLane (state.lanes[static_cast<size_t> (i)]), i);
 
     program << "    5::ms => now;\n";
     program << "}\n";

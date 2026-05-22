@@ -21,6 +21,9 @@ constexpr int fallbackBlockSize = 4096;
 constexpr int engineOutputChannels = 2;
 constexpr int maxTopLevelStates = 16;
 constexpr int maxTrackLanes = 8;
+constexpr auto laneDeclarationMarker = "// wf::declaration";
+constexpr auto laneControlMarker = "// wf::control";
+constexpr double laneCodeApplyDelayMs = 420.0;
 
 juce::Colour ink() { return juce::Colour (0xffeef3ee); }
 juce::Colour mutedInk() { return juce::Colour (0xff9da8a2); }
@@ -607,13 +610,14 @@ public:
 
         laneCodeEditor.setMultiLine (true);
         laneCodeEditor.setReturnKeyStartsNewLine (true);
-        laneCodeEditor.setReadOnly (true);
+        laneCodeEditor.setReadOnly (false);
         laneCodeEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff101412));
         laneCodeEditor.setColour (juce::TextEditor::textColourId, ink());
         laneCodeEditor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.22f));
         laneCodeEditor.setColour (juce::TextEditor::focusedOutlineColourId, mutedInk().withAlpha (0.34f));
         laneCodeEditor.setColour (juce::TextEditor::highlightColourId, blue().withAlpha (0.24f));
         laneCodeEditor.setFont (juce::FontOptions (13.0f));
+        laneCodeEditor.onTextChange = [this] { markLaneCodeEdited(); };
         addAndMakeVisible (laneCodeEditor);
 
         selectedLabel.setFont (juce::FontOptions (18.0f, juce::Font::bold));
@@ -1161,7 +1165,8 @@ private:
             }
 
             syncEditControls (nullptr, nullptr);
-            laneCodeEditor.setText ("// Click New to create this state.", juce::dontSendNotification);
+            updateLaneCodeHeader ("lane code", mutedInk().withAlpha (0.22f));
+            setLaneCodeEditorText ("// Click New to create this state.");
             orbitCanvas.setState (nullptr, 0, orbitPhase, running);
             return;
         }
@@ -1210,12 +1215,26 @@ private:
         const auto& state = (*viewedTracks)[static_cast<size_t> (selectedState)];
         if (state.lanes.empty())
         {
-            laneCodeEditor.setText ("// This track has no lanes.", juce::dontSendNotification);
+            updateLaneCodeHeader ("lane code", mutedInk().withAlpha (0.22f));
+            setLaneCodeEditorText ("// This track has no lanes.");
             return;
         }
 
         const auto laneIndex = static_cast<size_t> (juce::jlimit (0, static_cast<int> (state.lanes.size()) - 1, selectedLane));
-        laneCodeEditor.setText (makeLaneCode (state.lanes[laneIndex]), juce::dontSendNotification);
+        if (laneCodeEditor.hasKeyboardFocus (true)
+            && laneCodeDirty
+            && laneCodeViewedTopLevelState == viewedTopLevelState
+            && laneCodeTrackIndex == selectedState
+            && laneCodeLaneIndex == selectedLane)
+            return;
+
+        setLaneCodeEditorText (makeLaneCode (state.lanes[laneIndex], selectedLane));
+        laneCodeViewedTopLevelState = viewedTopLevelState;
+        laneCodeTrackIndex = selectedState;
+        laneCodeLaneIndex = selectedLane;
+        laneCodeDirty = false;
+        laneCodeLastValidatedText = laneCodeEditor.getText();
+        updateLaneCodeHeader ("lane code", mutedInk().withAlpha (0.22f));
     }
 
     void syncEditControls (const Wf::StateSpec* track, const Wf::LaneSpec* lane)
@@ -1373,7 +1392,19 @@ private:
         refreshLabels();
     }
 
-    static juce::String makeLaneCode (const Wf::LaneSpec& lane)
+    void setLaneCodeEditorText (const juce::String& text)
+    {
+        juce::ScopedValueSetter<bool> guard (suppressLaneCodeCallbacks, true);
+        laneCodeEditor.setText (text, juce::dontSendNotification);
+    }
+
+    void updateLaneCodeHeader (const juce::String& text, juce::Colour outline)
+    {
+        laneCodeHeader.setText (text, juce::dontSendNotification);
+        laneCodeEditor.setColour (juce::TextEditor::outlineColourId, outline);
+    }
+
+    static juce::String makeLaneCode (const Wf::LaneSpec& lane, int laneIndex)
     {
         juce::String code;
         code << "// " << lane.name << "\n";
@@ -1381,12 +1412,127 @@ private:
              << "  volume: " << Wf::chuckFloat (lane.volume)
              << "  pulseTicks: " << lane.pulseTicks
              << "  openTicks: " << lane.openTicks << "\n\n";
-        code << "// generated lane declaration\n";
-        Wf::appendLaneDeclaration (code, lane, 0);
-        code << "// generated lane control fragment\n";
+        code << laneDeclarationMarker << "\n";
+        if (lane.customDeclarationCode.has_value())
+            code << *lane.customDeclarationCode << "\n";
+        else
+            Wf::appendLaneDeclaration (code, lane, laneIndex);
+
+        code << laneControlMarker << "\n";
         code << "// expects host variables: tick, stepPhase, intensity, bright, orbit\n";
-        Wf::appendLaneControl (code, lane, 0);
+        if (lane.customControlCode.has_value())
+            code << *lane.customControlCode << "\n";
+        else
+            Wf::appendLaneControl (code, lane, laneIndex);
+
         return code;
+    }
+
+    struct ParsedLaneCode
+    {
+        juce::String declaration;
+        juce::String control;
+    };
+
+    static std::optional<ParsedLaneCode> parseLaneCode (juce::String text)
+    {
+        const auto declarationMarkerText = juce::String (laneDeclarationMarker);
+        const auto controlMarkerText = juce::String (laneControlMarker);
+        const auto declarationMarkerIndex = text.indexOf (declarationMarkerText);
+        const auto controlMarkerIndex = text.indexOf (controlMarkerText);
+
+        if (declarationMarkerIndex < 0 || controlMarkerIndex < 0 || controlMarkerIndex <= declarationMarkerIndex)
+            return {};
+
+        const auto declarationMarkerEnd = declarationMarkerIndex + declarationMarkerText.length();
+        const auto controlMarkerEnd = controlMarkerIndex + controlMarkerText.length();
+        const auto declarationLineEnd = text.substring (declarationMarkerEnd).indexOfChar ('\n');
+        const auto controlLineEnd = text.substring (controlMarkerEnd).indexOfChar ('\n');
+
+        if (declarationLineEnd < 0)
+            return {};
+
+        const auto declarationStart = declarationMarkerEnd + declarationLineEnd + 1;
+        const auto controlStart = controlLineEnd < 0 ? text.length() : controlMarkerEnd + controlLineEnd + 1;
+        auto declaration = text.substring (declarationStart, controlMarkerIndex).trim();
+        auto control = text.substring (controlStart).trim();
+
+        if (declaration.isEmpty() || control.isEmpty())
+            return {};
+
+        return ParsedLaneCode { declaration, control };
+    }
+
+    static bool validateLaneProgram (const Wf::StateSpec& candidateTrack, juce::String& error)
+    {
+        EmbeddedChucKEngine validator;
+        if (! validator.prepare (48000.0, 256, 0, 2))
+        {
+            error = validator.getLastError();
+            return false;
+        }
+
+        if (! validator.loadProgram (Wf::buildStateProgram (candidateTrack), Wf::makeWfParameterBindings()))
+        {
+            error = validator.getLastError();
+            return false;
+        }
+
+        return true;
+    }
+
+    void markLaneCodeEdited()
+    {
+        if (suppressLaneCodeCallbacks)
+            return;
+
+        laneCodeDirty = true;
+        laneCodeLastEditMs = juce::Time::getMillisecondCounterHiRes();
+        updateLaneCodeHeader ("lane code - editing", amber().withAlpha (0.62f));
+    }
+
+    void maybeApplyLaneCodeEdit (double nowMs)
+    {
+        if (! laneCodeDirty || nowMs - laneCodeLastEditMs < laneCodeApplyDelayMs)
+            return;
+
+        laneCodeDirty = false;
+        const auto text = laneCodeEditor.getText();
+        if (text == laneCodeLastValidatedText)
+            return;
+
+        laneCodeLastValidatedText = text;
+
+        auto* track = getSelectedViewedTrack();
+        if (track == nullptr || selectedLane < 0 || selectedLane >= static_cast<int> (track->lanes.size()))
+            return;
+
+        const auto parsed = parseLaneCode (text);
+        if (! parsed.has_value())
+        {
+            updateLaneCodeHeader ("lane code - invalid", coral().withAlpha (0.74f));
+            return;
+        }
+
+        auto candidateTrack = *track;
+        auto& candidateLane = candidateTrack.lanes[static_cast<size_t> (selectedLane)];
+        candidateLane.customDeclarationCode = parsed->declaration;
+        candidateLane.customControlCode = parsed->control;
+
+        juce::String validationError;
+        if (! validateLaneProgram (candidateTrack, validationError))
+        {
+            updateLaneCodeHeader ("lane code - invalid", coral().withAlpha (0.74f));
+            return;
+        }
+
+        auto& lane = track->lanes[static_cast<size_t> (selectedLane)];
+        lane.customDeclarationCode = parsed->declaration;
+        lane.customControlCode = parsed->control;
+        updateLaneCodeHeader ("lane code - live", green().withAlpha (0.58f));
+
+        if (viewedTopLevelState == performingTopLevelState && selectedState == performingTrackIndex)
+            loadSelectedContentForCurrentState();
     }
 
     void syncViewedStateControls()
@@ -1433,6 +1579,7 @@ private:
             }
         }
 
+        maybeApplyLaneCodeEdit (now);
         applyCurrentAudioControls();
 
         statusLabel.setText (juce::String (running ? "running  " : "stopped  ") + audioCallback.diagnostics(), juce::dontSendNotification);
@@ -1735,6 +1882,13 @@ private:
     bool scriptShouldStopAtEnd = false;
     bool suppressStateControlCallbacks = false;
     bool suppressEditCallbacks = false;
+    bool suppressLaneCodeCallbacks = false;
+    bool laneCodeDirty = false;
+    double laneCodeLastEditMs = 0.0;
+    juce::String laneCodeLastValidatedText;
+    int laneCodeViewedTopLevelState = -1;
+    int laneCodeTrackIndex = -1;
+    int laneCodeLaneIndex = -1;
     float orbitPhase = 0.0f;
     double trackElapsedBars = 0.0;
     bool running = true;

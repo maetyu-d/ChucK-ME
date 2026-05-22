@@ -206,6 +206,42 @@ int main()
         return 12;
     }
 
+    auto customLaneState = states.front();
+    customLaneState.name = "custom lane code check";
+    customLaneState.lanes.resize (1);
+    customLaneState.lanes[0].customDeclarationCode = "SinOsc lane0 => Gain customGain0 => master;\n0.0 => customGain0.gain;";
+    customLaneState.lanes[0].customControlCode = "220.0 + (bright * 180.0) => lane0.freq;\n0.08 * (0.4 + intensity) => customGain0.gain;";
+
+    if (! engine.loadProgram (Wf::buildStateProgram (customLaneState), bindings))
+    {
+        std::cerr << "custom lane program failed: " << engine.getLastError() << '\n';
+        return 13;
+    }
+
+    static_cast<void> (engine.setParameterValue ("hostMasterGain", 0.30f));
+    static_cast<void> (engine.setParameterValue ("hostTempoHz", static_cast<float> (customLaneState.tempoBpm / 60.0)));
+    static_cast<void> (engine.setParameterValue ("hostIntensity", 0.70f));
+    static_cast<void> (engine.setParameterValue ("hostBrightness", 0.54f));
+    static_cast<void> (engine.setParameterValue ("hostOrbitPhase", 0.25f));
+
+    const auto customLaneEnergy = renderEnergy (engine, input, output, 64);
+    if (customLaneEnergy <= 0.0
+        || engine.getRenderExceptionCount() != 0
+        || engine.getInternalErrorCount() != 0)
+    {
+        std::cerr << "custom lane render failed: " << customLaneEnergy << '\n';
+        return 14;
+    }
+
+    auto invalidCustomLaneState = customLaneState;
+    invalidCustomLaneState.lanes[0].customControlCode = "not valid chuck code";
+
+    if (engine.loadProgram (Wf::buildStateProgram (invalidCustomLaneState), bindings))
+    {
+        std::cerr << "invalid custom lane program unexpectedly loaded\n";
+        return 15;
+    }
+
     auto drumState = states.front();
     for (size_t lane = 1; lane < drumState.lanes.size(); ++lane)
         drumState.lanes[lane].volume = 0.0f;
@@ -230,7 +266,7 @@ int main()
         || engine.getInternalErrorCount() != 0)
     {
         std::cerr << "drum first block missed downbeat: " << firstDrumBlockEnergy << '\n';
-        return 14;
+        return 16;
     }
 
     const auto drumEnergy = renderEnergy (engine, input, output, 160);
@@ -239,7 +275,7 @@ int main()
         || engine.getInternalErrorCount() != 0)
     {
         std::cerr << "drum render too quiet or unstable: " << drumEnergy << '\n';
-        return 15;
+        return 17;
     }
 
     auto snareState = drumState;
@@ -249,7 +285,7 @@ int main()
     if (! engine.loadProgram (Wf::buildStateProgram (snareState), bindings))
     {
         std::cerr << "snare-only program failed: " << engine.getLastError() << '\n';
-        return 16;
+        return 18;
     }
 
     static_cast<void> (engine.setParameterValue ("hostMasterGain", 0.28f));
@@ -264,7 +300,7 @@ int main()
         || engine.getInternalErrorCount() != 0)
     {
         std::cerr << "snare render too quiet or unstable: " << snareEnergy << '\n';
-        return 17;
+        return 19;
     }
 
     auto emptyLaneState = states.front();
@@ -274,7 +310,7 @@ int main()
     if (! engine.loadProgram (Wf::buildStateProgram (emptyLaneState), bindings))
     {
         std::cerr << "empty-lane program failed: " << engine.getLastError() << '\n';
-        return 18;
+        return 20;
     }
 
     static_cast<void> (engine.setParameterValue ("hostMasterGain", 0.4f));
@@ -289,7 +325,7 @@ int main()
         || engine.getInternalErrorCount() != 0)
     {
         std::cerr << "empty-lane render leaked or failed: " << emptyLaneEnergy << '\n';
-        return 19;
+        return 21;
     }
 
     return 0;
