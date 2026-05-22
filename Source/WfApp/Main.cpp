@@ -588,8 +588,11 @@ public:
         setupTextEditor (trackNameEditor, "Track name");
         trackNameEditor.onTextChange = [this] { applyTrackNameEdit(); };
 
-        setupTextEditor (trackDurationEditor, "Bars");
-        trackDurationEditor.onTextChange = [this] { applyTrackDurationEdit(); };
+        setupTextEditor (trackDurationBarsEditor, "Bars");
+        trackDurationBarsEditor.onTextChange = [this] { applyTrackDurationEdit(); };
+
+        setupTextEditor (trackDurationBeatsEditor, "Beats");
+        trackDurationBeatsEditor.onTextChange = [this] { applyTrackDurationEdit(); };
 
         setupTextEditor (laneNameEditor, "Lane name");
         laneNameEditor.onTextChange = [this] { applyLaneNameEdit(); };
@@ -776,7 +779,9 @@ public:
         trackNameEditor.setBounds (codePane.removeFromTop (28));
         codePane.removeFromTop (6);
         auto trackEditRow = codePane.removeFromTop (30);
-        trackDurationEditor.setBounds (trackEditRow.removeFromLeft (92).reduced (0, 2));
+        trackDurationBarsEditor.setBounds (trackEditRow.removeFromLeft (82).reduced (0, 2));
+        trackEditRow.removeFromLeft (8);
+        trackDurationBeatsEditor.setBounds (trackEditRow.removeFromLeft (82).reduced (0, 2));
         codePane.removeFromTop (8);
         laneNameEditor.setBounds (codePane.removeFromTop (28));
         codePane.removeFromTop (6);
@@ -1218,7 +1223,8 @@ private:
         const auto hasLane = lane != nullptr;
 
         trackNameEditor.setEnabled (hasTrack);
-        trackDurationEditor.setEnabled (hasTrack);
+        trackDurationBarsEditor.setEnabled (hasTrack);
+        trackDurationBeatsEditor.setEnabled (hasTrack);
         laneNameEditor.setEnabled (hasLane);
         muteLaneButton.setEnabled (hasLane);
         soloLaneButton.setEnabled (hasLane);
@@ -1228,12 +1234,20 @@ private:
         if (! trackNameEditor.hasKeyboardFocus (true))
             trackNameEditor.setText (hasTrack ? track->name : juce::String(), juce::dontSendNotification);
 
-        if (! trackDurationEditor.hasKeyboardFocus (true))
+        if (! trackDurationBarsEditor.hasKeyboardFocus (true))
         {
-            if (hasTrack && track->durationBars.has_value())
-                trackDurationEditor.setText (juce::String (*track->durationBars, 2), juce::dontSendNotification);
+            if (hasTrack && track->duration.has_value())
+                trackDurationBarsEditor.setText (juce::String (track->duration->bars), juce::dontSendNotification);
             else
-                trackDurationEditor.setText ({}, juce::dontSendNotification);
+                trackDurationBarsEditor.setText ({}, juce::dontSendNotification);
+        }
+
+        if (! trackDurationBeatsEditor.hasKeyboardFocus (true))
+        {
+            if (hasTrack && track->duration.has_value())
+                trackDurationBeatsEditor.setText (juce::String (track->duration->beats), juce::dontSendNotification);
+            else
+                trackDurationBeatsEditor.setText ({}, juce::dontSendNotification);
         }
 
         if (! laneNameEditor.hasKeyboardFocus (true))
@@ -1270,17 +1284,17 @@ private:
 
         if (auto* track = getSelectedViewedTrack())
         {
-            const auto text = trackDurationEditor.getText().trim();
-            if (text.isEmpty())
-                track->durationBars.reset();
+            const auto barsText = trackDurationBarsEditor.getText().trim();
+            const auto beatsText = trackDurationBeatsEditor.getText().trim();
+            const auto bars = barsText.isEmpty() ? 0 : juce::jmax (0, barsText.getIntValue());
+            const auto beats = beatsText.isEmpty() ? 0 : juce::jmax (0, beatsText.getIntValue());
+
+            if (barsText.isEmpty() && beatsText.isEmpty())
+                track->duration.reset();
+            else if (bars == 0 && beats == 0)
+                track->duration.reset();
             else
-            {
-                const auto bars = text.getDoubleValue();
-                if (bars > 0.0)
-                    track->durationBars = juce::jlimit (0.25, 128.0, bars);
-                else
-                    track->durationBars.reset();
-            }
+                track->duration = Wf::TrackDurationSpec { juce::jmin (128, bars), juce::jmin (1024, beats) };
 
             refreshAfterStructureEdit (false);
         }
@@ -1487,6 +1501,16 @@ private:
         return numerator * 4.0 / denominator;
     }
 
+    double getPerformingBeatsPerBar() const
+    {
+        const auto index = static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, performingTopLevelState));
+        return static_cast<double> (scriptRunning
+                                        && scriptStepIndex < globalScriptSteps.size()
+                                        && globalScriptSteps[scriptStepIndex].timeSigNumerator.has_value()
+                                    ? *globalScriptSteps[scriptStepIndex].timeSigNumerator
+                                    : topLevelTimeSigNumerators[index]);
+    }
+
     std::optional<double> getPerformingTrackDurationBars() const
     {
         const auto* performingTracks = getPerformingTracks();
@@ -1494,10 +1518,18 @@ private:
             return {};
 
         const auto index = static_cast<size_t> (juce::jlimit (0, static_cast<int> (performingTracks->size()) - 1, performingTrackIndex));
-        if (! (*performingTracks)[index].durationBars.has_value())
+        if (! (*performingTracks)[index].duration.has_value())
             return {};
 
-        return juce::jmax (0.25, *(*performingTracks)[index].durationBars);
+        const auto duration = *(*performingTracks)[index].duration;
+        const auto beatsPerBar = getPerformingBeatsPerBar();
+        const auto totalBars = static_cast<double> (duration.bars)
+                             + (static_cast<double> (duration.beats) / beatsPerBar);
+
+        if (totalBars <= 0.0)
+            return {};
+
+        return juce::jmax (0.25, totalBars);
     }
 
     void applyGlobalScriptStep (const GlobalScriptStep& step)
@@ -1655,7 +1687,8 @@ private:
     juce::TextEditor globalScriptEditor;
     juce::TextEditor laneCodeEditor;
     juce::TextEditor trackNameEditor;
-    juce::TextEditor trackDurationEditor;
+    juce::TextEditor trackDurationBarsEditor;
+    juce::TextEditor trackDurationBeatsEditor;
     juce::TextEditor laneNameEditor;
     std::array<float, maxTopLevelStates> topLevelTemposBpm
     {
