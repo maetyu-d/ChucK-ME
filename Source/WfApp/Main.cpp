@@ -20,7 +20,6 @@ constexpr int maxHostChannels = 16;
 constexpr int fallbackBlockSize = 4096;
 constexpr int engineOutputChannels = 2;
 constexpr int maxTopLevelStates = 16;
-constexpr int populatedTopLevelStates = 2;
 
 juce::Colour ink() { return juce::Colour (0xffeef3ee); }
 juce::Colour mutedInk() { return juce::Colour (0xff9da8a2); }
@@ -537,7 +536,8 @@ class MainComponent final : public juce::Component,
 public:
     MainComponent()
     {
-        states = Wf::makeDefaultStates();
+        topLevelStates[0] = Wf::makeDefaultStates();
+        topLevelStates[1] = Wf::makeDefaultStates();
 
         titleLabel.setText ("wf:: weld", juce::dontSendNotification);
         titleLabel.setFont (juce::FontOptions (24.0f, juce::Font::bold));
@@ -557,13 +557,12 @@ public:
                          [this, i] { selectViewedTopLevelState (i); });
 
             if (! isTopLevelStatePopulated (i))
-            {
                 styleEmptyStateButton (button);
-                button.setEnabled (false);
-            }
         }
 
         setupButton (runScriptButton, "Run", amber(), [this] { runGlobalScript(); });
+        setupButton (newStateButton, "New", blue(), [this] { createTopLevelState(); });
+        setupButton (duplicateStateButton, "Duplicate", amber(), [this] { duplicateViewedTopLevelState(); });
 
         globalScriptEditor.setMultiLine (true);
         globalScriptEditor.setReturnKeyStartsNewLine (true);
@@ -766,6 +765,10 @@ public:
         timeSigNumeratorBox.setBounds (timeSigRow.removeFromLeft (78));
         timeSigRow.removeFromLeft (8);
         timeSigDenominatorBox.setBounds (timeSigRow.removeFromLeft (78));
+        right.removeFromTop (8);
+        auto stateActionRow = right.removeFromTop (34);
+        newStateButton.setBounds (stateActionRow.removeFromLeft (82).reduced (0, 3));
+        duplicateStateButton.setBounds (stateActionRow.removeFromLeft (122).reduced (8, 3));
         right.removeFromTop (10);
         selectedLabel.setBounds (right.removeFromTop (34));
         laneHeader.setBounds (right.removeFromTop (28));
@@ -821,6 +824,7 @@ private:
         }
 
         viewedTopLevelState = nextState;
+        selectedState = juce::jlimit (0, getViewedTrackCount() - 1, selectedState);
         syncViewedStateControls();
         refreshLabels();
     }
@@ -838,8 +842,54 @@ private:
         }
 
         performingTopLevelState = nextState;
+        performingTrackIndex = juce::jlimit (0, getPerformingTrackCount() - 1, performingTrackIndex);
+
+        if (viewedTopLevelState == performingTopLevelState)
+            selectedState = performingTrackIndex;
+
         loadSelectedContentForCurrentState();
         refreshLabels();
+    }
+
+    int firstEmptyTopLevelState() const
+    {
+        for (int i = 0; i < maxTopLevelStates; ++i)
+            if (! isTopLevelStatePopulated (i))
+                return i;
+
+        return -1;
+    }
+
+    void createTopLevelState()
+    {
+        const auto target = firstEmptyTopLevelState();
+        if (target < 0)
+            return;
+
+        auto created = Wf::makeDefaultStates();
+
+        for (int i = 0; i < static_cast<int> (created.size()); ++i)
+            created[static_cast<size_t> (i)].name = "Track " + juce::String (i + 1);
+
+        topLevelStates[static_cast<size_t> (target)] = std::move (created);
+        topLevelTemposBpm[static_cast<size_t> (target)] = 88.0f;
+        topLevelTimeSigNumerators[static_cast<size_t> (target)] = 4;
+        topLevelTimeSigDenominators[static_cast<size_t> (target)] = 4;
+        selectViewedTopLevelState (target);
+    }
+
+    void duplicateViewedTopLevelState()
+    {
+        const auto target = firstEmptyTopLevelState();
+        if (target < 0 || ! isTopLevelStatePopulated (viewedTopLevelState))
+            return;
+
+        const auto source = static_cast<size_t> (viewedTopLevelState);
+        topLevelStates[static_cast<size_t> (target)] = topLevelStates[source];
+        topLevelTemposBpm[static_cast<size_t> (target)] = topLevelTemposBpm[source];
+        topLevelTimeSigNumerators[static_cast<size_t> (target)] = topLevelTimeSigNumerators[source];
+        topLevelTimeSigDenominators[static_cast<size_t> (target)] = topLevelTimeSigDenominators[source];
+        selectViewedTopLevelState (target);
     }
 
     struct GlobalScriptStep
@@ -966,12 +1016,19 @@ private:
 
     void selectState (int index)
     {
-        if (states.empty())
+        const auto* viewedTracks = getViewedTracks();
+        if (viewedTracks == nullptr || viewedTracks->empty())
             return;
 
-        selectedState = (index + static_cast<int> (states.size())) % static_cast<int> (states.size());
+        selectedState = (index + static_cast<int> (viewedTracks->size())) % static_cast<int> (viewedTracks->size());
         orbitPhase = 0.0f;
-        loadSelectedContentForCurrentState();
+
+        if (viewedTopLevelState == performingTopLevelState)
+        {
+            performingTrackIndex = selectedState;
+            loadSelectedContentForCurrentState();
+        }
+
         refreshLabels();
     }
 
@@ -985,10 +1042,11 @@ private:
 
     void pickState()
     {
-        if (states.empty())
+        const auto* viewedTracks = getViewedTracks();
+        if (viewedTracks == nullptr || viewedTracks->empty())
             return;
 
-        std::uniform_int_distribution<int> distribution (0, static_cast<int> (states.size()) - 1);
+        std::uniform_int_distribution<int> distribution (0, static_cast<int> (viewedTracks->size()) - 1);
         selectState (distribution (random));
     }
 
@@ -1005,11 +1063,25 @@ private:
         for (int i = 0; i < maxTopLevelStates; ++i)
         {
             auto& button = stateButtons[static_cast<size_t> (i)];
+            if (isTopLevelStatePopulated (i))
+                styleButton (button, i == 0 ? green() : blue());
+            else
+                styleEmptyStateButton (button);
+
             button.setEnabled (isTopLevelStatePopulated (i));
             button.setToggleState (viewedTopLevelState == i, juce::dontSendNotification);
         }
 
-        const auto& state = states[static_cast<size_t> (selectedState)];
+        const auto hasEmptyStateSlot = firstEmptyTopLevelState() >= 0;
+        newStateButton.setEnabled (hasEmptyStateSlot);
+        duplicateStateButton.setEnabled (hasEmptyStateSlot && isTopLevelStatePopulated (viewedTopLevelState));
+
+        const auto* viewedTracks = getViewedTracks();
+        if (viewedTracks == nullptr || viewedTracks->empty())
+            return;
+
+        selectedState = juce::jlimit (0, static_cast<int> (viewedTracks->size()) - 1, selectedState);
+        const auto& state = (*viewedTracks)[static_cast<size_t> (selectedState)];
         selectedLabel.setText (state.name, juce::dontSendNotification);
 
         for (int i = 0; i < static_cast<int> (laneButtons.size()); ++i)
@@ -1021,15 +1093,16 @@ private:
         }
 
         updateLaneCode();
-        orbitCanvas.setState (&states, selectedState, orbitPhase, running);
+        orbitCanvas.setState (viewedTracks, selectedState, orbitPhase, running);
     }
 
     void updateLaneCode()
     {
-        if (states.empty())
+        const auto* viewedTracks = getViewedTracks();
+        if (viewedTracks == nullptr || viewedTracks->empty())
             return;
 
-        const auto& state = states[static_cast<size_t> (selectedState)];
+        const auto& state = (*viewedTracks)[static_cast<size_t> (selectedState)];
         const auto laneIndex = static_cast<size_t> (juce::jlimit (0, static_cast<int> (state.lanes.size()) - 1, selectedLane));
         laneCodeEditor.setText (makeLaneCode (state.lanes[laneIndex]), juce::dontSendNotification);
     }
@@ -1084,14 +1157,30 @@ private:
             if (orbitPhase >= 1.0f)
             {
                 orbitPhase -= std::floor (orbitPhase);
-                selectState (selectedState + 1);
+                advancePerformingTrack();
             }
         }
 
         applyCurrentAudioControls();
 
         statusLabel.setText (juce::String (running ? "running  " : "stopped  ") + audioCallback.diagnostics(), juce::dontSendNotification);
-        orbitCanvas.setState (&states, selectedState, orbitPhase, running);
+        if (const auto* viewedTracks = getViewedTracks())
+            orbitCanvas.setState (viewedTracks, selectedState, orbitPhase, running);
+    }
+
+    void advancePerformingTrack()
+    {
+        const auto* performingTracks = getPerformingTracks();
+        if (performingTracks == nullptr || performingTracks->empty())
+            return;
+
+        performingTrackIndex = (performingTrackIndex + 1) % static_cast<int> (performingTracks->size());
+
+        if (viewedTopLevelState == performingTopLevelState)
+            selectedState = performingTrackIndex;
+
+        loadSelectedContentForCurrentState();
+        refreshLabels();
     }
 
     void advanceGlobalScript (double deltaSeconds, double tempoBpm, float rate)
@@ -1158,9 +1247,44 @@ private:
             applyCurrentAudioControls();
     }
 
-    static bool isTopLevelStatePopulated (int index)
+    bool isTopLevelStatePopulated (int index) const
     {
-        return index >= 0 && index < populatedTopLevelStates;
+        return index >= 0
+            && index < maxTopLevelStates
+            && topLevelStates[static_cast<size_t> (index)].has_value()
+            && ! topLevelStates[static_cast<size_t> (index)]->empty();
+    }
+
+    const std::vector<Wf::StateSpec>* getViewedTracks() const
+    {
+        if (! isTopLevelStatePopulated (viewedTopLevelState))
+            return nullptr;
+
+        return &*topLevelStates[static_cast<size_t> (viewedTopLevelState)];
+    }
+
+    const std::vector<Wf::StateSpec>* getPerformingTracks() const
+    {
+        if (! isTopLevelStatePopulated (performingTopLevelState))
+            return nullptr;
+
+        return &*topLevelStates[static_cast<size_t> (performingTopLevelState)];
+    }
+
+    int getViewedTrackCount() const
+    {
+        if (const auto* viewedTracks = getViewedTracks())
+            return static_cast<int> (viewedTracks->size());
+
+        return 1;
+    }
+
+    int getPerformingTrackCount() const
+    {
+        if (const auto* performingTracks = getPerformingTracks())
+            return static_cast<int> (performingTracks->size());
+
+        return 1;
     }
 
     float getCurrentMasterGain() const
@@ -1170,7 +1294,7 @@ private:
 
     float getCurrentTempoHz() const
     {
-        if (states.empty())
+        if (getPerformingTracks() == nullptr)
             return 1.0f;
 
         return static_cast<float> ((getPerformingTempoBpm() / 60.0) * rateSlider.getValue());
@@ -1178,10 +1302,12 @@ private:
 
     void loadSelectedContentForCurrentState()
     {
-        if (states.empty())
+        const auto* performingTracks = getPerformingTracks();
+        if (performingTracks == nullptr || performingTracks->empty())
             return;
 
-        static_cast<void> (audioCallback.loadStateWithControls (states[static_cast<size_t> (selectedState)],
+        performingTrackIndex = juce::jlimit (0, static_cast<int> (performingTracks->size()) - 1, performingTrackIndex);
+        static_cast<void> (audioCallback.loadStateWithControls ((*performingTracks)[static_cast<size_t> (performingTrackIndex)],
                                                                 getCurrentMasterGain(),
                                                                 getCurrentTempoHz(),
                                                                 static_cast<float> (intensitySlider.getValue()),
@@ -1191,7 +1317,7 @@ private:
 
     void applyCurrentAudioControls()
     {
-        if (states.empty())
+        if (getPerformingTracks() == nullptr)
             return;
 
         audioCallback.setControls (getCurrentMasterGain(),
@@ -1203,7 +1329,7 @@ private:
 
     WfAudioCallback audioCallback;
     juce::AudioDeviceManager audioDeviceManager;
-    std::vector<Wf::StateSpec> states;
+    std::array<std::optional<std::vector<Wf::StateSpec>>, maxTopLevelStates> topLevelStates;
     std::mt19937 random { 0x5eed1234u };
 
     juce::Label titleLabel;
@@ -1219,6 +1345,8 @@ private:
     OrbitCanvas orbitCanvas;
     std::array<juce::TextButton, maxTopLevelStates> stateButtons;
     juce::TextButton runScriptButton;
+    juce::TextButton newStateButton;
+    juce::TextButton duplicateStateButton;
     juce::TextButton playButton;
     juce::TextButton previousButton;
     juce::TextButton nextButton;
@@ -1257,6 +1385,7 @@ private:
     int viewedTopLevelState = 0;
     int performingTopLevelState = 0;
     int selectedState = 0;
+    int performingTrackIndex = 0;
     int selectedLane = 0;
     std::vector<GlobalScriptStep> globalScriptSteps;
     size_t scriptStepIndex = 0;
