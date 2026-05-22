@@ -17,8 +17,8 @@ Current scope:
 
 - A new JUCE GUI app target: `wf`
 - Fresh orbit/state canvas
-- Six original starter states
-- Five tracks per state, with two generated ChucK lanes per track
+- Three original starter states
+- Five tracks per state, with five generated ChucK lanes per track
 - Basic transport: play/stop, previous, next, pick
 - Live controls for gain, rate, density, and colour
 - Embedded ChucK rendering through `WeldChucK::Engine`

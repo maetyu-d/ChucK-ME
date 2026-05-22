@@ -61,9 +61,9 @@ int main()
         return 1;
     }
 
-    if (states.size() != 6)
+    if (states.size() != 3)
     {
-        std::cerr << "wf demo should have six states, found " << states.size() << '\n';
+        std::cerr << "wf demo should have three states, found " << states.size() << '\n';
         return 9;
     }
 
@@ -77,9 +77,9 @@ int main()
 
         for (const auto& track : state.tracks)
         {
-            if (track.lanes.size() != 2)
+            if (track.lanes.size() != 5)
             {
-                std::cerr << "track should have two lanes: " << state.name << " / " << track.name << '\n';
+                std::cerr << "track should have five lanes: " << state.name << " / " << track.name << '\n';
                 return 11;
             }
         }

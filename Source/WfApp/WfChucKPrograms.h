@@ -21,7 +21,7 @@ struct LaneSpec
 struct TrackSpec
 {
     juce::String name;
-    std::array<LaneSpec, 2> lanes {};
+    std::array<LaneSpec, 5> lanes {};
 };
 
 struct StateSpec
@@ -43,51 +43,58 @@ inline std::vector<EmbeddedChucKEngine::ParameterBinding> makeWfParameterBinding
     };
 }
 
+inline TrackSpec makeTrack (const juce::String& name,
+                            const juce::String& stem,
+                            float drumHz,
+                            float bassHz,
+                            float arpHz,
+                            float chordHz,
+                            float airHz,
+                            float energy)
+{
+    const auto drumVolume = 0.54f + energy * 0.10f;
+    const auto bassVolume = 0.30f + energy * 0.07f;
+    const auto arpVolume = 0.22f + energy * 0.06f;
+    const auto chordVolume = 0.19f + energy * 0.04f;
+    const auto airVolume = 0.065f + energy * 0.018f;
+
+    return
+    {
+        name,
+        {{
+            { "808 " + stem, "drum", drumHz, drumVolume, 16, 1 },
+            { stem + " bass", "bass", bassHz, bassVolume, 2, 1 },
+            { stem + " arp", "arp", arpHz, arpVolume, 1, 1 },
+            { stem + " chord", "chord", chordHz, chordVolume, 8, 5 },
+            { stem + " air", "air", airHz, airVolume, 12, 6 }
+        }}
+    };
+}
+
 inline std::vector<StateSpec> makeDefaultStates()
 {
     return
     {
-        { "Pocket City", 88.0, {{
-            { "Drums", {{ { "808 street", "drum", 45.0f, 0.58f, 16, 1 }, { "Hat mist", "air", 1567.98f, 0.035f, 6, 2 } }} },
-            { "Bass", {{ { "Pocket bass", "bass", 65.41f, 0.34f, 2, 1 }, { "Bass glint", "arp", 130.81f, 0.10f, 4, 1 } }} },
-            { "Arp", {{ { "Signal arp", "arp", 261.63f, 0.24f, 1, 1 }, { "Signal reply", "arp", 523.25f, 0.12f, 2, 1 } }} },
-            { "Chords", {{ { "Glass chorus", "chord", 130.81f, 0.20f, 8, 5 }, { "Glass edge", "air", 1046.50f, 0.045f, 10, 4 } }} },
-            { "Atmosphere", {{ { "Static halo", "air", 1046.50f, 0.07f, 12, 6 }, { "Distant bell", "arp", 783.99f, 0.055f, 6, 2 } }} }
+        { "State A", 88.0, {{
+            makeTrack ("Pocket City", "pocket", 45.0f, 65.41f, 261.63f, 130.81f, 1046.50f, 0.40f),
+            makeTrack ("Chrome Avenue", "chrome", 46.5f, 73.42f, 293.66f, 146.83f, 1174.66f, 0.45f),
+            makeTrack ("Battery Love", "battery", 43.8f, 82.41f, 329.63f, 164.81f, 1318.51f, 0.52f),
+            makeTrack ("Pocket Choir", "choir", 44.2f, 61.74f, 246.94f, 123.47f, 987.77f, 0.34f),
+            makeTrack ("Neon Postcard", "neon", 45.6f, 69.30f, 277.18f, 138.59f, 1108.73f, 0.46f)
         }}},
-        { "Chrome Avenue", 92.0, {{
-            { "Drums", {{ { "808 avenue", "drum", 46.5f, 0.60f, 16, 1 }, { "Curb hiss", "air", 1760.00f, 0.035f, 6, 2 } }} },
-            { "Bass", {{ { "Rubber motor", "bass", 73.42f, 0.35f, 2, 1 }, { "Motor tick", "arp", 146.83f, 0.10f, 4, 1 } }} },
-            { "Arp", {{ { "Window arp", "arp", 293.66f, 0.25f, 1, 1 }, { "Window ghost", "arp", 587.33f, 0.12f, 2, 1 } }} },
-            { "Chords", {{ { "Warm display", "chord", 146.83f, 0.21f, 8, 5 }, { "Display shine", "air", 1174.66f, 0.045f, 10, 4 } }} },
-            { "Atmosphere", {{ { "Thin skyline", "air", 1174.66f, 0.07f, 12, 6 }, { "Roofline", "arp", 880.00f, 0.052f, 6, 2 } }} }
+        { "State B", 92.0, {{
+            makeTrack ("Pocket City", "pocket", 47.7f, 73.42f, 293.66f, 146.83f, 1174.66f, 0.50f),
+            makeTrack ("Chrome Avenue", "chrome", 48.4f, 82.41f, 329.63f, 164.81f, 1318.51f, 0.56f),
+            makeTrack ("Battery Love", "battery", 45.1f, 87.31f, 349.23f, 174.61f, 1396.91f, 0.60f),
+            makeTrack ("Pocket Choir", "choir", 46.0f, 69.30f, 277.18f, 138.59f, 1108.73f, 0.42f),
+            makeTrack ("Neon Postcard", "neon", 47.1f, 77.78f, 311.13f, 155.56f, 1244.51f, 0.54f)
         }}},
-        { "Battery Love", 96.0, {{
-            { "Drums", {{ { "808 relay", "drum", 43.8f, 0.62f, 16, 1 }, { "Relay grit", "air", 1975.53f, 0.035f, 6, 2 } }} },
-            { "Bass", {{ { "Battery bass", "bass", 82.41f, 0.36f, 2, 1 }, { "Battery tick", "arp", 164.81f, 0.11f, 4, 1 } }} },
-            { "Arp", {{ { "Simple arp", "arp", 329.63f, 0.27f, 1, 1 }, { "Simple answer", "arp", 659.25f, 0.13f, 2, 1 } }} },
-            { "Chords", {{ { "Major lights", "chord", 164.81f, 0.22f, 8, 5 }, { "Light fizz", "air", 1318.51f, 0.045f, 10, 4 } }} },
-            { "Atmosphere", {{ { "Soft carrier", "air", 1318.51f, 0.07f, 12, 6 }, { "Carrier ping", "arp", 987.77f, 0.052f, 6, 2 } }} }
-        }}},
-        { "Pocket Choir", 84.0, {{
-            { "Drums", {{ { "808 choir", "drum", 44.2f, 0.56f, 16, 1 }, { "Tape hiss", "air", 1480.00f, 0.035f, 6, 2 } }} },
-            { "Bass", {{ { "Round bass", "bass", 61.74f, 0.32f, 2, 1 }, { "Round tick", "arp", 123.47f, 0.095f, 4, 1 } }} },
-            { "Arp", {{ { "Choir arp", "arp", 246.94f, 0.24f, 1, 1 }, { "Choir reply", "arp", 493.88f, 0.12f, 2, 1 } }} },
-            { "Chords", {{ { "Soft buttons", "chord", 123.47f, 0.22f, 8, 5 }, { "Button air", "air", 987.77f, 0.048f, 10, 4 } }} },
-            { "Atmosphere", {{ { "Air tape", "air", 987.77f, 0.07f, 12, 6 }, { "Tape ping", "arp", 740.00f, 0.052f, 6, 2 } }} }
-        }}},
-        { "Neon Postcard", 90.0, {{
-            { "Drums", {{ { "808 postcard", "drum", 45.6f, 0.59f, 16, 1 }, { "Stamp hiss", "air", 1661.22f, 0.035f, 6, 2 } }} },
-            { "Bass", {{ { "Postcard bass", "bass", 69.30f, 0.34f, 2, 1 }, { "Post tick", "arp", 138.59f, 0.10f, 4, 1 } }} },
-            { "Arp", {{ { "Neon arp", "arp", 277.18f, 0.26f, 1, 1 }, { "Neon answer", "arp", 554.37f, 0.12f, 2, 1 } }} },
-            { "Chords", {{ { "Blue chord", "chord", 138.59f, 0.21f, 8, 5 }, { "Blue edge", "air", 1108.73f, 0.045f, 10, 4 } }} },
-            { "Atmosphere", {{ { "Tape star", "air", 1108.73f, 0.07f, 12, 6 }, { "Star ping", "arp", 830.61f, 0.052f, 6, 2 } }} }
-        }}},
-        { "Metro Bloom", 86.0, {{
-            { "Drums", {{ { "808 bloom", "drum", 42.9f, 0.61f, 16, 1 }, { "Rail mist", "air", 1396.91f, 0.035f, 6, 2 } }} },
-            { "Bass", {{ { "Metro bass", "bass", 58.27f, 0.33f, 2, 1 }, { "Metro tick", "arp", 116.54f, 0.10f, 4, 1 } }} },
-            { "Arp", {{ { "Platform arp", "arp", 233.08f, 0.25f, 1, 1 }, { "Platform bell", "arp", 466.16f, 0.12f, 2, 1 } }} },
-            { "Chords", {{ { "Ticket chord", "chord", 116.54f, 0.21f, 8, 5 }, { "Ticket air", "air", 932.33f, 0.046f, 10, 4 } }} },
-            { "Atmosphere", {{ { "Tunnel glow", "air", 932.33f, 0.07f, 12, 6 }, { "Departure", "arp", 698.46f, 0.052f, 6, 2 } }} }
+        { "State C", 84.0, {{
+            makeTrack ("Pocket City", "pocket", 42.9f, 58.27f, 233.08f, 116.54f, 932.33f, 0.32f),
+            makeTrack ("Chrome Avenue", "chrome", 44.0f, 65.41f, 261.63f, 130.81f, 1046.50f, 0.40f),
+            makeTrack ("Battery Love", "battery", 41.6f, 55.00f, 220.00f, 110.00f, 880.00f, 0.36f),
+            makeTrack ("Pocket Choir", "choir", 43.4f, 61.74f, 246.94f, 123.47f, 987.77f, 0.50f),
+            makeTrack ("Neon Postcard", "neon", 44.7f, 67.35f, 269.40f, 134.70f, 1077.60f, 0.38f)
         }}}
     };
 }
@@ -100,7 +107,7 @@ inline juce::String chuckFloat (float value)
 inline std::vector<LaneSpec> flattenLanes (const StateSpec& state)
 {
     std::vector<LaneSpec> lanes;
-    lanes.reserve (state.tracks.size() * 2);
+    lanes.reserve (state.tracks.size() * 5);
 
     for (const auto& track : state.tracks)
         for (const auto& lane : track.lanes)
