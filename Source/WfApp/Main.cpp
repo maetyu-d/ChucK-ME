@@ -1199,6 +1199,12 @@ private:
             return;
 
         const auto& state = (*viewedTracks)[static_cast<size_t> (selectedState)];
+        if (state.lanes.empty())
+        {
+            laneCodeEditor.setText ("// This track has no lanes.", juce::dontSendNotification);
+            return;
+        }
+
         const auto laneIndex = static_cast<size_t> (juce::jlimit (0, static_cast<int> (state.lanes.size()) - 1, selectedLane));
         laneCodeEditor.setText (makeLaneCode (state.lanes[laneIndex]), juce::dontSendNotification);
     }

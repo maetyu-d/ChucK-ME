@@ -2,6 +2,7 @@
 
 #include "WfChucKPrograms.h"
 
+#include <array>
 #include <cmath>
 #include <iostream>
 
@@ -97,6 +98,114 @@ int main()
         }
     }
 
+    auto oneLaneState = states.front();
+    oneLaneState.name = "one lane edit check";
+    oneLaneState.lanes.resize (1);
+
+    if (! engine.loadProgram (Wf::buildStateProgram (oneLaneState), bindings))
+    {
+        std::cerr << "one-lane program failed: " << engine.getLastError() << '\n';
+        return 5;
+    }
+
+    static_cast<void> (engine.setParameterValue ("hostMasterGain", 0.22f));
+    static_cast<void> (engine.setParameterValue ("hostTempoHz", static_cast<float> (oneLaneState.tempoBpm / 60.0)));
+    static_cast<void> (engine.setParameterValue ("hostIntensity", 0.72f));
+    static_cast<void> (engine.setParameterValue ("hostBrightness", 0.52f));
+    static_cast<void> (engine.setParameterValue ("hostOrbitPhase", 0.1f));
+
+    const auto oneLaneEnergy = renderEnergy (engine, input, output, 128);
+    if (oneLaneEnergy <= 0.0
+        || engine.getRenderExceptionCount() != 0
+        || engine.getInternalErrorCount() != 0)
+    {
+        std::cerr << "one-lane render failed: " << oneLaneEnergy << '\n';
+        return 6;
+    }
+
+    auto eightLaneState = states.front();
+    eightLaneState.name = "eight lane edit check";
+    const std::array<juce::String, 8> roles { "drum", "bass", "arp", "chord", "air", "snare", "pulse", "arp" };
+    while (eightLaneState.lanes.size() < roles.size())
+        eightLaneState.lanes.push_back (eightLaneState.lanes[eightLaneState.lanes.size() % states.front().lanes.size()]);
+
+    for (size_t lane = 0; lane < eightLaneState.lanes.size(); ++lane)
+    {
+        eightLaneState.lanes[lane].name = "edit lane " + juce::String (static_cast<int> (lane + 1));
+        eightLaneState.lanes[lane].role = roles[lane];
+        eightLaneState.lanes[lane].volume = 0.10f + static_cast<float> (lane) * 0.025f;
+    }
+
+    if (! engine.loadProgram (Wf::buildStateProgram (eightLaneState), bindings))
+    {
+        std::cerr << "eight-lane program failed: " << engine.getLastError() << '\n';
+        return 7;
+    }
+
+    static_cast<void> (engine.setParameterValue ("hostMasterGain", 0.18f));
+    static_cast<void> (engine.setParameterValue ("hostTempoHz", static_cast<float> (eightLaneState.tempoBpm / 60.0)));
+    static_cast<void> (engine.setParameterValue ("hostIntensity", 0.68f));
+    static_cast<void> (engine.setParameterValue ("hostBrightness", 0.58f));
+    static_cast<void> (engine.setParameterValue ("hostOrbitPhase", 0.35f));
+
+    const auto eightLaneEnergy = renderEnergy (engine, input, output, 128);
+    if (eightLaneEnergy <= 0.0
+        || engine.getRenderExceptionCount() != 0
+        || engine.getInternalErrorCount() != 0)
+    {
+        std::cerr << "eight-lane render failed: " << eightLaneEnergy << '\n';
+        return 8;
+    }
+
+    auto mutedState = states.front();
+    for (auto& lane : mutedState.lanes)
+        lane.muted = true;
+
+    if (! engine.loadProgram (Wf::buildStateProgram (mutedState), bindings))
+    {
+        std::cerr << "muted program failed: " << engine.getLastError() << '\n';
+        return 9;
+    }
+
+    static_cast<void> (engine.setParameterValue ("hostMasterGain", 0.4f));
+    static_cast<void> (engine.setParameterValue ("hostTempoHz", static_cast<float> (mutedState.tempoBpm / 60.0)));
+    static_cast<void> (engine.setParameterValue ("hostIntensity", 1.0f));
+    static_cast<void> (engine.setParameterValue ("hostBrightness", 1.0f));
+    static_cast<void> (engine.setParameterValue ("hostOrbitPhase", 0.5f));
+
+    const auto mutedEnergy = renderEnergy (engine, input, output, 128);
+    if (mutedEnergy < 0.0 || mutedEnergy > 0.001
+        || engine.getRenderExceptionCount() != 0
+        || engine.getInternalErrorCount() != 0)
+    {
+        std::cerr << "muted render leaked or failed: " << mutedEnergy << '\n';
+        return 10;
+    }
+
+    auto soloState = states.front();
+    soloState.lanes[1].solo = true;
+
+    if (! engine.loadProgram (Wf::buildStateProgram (soloState), bindings))
+    {
+        std::cerr << "solo program failed: " << engine.getLastError() << '\n';
+        return 11;
+    }
+
+    static_cast<void> (engine.setParameterValue ("hostMasterGain", 0.22f));
+    static_cast<void> (engine.setParameterValue ("hostTempoHz", static_cast<float> (soloState.tempoBpm / 60.0)));
+    static_cast<void> (engine.setParameterValue ("hostIntensity", 0.70f));
+    static_cast<void> (engine.setParameterValue ("hostBrightness", 0.54f));
+    static_cast<void> (engine.setParameterValue ("hostOrbitPhase", 0.25f));
+
+    const auto soloEnergy = renderEnergy (engine, input, output, 128);
+    if (soloEnergy <= 0.0
+        || engine.getRenderExceptionCount() != 0
+        || engine.getInternalErrorCount() != 0)
+    {
+        std::cerr << "solo render failed: " << soloEnergy << '\n';
+        return 12;
+    }
+
     auto drumState = states.front();
     for (size_t lane = 1; lane < drumState.lanes.size(); ++lane)
         drumState.lanes[lane].volume = 0.0f;
@@ -104,7 +213,7 @@ int main()
     if (! engine.loadProgram (Wf::buildStateProgram (drumState), bindings))
     {
         std::cerr << "drum-only program failed: " << engine.getLastError() << '\n';
-        return 5;
+        return 13;
     }
 
     static_cast<void> (engine.setParameterValue ("hostMasterGain", 0.28f));
@@ -119,7 +228,7 @@ int main()
         || engine.getInternalErrorCount() != 0)
     {
         std::cerr << "drum render too quiet or unstable: " << drumEnergy << '\n';
-        return 6;
+        return 14;
     }
 
     auto snareState = drumState;
@@ -129,7 +238,7 @@ int main()
     if (! engine.loadProgram (Wf::buildStateProgram (snareState), bindings))
     {
         std::cerr << "snare-only program failed: " << engine.getLastError() << '\n';
-        return 7;
+        return 15;
     }
 
     static_cast<void> (engine.setParameterValue ("hostMasterGain", 0.28f));
@@ -144,7 +253,32 @@ int main()
         || engine.getInternalErrorCount() != 0)
     {
         std::cerr << "snare render too quiet or unstable: " << snareEnergy << '\n';
-        return 8;
+        return 16;
+    }
+
+    auto emptyLaneState = states.front();
+    emptyLaneState.name = "empty lane robustness check";
+    emptyLaneState.lanes.clear();
+
+    if (! engine.loadProgram (Wf::buildStateProgram (emptyLaneState), bindings))
+    {
+        std::cerr << "empty-lane program failed: " << engine.getLastError() << '\n';
+        return 17;
+    }
+
+    static_cast<void> (engine.setParameterValue ("hostMasterGain", 0.4f));
+    static_cast<void> (engine.setParameterValue ("hostTempoHz", static_cast<float> (emptyLaneState.tempoBpm / 60.0)));
+    static_cast<void> (engine.setParameterValue ("hostIntensity", 1.0f));
+    static_cast<void> (engine.setParameterValue ("hostBrightness", 1.0f));
+    static_cast<void> (engine.setParameterValue ("hostOrbitPhase", 0.0f));
+
+    const auto emptyLaneEnergy = renderEnergy (engine, input, output, 64);
+    if (emptyLaneEnergy < 0.0 || emptyLaneEnergy > 0.001
+        || engine.getRenderExceptionCount() != 0
+        || engine.getInternalErrorCount() != 0)
+    {
+        std::cerr << "empty-lane render leaked or failed: " << emptyLaneEnergy << '\n';
+        return 18;
     }
 
     return 0;
