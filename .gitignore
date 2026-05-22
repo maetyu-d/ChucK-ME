@@ -1,0 +1,15 @@
+.DS_Store
+
+# Local build products
+build/
+cmake-build-*/
+out/
+
+# CMake/user-local files
+CMakeUserPresets.json
+*.user
+
+# Editor/local noise
+.idea/
+.vscode/
+*.swp
