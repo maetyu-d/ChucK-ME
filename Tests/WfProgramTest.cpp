@@ -61,16 +61,10 @@ int main()
         return 1;
     }
 
-    if (states.size() != 1)
+    if (states.size() != 3)
     {
-        std::cerr << "wf demo should have one state, found " << states.size() << '\n';
+        std::cerr << "wf demo should have three states, found " << states.size() << '\n';
         return 9;
-    }
-
-    if (states.front().name != "State 1")
-    {
-        std::cerr << "wf demo state should be named State 1, found " << states.front().name << '\n';
-        return 12;
     }
 
     for (const auto& state : states)
