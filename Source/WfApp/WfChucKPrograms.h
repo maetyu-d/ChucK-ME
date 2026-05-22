@@ -2,6 +2,7 @@
 
 #include <WeldChucKEngine.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <vector>
@@ -16,13 +17,15 @@ struct LaneSpec
     float volume = 0.2f;
     int pulseTicks = 96;
     int openTicks = 18;
+    bool muted = false;
+    bool solo = false;
 };
 
 struct StateSpec
 {
     juce::String name;
     double tempoBpm = 104.0;
-    std::array<LaneSpec, 5> lanes {};
+    std::vector<LaneSpec> lanes {};
 };
 
 inline std::vector<EmbeddedChucKEngine::ParameterBinding> makeWfParameterBindings()
@@ -273,56 +276,32 @@ inline juce::String buildStateProgram (const StateSpec& state)
     program << "Gain master => dac;\n";
     program << "0.0 => master.gain;\n\n";
 
+    const auto hasSoloLane = std::any_of (state.lanes.begin(), state.lanes.end(), [] (const LaneSpec& lane) { return lane.solo; });
+
+    auto effectiveLane = [&] (const LaneSpec& lane)
+    {
+        auto copy = lane;
+
+        if (copy.muted || (hasSoloLane && ! copy.solo))
+            copy.volume = 0.0f;
+
+        return copy;
+    };
+
     for (int i = 0; i < static_cast<int> (state.lanes.size()); ++i)
-        appendLaneDeclaration (program, state.lanes[static_cast<size_t> (i)], i);
+        appendLaneDeclaration (program, effectiveLane (state.lanes[static_cast<size_t> (i)]), i);
 
     program << "0 => int tick;\n";
     program << "0.0 => float stepPhase;\n";
-    program << "0.0 => float laneLevel0;\n";
-    program << "0.0 => float laneLevel1;\n";
-    program << "0.0 => float laneLevel2;\n";
-    program << "0.0 => float laneLevel3;\n";
-    program << "0.0 => float laneLevel4;\n\n";
-    program << "0.0 => float laneFreq0;\n";
-    program << "0.0 => float laneFreq1;\n";
-    program << "0.0 => float laneFreq2;\n";
-    program << "0.0 => float laneFreq3;\n";
-    program << "0.0 => float laneFreq4;\n\n";
-    program << "0.0 => float laneTarget0;\n";
-    program << "0.0 => float laneTarget1;\n";
-    program << "0.0 => float laneTarget2;\n";
-    program << "0.0 => float laneTarget3;\n";
-    program << "0.0 => float laneTarget4;\n\n";
-    program << "0.0 => float kickLevel0;\n";
-    program << "0.0 => float kickLevel1;\n";
-    program << "0.0 => float kickLevel2;\n";
-    program << "0.0 => float kickLevel3;\n";
-    program << "0.0 => float kickLevel4;\n";
-    program << "0.0 => float kickClick0;\n";
-    program << "0.0 => float kickClick1;\n";
-    program << "0.0 => float kickClick2;\n";
-    program << "0.0 => float kickClick3;\n";
-    program << "0.0 => float kickClick4;\n";
-    program << "0.0 => float snareLevel0;\n";
-    program << "0.0 => float snareLevel1;\n";
-    program << "0.0 => float snareLevel2;\n";
-    program << "0.0 => float snareLevel3;\n";
-    program << "0.0 => float snareLevel4;\n";
-    program << "0.0 => float snareSnap0;\n";
-    program << "0.0 => float snareSnap1;\n";
-    program << "0.0 => float snareSnap2;\n";
-    program << "0.0 => float snareSnap3;\n";
-    program << "0.0 => float snareSnap4;\n";
-    program << "0.0 => float snareClap0;\n";
-    program << "0.0 => float snareClap1;\n";
-    program << "0.0 => float snareClap2;\n";
-    program << "0.0 => float snareClap3;\n";
-    program << "0.0 => float snareClap4;\n";
-    program << "0.0 => float hatLevel0;\n";
-    program << "0.0 => float hatLevel1;\n";
-    program << "0.0 => float hatLevel2;\n";
-    program << "0.0 => float hatLevel3;\n";
-    program << "0.0 => float hatLevel4;\n\n";
+
+    for (const auto name : { "laneLevel", "laneFreq", "laneTarget", "kickLevel", "kickClick", "snareLevel", "snareSnap", "snareClap", "hatLevel" })
+    {
+        for (int i = 0; i < static_cast<int> (state.lanes.size()); ++i)
+            program << "0.0 => float " << name << i << ";\n";
+
+        program << "\n";
+    }
+
     program << "0.0 => float smoothedMaster;\n\n";
     program << "while (true)\n";
     program << "{\n";
@@ -343,7 +322,7 @@ inline juce::String buildStateProgram (const StateSpec& state)
     program << "    }\n\n";
 
     for (int i = 0; i < static_cast<int> (state.lanes.size()); ++i)
-        appendLaneControl (program, state.lanes[static_cast<size_t> (i)], i);
+        appendLaneControl (program, effectiveLane (state.lanes[static_cast<size_t> (i)]), i);
 
     program << "    5::ms => now;\n";
     program << "}\n";

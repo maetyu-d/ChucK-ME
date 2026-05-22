@@ -20,6 +20,7 @@ constexpr int maxHostChannels = 16;
 constexpr int fallbackBlockSize = 4096;
 constexpr int engineOutputChannels = 2;
 constexpr int maxTopLevelStates = 16;
+constexpr int maxTrackLanes = 8;
 
 juce::Colour ink() { return juce::Colour (0xffeef3ee); }
 juce::Colour mutedInk() { return juce::Colour (0xff9da8a2); }
@@ -584,6 +585,24 @@ public:
         styleLabel (laneCodeHeader, 0.82f);
         addAndMakeVisible (laneCodeHeader);
 
+        setupTextEditor (trackNameEditor, "Track name");
+        trackNameEditor.onTextChange = [this] { applyTrackNameEdit(); };
+
+        setupTextEditor (laneNameEditor, "Lane name");
+        laneNameEditor.onTextChange = [this] { applyLaneNameEdit(); };
+
+        for (const auto role : { "drum", "bass", "arp", "chord", "air", "snare", "pulse" })
+            laneRoleBox.addItem (role, laneRoleBox.getNumItems() + 1);
+
+        styleComboBox (laneRoleBox);
+        laneRoleBox.onChange = [this] { applyLaneRoleEdit(); };
+        addAndMakeVisible (laneRoleBox);
+
+        setupButton (muteLaneButton, "Mute", coral(), [this] { toggleSelectedLaneMute(); });
+        setupButton (soloLaneButton, "Solo", amber(), [this] { toggleSelectedLaneSolo(); });
+        setupButton (duplicateLaneButton, "Duplicate", blue(), [this] { duplicateSelectedLane(); });
+        setupButton (deleteLaneButton, "Delete", coral(), [this] { deleteSelectedLane(); });
+
         laneCodeEditor.setMultiLine (true);
         laneCodeEditor.setReturnKeyStartsNewLine (true);
         laneCodeEditor.setReadOnly (true);
@@ -758,6 +777,19 @@ public:
         auto right = area.removeFromRight (260);
         area.removeFromRight (18);
 
+        trackNameEditor.setBounds (codePane.removeFromTop (28));
+        codePane.removeFromTop (6);
+        laneNameEditor.setBounds (codePane.removeFromTop (28));
+        codePane.removeFromTop (6);
+        auto laneEditRow = codePane.removeFromTop (30);
+        laneRoleBox.setBounds (laneEditRow.removeFromLeft (110).reduced (0, 2));
+        muteLaneButton.setBounds (laneEditRow.removeFromLeft (72).reduced (6, 2));
+        soloLaneButton.setBounds (laneEditRow.removeFromLeft (72).reduced (6, 2));
+        codePane.removeFromTop (4);
+        auto laneActionRow = codePane.removeFromTop (30);
+        duplicateLaneButton.setBounds (laneActionRow.removeFromLeft (112).reduced (0, 2));
+        deleteLaneButton.setBounds (laneActionRow.removeFromLeft (92).reduced (8, 2));
+        codePane.removeFromTop (10);
         laneCodeHeader.setBounds (codePane.removeFromTop (24));
         laneCodeEditor.setBounds (codePane);
         orbitCanvas.setBounds (area);
@@ -778,7 +810,7 @@ public:
         laneHeader.setBounds (right.removeFromTop (28));
 
         for (auto& button : laneButtons)
-            button.setBounds (right.removeFromTop (34).reduced (0, 3));
+            button.setBounds (right.removeFromTop (25).reduced (0, 2));
 
         controls.removeFromTop (8);
         auto transport = controls.removeFromTop (42);
@@ -812,6 +844,18 @@ private:
         slider.setValue (value, juce::dontSendNotification);
         styleSlider (slider, colour);
         addAndMakeVisible (slider);
+    }
+
+    void setupTextEditor (juce::TextEditor& editor, const juce::String& emptyText)
+    {
+        editor.setTextToShowWhenEmpty (emptyText, mutedInk().withAlpha (0.66f));
+        editor.setColour (juce::TextEditor::backgroundColourId, panelSoft());
+        editor.setColour (juce::TextEditor::textColourId, ink());
+        editor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.22f));
+        editor.setColour (juce::TextEditor::focusedOutlineColourId, blue().withAlpha (0.72f));
+        editor.setColour (juce::TextEditor::highlightColourId, blue().withAlpha (0.24f));
+        editor.setFont (juce::FontOptions (13.0f));
+        addAndMakeVisible (editor);
     }
 
     void selectViewedTopLevelState (int index)
@@ -1063,7 +1107,15 @@ private:
 
     void selectLane (int index)
     {
-        selectedLane = juce::jlimit (0, static_cast<int> (laneButtons.size()) - 1, index);
+        const auto* viewedTracks = getViewedTracks();
+        if (viewedTracks == nullptr || viewedTracks->empty())
+            return;
+
+        const auto& track = (*viewedTracks)[static_cast<size_t> (selectedState)];
+        if (track.lanes.empty())
+            return;
+
+        selectedLane = juce::jlimit (0, static_cast<int> (track.lanes.size()) - 1, index);
         refreshLabels();
     }
 
@@ -1099,26 +1151,43 @@ private:
                 button.setEnabled (false);
             }
 
+            syncEditControls (nullptr, nullptr);
             laneCodeEditor.setText ("// Click New to create this state.", juce::dontSendNotification);
             orbitCanvas.setState (nullptr, 0, orbitPhase, running);
             return;
         }
 
-        for (auto& button : laneButtons)
-            button.setEnabled (true);
-
         selectedState = juce::jlimit (0, static_cast<int> (viewedTracks->size()) - 1, selectedState);
         const auto& state = (*viewedTracks)[static_cast<size_t> (selectedState)];
         selectedLabel.setText (state.name, juce::dontSendNotification);
+        selectedLane = juce::jlimit (0, juce::jmax (0, static_cast<int> (state.lanes.size()) - 1), selectedLane);
 
         for (int i = 0; i < static_cast<int> (laneButtons.size()); ++i)
         {
-            const auto& lane = state.lanes[static_cast<size_t> (i)];
             auto& button = laneButtons[static_cast<size_t> (i)];
-            button.setButtonText (juce::String (i + 1) + "  " + lane.name + " / " + lane.role);
-            button.setToggleState (selectedLane == i, juce::dontSendNotification);
+
+            if (i < static_cast<int> (state.lanes.size()))
+            {
+                const auto& lane = state.lanes[static_cast<size_t> (i)];
+                juce::String prefix;
+                if (lane.solo)
+                    prefix << "S ";
+                else if (lane.muted)
+                    prefix << "M ";
+
+                button.setButtonText (juce::String (i + 1) + "  " + prefix + lane.name + " / " + lane.role);
+                button.setEnabled (true);
+                button.setToggleState (selectedLane == i, juce::dontSendNotification);
+            }
+            else
+            {
+                button.setButtonText ("");
+                button.setEnabled (false);
+                button.setToggleState (false, juce::dontSendNotification);
+            }
         }
 
+        syncEditControls (&state, state.lanes.empty() ? nullptr : &state.lanes[static_cast<size_t> (selectedLane)]);
         updateLaneCode();
         orbitCanvas.setState (viewedTracks, selectedState, orbitPhase, running);
     }
@@ -1132,6 +1201,127 @@ private:
         const auto& state = (*viewedTracks)[static_cast<size_t> (selectedState)];
         const auto laneIndex = static_cast<size_t> (juce::jlimit (0, static_cast<int> (state.lanes.size()) - 1, selectedLane));
         laneCodeEditor.setText (makeLaneCode (state.lanes[laneIndex]), juce::dontSendNotification);
+    }
+
+    void syncEditControls (const Wf::StateSpec* track, const Wf::LaneSpec* lane)
+    {
+        juce::ScopedValueSetter<bool> guard (suppressEditCallbacks, true);
+
+        const auto hasTrack = track != nullptr;
+        const auto hasLane = lane != nullptr;
+
+        trackNameEditor.setEnabled (hasTrack);
+        laneNameEditor.setEnabled (hasLane);
+        laneRoleBox.setEnabled (hasLane);
+        muteLaneButton.setEnabled (hasLane);
+        soloLaneButton.setEnabled (hasLane);
+        duplicateLaneButton.setEnabled (hasLane && track != nullptr && static_cast<int> (track->lanes.size()) < maxTrackLanes);
+        deleteLaneButton.setEnabled (hasLane && track != nullptr && track->lanes.size() > 1);
+
+        if (! trackNameEditor.hasKeyboardFocus (true))
+            trackNameEditor.setText (hasTrack ? track->name : juce::String(), juce::dontSendNotification);
+
+        if (! laneNameEditor.hasKeyboardFocus (true))
+            laneNameEditor.setText (hasLane ? lane->name : juce::String(), juce::dontSendNotification);
+
+        if (hasLane)
+        {
+            laneRoleBox.setText (lane->role, juce::dontSendNotification);
+            muteLaneButton.setToggleState (lane->muted, juce::dontSendNotification);
+            soloLaneButton.setToggleState (lane->solo, juce::dontSendNotification);
+        }
+        else
+        {
+            laneRoleBox.setSelectedId (0, juce::dontSendNotification);
+            muteLaneButton.setToggleState (false, juce::dontSendNotification);
+            soloLaneButton.setToggleState (false, juce::dontSendNotification);
+        }
+    }
+
+    void applyTrackNameEdit()
+    {
+        if (suppressEditCallbacks)
+            return;
+
+        if (auto* track = getSelectedViewedTrack())
+        {
+            track->name = trackNameEditor.getText().trim().isNotEmpty() ? trackNameEditor.getText().trim() : "Track";
+            refreshAfterStructureEdit (false);
+        }
+    }
+
+    void applyLaneNameEdit()
+    {
+        if (suppressEditCallbacks)
+            return;
+
+        if (auto* lane = getSelectedViewedLane())
+        {
+            lane->name = laneNameEditor.getText().trim().isNotEmpty() ? laneNameEditor.getText().trim() : "Lane";
+            refreshAfterStructureEdit (false);
+        }
+    }
+
+    void applyLaneRoleEdit()
+    {
+        if (suppressEditCallbacks)
+            return;
+
+        if (auto* lane = getSelectedViewedLane())
+        {
+            lane->role = laneRoleBox.getText();
+            refreshAfterStructureEdit (true);
+        }
+    }
+
+    void toggleSelectedLaneMute()
+    {
+        if (auto* lane = getSelectedViewedLane())
+        {
+            lane->muted = ! lane->muted;
+            refreshAfterStructureEdit (true);
+        }
+    }
+
+    void toggleSelectedLaneSolo()
+    {
+        if (auto* lane = getSelectedViewedLane())
+        {
+            lane->solo = ! lane->solo;
+            refreshAfterStructureEdit (true);
+        }
+    }
+
+    void duplicateSelectedLane()
+    {
+        auto* track = getSelectedViewedTrack();
+        if (track == nullptr || selectedLane < 0 || selectedLane >= static_cast<int> (track->lanes.size()) || static_cast<int> (track->lanes.size()) >= maxTrackLanes)
+            return;
+
+        auto copy = track->lanes[static_cast<size_t> (selectedLane)];
+        copy.name = copy.name + " copy";
+        track->lanes.insert (track->lanes.begin() + selectedLane + 1, copy);
+        ++selectedLane;
+        refreshAfterStructureEdit (true);
+    }
+
+    void deleteSelectedLane()
+    {
+        auto* track = getSelectedViewedTrack();
+        if (track == nullptr || track->lanes.size() <= 1 || selectedLane < 0 || selectedLane >= static_cast<int> (track->lanes.size()))
+            return;
+
+        track->lanes.erase (track->lanes.begin() + selectedLane);
+        selectedLane = juce::jlimit (0, static_cast<int> (track->lanes.size()) - 1, selectedLane);
+        refreshAfterStructureEdit (true);
+    }
+
+    void refreshAfterStructureEdit (bool reloadAudioIfNeeded)
+    {
+        if (reloadAudioIfNeeded && viewedTopLevelState == performingTopLevelState && selectedState == performingTrackIndex)
+            loadSelectedContentForCurrentState();
+
+        refreshLabels();
     }
 
     static juce::String makeLaneCode (const Wf::LaneSpec& lane)
@@ -1291,6 +1481,34 @@ private:
         return &*topLevelStates[static_cast<size_t> (viewedTopLevelState)];
     }
 
+    std::vector<Wf::StateSpec>* getViewedTracks()
+    {
+        if (! isTopLevelStatePopulated (viewedTopLevelState))
+            return nullptr;
+
+        return &*topLevelStates[static_cast<size_t> (viewedTopLevelState)];
+    }
+
+    Wf::StateSpec* getSelectedViewedTrack()
+    {
+        auto* viewedTracks = getViewedTracks();
+        if (viewedTracks == nullptr || viewedTracks->empty())
+            return nullptr;
+
+        selectedState = juce::jlimit (0, static_cast<int> (viewedTracks->size()) - 1, selectedState);
+        return &(*viewedTracks)[static_cast<size_t> (selectedState)];
+    }
+
+    Wf::LaneSpec* getSelectedViewedLane()
+    {
+        auto* track = getSelectedViewedTrack();
+        if (track == nullptr || track->lanes.empty())
+            return nullptr;
+
+        selectedLane = juce::jlimit (0, static_cast<int> (track->lanes.size()) - 1, selectedLane);
+        return &track->lanes[static_cast<size_t> (selectedLane)];
+    }
+
     const std::vector<Wf::StateSpec>* getPerformingTracks() const
     {
         if (! isTopLevelStatePopulated (performingTopLevelState))
@@ -1368,7 +1586,7 @@ private:
     juce::Label laneCodeHeader;
     juce::Label selectedLabel;
     juce::Label laneHeader;
-    std::array<juce::TextButton, 5> laneButtons;
+    std::array<juce::TextButton, maxTrackLanes> laneButtons;
 
     OrbitCanvas orbitCanvas;
     std::array<juce::TextButton, maxTopLevelStates> stateButtons;
@@ -1379,6 +1597,10 @@ private:
     juce::TextButton previousButton;
     juce::TextButton nextButton;
     juce::TextButton shuffleButton;
+    juce::TextButton muteLaneButton;
+    juce::TextButton soloLaneButton;
+    juce::TextButton duplicateLaneButton;
+    juce::TextButton deleteLaneButton;
     juce::Slider gainSlider;
     juce::Slider rateSlider;
     juce::Slider intensitySlider;
@@ -1386,8 +1608,11 @@ private:
     juce::Slider stateTempoSlider;
     juce::ComboBox timeSigNumeratorBox;
     juce::ComboBox timeSigDenominatorBox;
+    juce::ComboBox laneRoleBox;
     juce::TextEditor globalScriptEditor;
     juce::TextEditor laneCodeEditor;
+    juce::TextEditor trackNameEditor;
+    juce::TextEditor laneNameEditor;
     std::array<float, maxTopLevelStates> topLevelTemposBpm
     {
         88.0f, 44.0f, 88.0f, 88.0f,
@@ -1421,6 +1646,7 @@ private:
     bool scriptRunning = false;
     bool scriptShouldStopAtEnd = false;
     bool suppressStateControlCallbacks = false;
+    bool suppressEditCallbacks = false;
     float orbitPhase = 0.0f;
     bool running = true;
     double lastTimerMs = 0.0;
