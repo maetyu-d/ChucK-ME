@@ -24,6 +24,28 @@ double bufferEnergy (const juce::AudioBuffer<float>& buffer)
 
     return energy;
 }
+
+double renderEnergy (EmbeddedChucKEngine& engine,
+                     juce::AudioBuffer<float>& input,
+                     juce::AudioBuffer<float>& output,
+                     int blocks)
+{
+    double energy = 0.0;
+
+    for (int block = 0; block < blocks; ++block)
+    {
+        output.clear();
+        engine.process (input, output);
+
+        const auto blockEnergy = bufferEnergy (output);
+        if (blockEnergy < 0.0)
+            return -1.0;
+
+        energy += blockEnergy;
+    }
+
+    return energy;
+}
 }
 
 int main()
@@ -64,13 +86,7 @@ int main()
         static_cast<void> (engine.setParameterValue ("hostBrightness", 0.54f));
         static_cast<void> (engine.setParameterValue ("hostOrbitPhase", static_cast<float> (i) / static_cast<float> (states.size())));
 
-        double energy = 0.0;
-        for (int block = 0; block < 8; ++block)
-        {
-            output.clear();
-            engine.process (input, output);
-            energy += bufferEnergy (output);
-        }
+        const auto energy = renderEnergy (engine, input, output, 96);
 
         if (energy <= 0.0
             || engine.getRenderExceptionCount() != 0
@@ -79,6 +95,31 @@ int main()
             std::cerr << "state render failed: " << states[i].name << '\n';
             return 4;
         }
+    }
+
+    auto drumState = states.front();
+    for (size_t lane = 1; lane < drumState.lanes.size(); ++lane)
+        drumState.lanes[lane].volume = 0.0f;
+
+    if (! engine.loadProgram (Wf::buildStateProgram (drumState), bindings))
+    {
+        std::cerr << "drum-only program failed: " << engine.getLastError() << '\n';
+        return 5;
+    }
+
+    static_cast<void> (engine.setParameterValue ("hostMasterGain", 0.28f));
+    static_cast<void> (engine.setParameterValue ("hostTempoHz", static_cast<float> (drumState.tempoBpm / 60.0)));
+    static_cast<void> (engine.setParameterValue ("hostIntensity", 0.78f));
+    static_cast<void> (engine.setParameterValue ("hostBrightness", 0.56f));
+    static_cast<void> (engine.setParameterValue ("hostOrbitPhase", 0.2f));
+
+    const auto drumEnergy = renderEnergy (engine, input, output, 160);
+    if (drumEnergy < 12.0
+        || engine.getRenderExceptionCount() != 0
+        || engine.getInternalErrorCount() != 0)
+    {
+        std::cerr << "drum render too quiet or unstable: " << drumEnergy << '\n';
+        return 6;
     }
 
     return 0;

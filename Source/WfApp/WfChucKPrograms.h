@@ -138,10 +138,16 @@ inline void appendLaneDeclaration (juce::String& program, const LaneSpec& lane, 
     else if (lane.role == "drum")
     {
         program << "SinOsc lane" << suffix << "Kick => Gain lane" << suffix << "KickGain => master;\n";
-        program << "TriOsc lane" << suffix << "Snare => Gain lane" << suffix << "SnareGain => master;\n";
-        program << "TriOsc lane" << suffix << "Hat => Gain lane" << suffix << "HatGain => master;\n";
+        program << "SinOsc lane" << suffix << "Sub => Gain lane" << suffix << "SubGain => master;\n";
+        program << "TriOsc lane" << suffix << "Click => Gain lane" << suffix << "ClickGain => master;\n";
+        program << "TriOsc lane" << suffix << "SnareTone => Gain lane" << suffix << "SnareToneGain => master;\n";
+        program << "Noise lane" << suffix << "SnareNoise => Gain lane" << suffix << "SnareNoiseGain => master;\n";
+        program << "Noise lane" << suffix << "HatNoise => Gain lane" << suffix << "HatGain => master;\n";
         program << "0.0 => lane" << suffix << "KickGain.gain;\n";
-        program << "0.0 => lane" << suffix << "SnareGain.gain;\n";
+        program << "0.0 => lane" << suffix << "SubGain.gain;\n";
+        program << "0.0 => lane" << suffix << "ClickGain.gain;\n";
+        program << "0.0 => lane" << suffix << "SnareToneGain.gain;\n";
+        program << "0.0 => lane" << suffix << "SnareNoiseGain.gain;\n";
         program << "0.0 => lane" << suffix << "HatGain.gain;\n\n";
         return;
     }
@@ -171,22 +177,33 @@ inline void appendLaneControl (juce::String& program, const LaneSpec& lane, int 
 
     if (lane.role == "drum")
     {
-        program << "    tick % 16 => int drumStep" << suffix << ";\n";
-        program << "    0.0 => float kickEnv" << suffix << ";\n";
-        program << "    0.0 => float snareEnv" << suffix << ";\n";
-        program << "    0.0 => float hatEnv" << suffix << ";\n";
-        program << "    if (drumStep" << suffix << " == 0 || drumStep" << suffix << " == 7 || drumStep" << suffix << " == 10)\n";
-        program << "        (1.0 - stepPhase) * (1.0 - stepPhase) => kickEnv" << suffix << ";\n";
-        program << "    if (drumStep" << suffix << " == 4 || drumStep" << suffix << " == 12)\n";
-        program << "        (1.0 - stepPhase) * 0.52 => snareEnv" << suffix << ";\n";
-        program << "    if (drumStep" << suffix << " == 2 || drumStep" << suffix << " == 6 || drumStep" << suffix << " == 8 || drumStep" << suffix << " == 14)\n";
-        program << "        (1.0 - stepPhase) * 0.32 => hatEnv" << suffix << ";\n";
-        program << "    " << chuckFloat (lane.baseHz) << " + (kickEnv" << suffix << " * 82.0) => lane" << suffix << "Kick.freq;\n";
-        program << "    176.0 + (snareEnv" << suffix << " * 62.0) => lane" << suffix << "Snare.freq;\n";
-        program << "    6800.0 + (bright * 2200.0) => lane" << suffix << "Hat.freq;\n";
-        program << "    " << volume << " * (0.52 + intensity * 0.62) * kickEnv" << suffix << " => lane" << suffix << "KickGain.gain;\n";
-        program << "    " << volume << " * 0.42 * snareEnv" << suffix << " => lane" << suffix << "SnareGain.gain;\n";
-        program << "    " << volume << " * 0.18 * hatEnv" << suffix << " => lane" << suffix << "HatGain.gain;\n\n";
+        program << "    if (didTick == 1)\n";
+        program << "    {\n";
+        program << "        tick % 16 => int drumStep" << suffix << ";\n";
+        program << "        if (drumStep" << suffix << " == 0 || drumStep" << suffix << " == 3 || drumStep" << suffix << " == 7 || drumStep" << suffix << " == 8 || drumStep" << suffix << " == 10 || drumStep" << suffix << " == 14)\n";
+        program << "        {\n";
+        program << "            Math.min(1.0, kickLevel" << suffix << " + 1.0) => kickLevel" << suffix << ";\n";
+        program << "            1.0 => kickClick" << suffix << ";\n";
+        program << "        }\n";
+        program << "        if (drumStep" << suffix << " == 4 || drumStep" << suffix << " == 12)\n";
+        program << "            1.0 => snareLevel" << suffix << ";\n";
+        program << "        if (drumStep" << suffix << " == 2 || drumStep" << suffix << " == 6 || drumStep" << suffix << " == 8 || drumStep" << suffix << " == 11 || drumStep" << suffix << " == 14 || drumStep" << suffix << " == 15)\n";
+        program << "            1.0 => hatLevel" << suffix << ";\n";
+        program << "    }\n";
+        program << "    kickLevel" << suffix << " * 0.968 => kickLevel" << suffix << ";\n";
+        program << "    kickClick" << suffix << " * 0.36 => kickClick" << suffix << ";\n";
+        program << "    snareLevel" << suffix << " * 0.74 => snareLevel" << suffix << ";\n";
+        program << "    hatLevel" << suffix << " * 0.48 => hatLevel" << suffix << ";\n";
+        program << "    " << chuckFloat (lane.baseHz) << " + (kickLevel" << suffix << " * 18.0) + (kickClick" << suffix << " * 122.0) => lane" << suffix << "Kick.freq;\n";
+        program << "    Math.max(28.0, " << chuckFloat (lane.baseHz) << " * 0.50) => lane" << suffix << "Sub.freq;\n";
+        program << "    920.0 + (bright * 2400.0) => lane" << suffix << "Click.freq;\n";
+        program << "    178.0 + (snareLevel" << suffix << " * 74.0) => lane" << suffix << "SnareTone.freq;\n";
+        program << "    " << volume << " * (0.96 + intensity * 0.92) * kickLevel" << suffix << " => lane" << suffix << "KickGain.gain;\n";
+        program << "    " << volume << " * (0.52 + intensity * 0.42) * kickLevel" << suffix << " => lane" << suffix << "SubGain.gain;\n";
+        program << "    " << volume << " * (0.30 + bright * 0.28) * kickClick" << suffix << " => lane" << suffix << "ClickGain.gain;\n";
+        program << "    " << volume << " * 0.26 * snareLevel" << suffix << " => lane" << suffix << "SnareToneGain.gain;\n";
+        program << "    " << volume << " * (0.16 + bright * 0.16) * snareLevel" << suffix << " => lane" << suffix << "SnareNoiseGain.gain;\n";
+        program << "    " << volume << " * (0.045 + bright * 0.065) * hatLevel" << suffix << " => lane" << suffix << "HatGain.gain;\n\n";
         return;
     }
 
@@ -251,9 +268,30 @@ inline juce::String buildStateProgram (const StateSpec& state)
     program << "0.0 => float laneTarget2;\n";
     program << "0.0 => float laneTarget3;\n";
     program << "0.0 => float laneTarget4;\n\n";
+    program << "0.0 => float kickLevel0;\n";
+    program << "0.0 => float kickLevel1;\n";
+    program << "0.0 => float kickLevel2;\n";
+    program << "0.0 => float kickLevel3;\n";
+    program << "0.0 => float kickLevel4;\n";
+    program << "0.0 => float kickClick0;\n";
+    program << "0.0 => float kickClick1;\n";
+    program << "0.0 => float kickClick2;\n";
+    program << "0.0 => float kickClick3;\n";
+    program << "0.0 => float kickClick4;\n";
+    program << "0.0 => float snareLevel0;\n";
+    program << "0.0 => float snareLevel1;\n";
+    program << "0.0 => float snareLevel2;\n";
+    program << "0.0 => float snareLevel3;\n";
+    program << "0.0 => float snareLevel4;\n";
+    program << "0.0 => float hatLevel0;\n";
+    program << "0.0 => float hatLevel1;\n";
+    program << "0.0 => float hatLevel2;\n";
+    program << "0.0 => float hatLevel3;\n";
+    program << "0.0 => float hatLevel4;\n\n";
     program << "0.0 => float smoothedMaster;\n\n";
     program << "while (true)\n";
     program << "{\n";
+    program << "    0 => int didTick;\n";
     program << "    Math.max(0.0, Math.min(hostMasterGain, 0.8)) => float masterLevel;\n";
     program << "    Math.max(0.2, Math.min(hostTempoHz, 6.0)) => float tempo;\n";
     program << "    Math.max(0.0, Math.min(hostIntensity, 1.0)) => float intensity;\n";
@@ -266,6 +304,7 @@ inline juce::String buildStateProgram (const StateSpec& state)
     program << "    {\n";
     program << "        tick + 1 => tick;\n";
     program << "        stepPhase - 1.0 => stepPhase;\n";
+    program << "        1 => didTick;\n";
     program << "    }\n\n";
 
     for (int i = 0; i < static_cast<int> (state.lanes.size()); ++i)
