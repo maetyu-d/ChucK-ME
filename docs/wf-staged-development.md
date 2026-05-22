@@ -3,7 +3,7 @@
 This is a new ChucK-first instrument/app built from scratch with the same broad concepts as the earlier `of::` work:
 
 - orbiting states
-- per-state tracks, with lanes inside each track
+- per-state lanes
 - generated live synthesis
 - state transitions as musical structure
 - project/session data later
@@ -17,9 +17,9 @@ Current scope:
 
 - A new JUCE GUI app target: `wf`
 - Fresh orbit/state canvas
-- Six original starter states
-- Five tracks per state, with two generated ChucK lanes per track
-- Basic transport: play/stop, previous, next, pick
+- Five original starter states
+- Five generated ChucK lanes per state
+- Basic transport: play/pause, previous, next, pick
 - Live controls for gain, rate, density, and colour
 - Embedded ChucK rendering through `WeldChucK::Engine`
 - Program-generation smoke test for every starter state

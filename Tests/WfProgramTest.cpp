@@ -61,12 +61,6 @@ int main()
         return 1;
     }
 
-    if (states.size() < 4)
-    {
-        std::cerr << "wf demo needs a broad set of states, found " << states.size() << '\n';
-        return 9;
-    }
-
     EmbeddedChucKEngine engine;
     if (! engine.prepare (48000.0, blockSize, 0, 2))
     {
@@ -104,10 +98,8 @@ int main()
     }
 
     auto drumState = states.front();
-    for (size_t track = 0; track < drumState.tracks.size(); ++track)
-        for (size_t lane = 0; lane < drumState.tracks[track].lanes.size(); ++lane)
-            if (track != 0 || lane != 0)
-                drumState.tracks[track].lanes[lane].volume = 0.0f;
+    for (size_t lane = 1; lane < drumState.lanes.size(); ++lane)
+        drumState.lanes[lane].volume = 0.0f;
 
     if (! engine.loadProgram (Wf::buildStateProgram (drumState), bindings))
     {
@@ -131,8 +123,8 @@ int main()
     }
 
     auto snareState = drumState;
-    snareState.tracks[0].lanes[0].name = "snare check";
-    snareState.tracks[0].lanes[0].role = "snare";
+    snareState.lanes[0].name = "snare check";
+    snareState.lanes[0].role = "snare";
 
     if (! engine.loadProgram (Wf::buildStateProgram (snareState), bindings))
     {

@@ -476,7 +476,7 @@ public:
         setupSlider (brightnessSlider, "Colour", 0.0, 1.0, 0.48, blue());
 
         addAndMakeVisible (laneHeader);
-        laneHeader.setText ("tracks", juce::dontSendNotification);
+        laneHeader.setText ("lanes", juce::dontSendNotification);
         laneHeader.setFont (juce::FontOptions (14.0f, juce::Font::bold));
         styleLabel (laneHeader, 0.78f);
 
@@ -610,10 +610,8 @@ private:
 
         for (int i = 0; i < static_cast<int> (laneLabels.size()); ++i)
         {
-            const auto& track = state.tracks[static_cast<size_t> (i)];
-            laneLabels[static_cast<size_t> (i)].setText (juce::String (i + 1) + "  " + track.name
-                                                         + " / " + track.lanes[0].role
-                                                         + " + " + track.lanes[1].role,
+            const auto& lane = state.lanes[static_cast<size_t> (i)];
+            laneLabels[static_cast<size_t> (i)].setText (juce::String (i + 1) + "  " + lane.name + " / " + lane.role,
                                                          juce::dontSendNotification);
         }
 

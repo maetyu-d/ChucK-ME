@@ -18,17 +18,11 @@ struct LaneSpec
     int openTicks = 18;
 };
 
-struct TrackSpec
-{
-    juce::String name;
-    std::array<LaneSpec, 2> lanes {};
-};
-
 struct StateSpec
 {
     juce::String name;
     double tempoBpm = 104.0;
-    std::array<TrackSpec, 5> tracks {};
+    std::array<LaneSpec, 5> lanes {};
 };
 
 inline std::vector<EmbeddedChucKEngine::ParameterBinding> makeWfParameterBindings()
@@ -48,46 +42,39 @@ inline std::vector<StateSpec> makeDefaultStates()
     return
     {
         { "Pocket City", 88.0, {{
-            { "Drums", {{ { "808 street", "drum", 45.0f, 0.58f, 16, 1 }, { "Hat mist", "air", 1567.98f, 0.035f, 6, 2 } }} },
-            { "Bass", {{ { "Pocket bass", "bass", 65.41f, 0.34f, 2, 1 }, { "Bass glint", "arp", 130.81f, 0.10f, 4, 1 } }} },
-            { "Arp", {{ { "Signal arp", "arp", 261.63f, 0.24f, 1, 1 }, { "Signal reply", "arp", 523.25f, 0.12f, 2, 1 } }} },
-            { "Chords", {{ { "Glass chorus", "chord", 130.81f, 0.20f, 8, 5 }, { "Glass edge", "air", 1046.50f, 0.045f, 10, 4 } }} },
-            { "Atmosphere", {{ { "Static halo", "air", 1046.50f, 0.07f, 12, 6 }, { "Distant bell", "arp", 783.99f, 0.055f, 6, 2 } }} }
+            { "808 street", "drum", 45.0f, 0.58f, 16, 1 },
+            { "Pocket bass", "bass", 65.41f, 0.34f, 2, 1 },
+            { "Signal arp", "arp", 261.63f, 0.24f, 1, 1 },
+            { "Glass chorus", "chord", 130.81f, 0.20f, 8, 5 },
+            { "Static halo", "air", 1046.50f, 0.07f, 12, 6 }
         }}},
         { "Chrome Avenue", 92.0, {{
-            { "Drums", {{ { "808 avenue", "drum", 46.5f, 0.60f, 16, 1 }, { "Curb hiss", "air", 1760.00f, 0.035f, 6, 2 } }} },
-            { "Bass", {{ { "Rubber motor", "bass", 73.42f, 0.35f, 2, 1 }, { "Motor tick", "arp", 146.83f, 0.10f, 4, 1 } }} },
-            { "Arp", {{ { "Window arp", "arp", 293.66f, 0.25f, 1, 1 }, { "Window ghost", "arp", 587.33f, 0.12f, 2, 1 } }} },
-            { "Chords", {{ { "Warm display", "chord", 146.83f, 0.21f, 8, 5 }, { "Display shine", "air", 1174.66f, 0.045f, 10, 4 } }} },
-            { "Atmosphere", {{ { "Thin skyline", "air", 1174.66f, 0.07f, 12, 6 }, { "Roofline", "arp", 880.00f, 0.052f, 6, 2 } }} }
+            { "808 avenue", "drum", 46.5f, 0.60f, 16, 1 },
+            { "Rubber motor", "bass", 73.42f, 0.35f, 2, 1 },
+            { "Window arp", "arp", 293.66f, 0.25f, 1, 1 },
+            { "Warm display", "chord", 146.83f, 0.21f, 8, 5 },
+            { "Thin skyline", "air", 1174.66f, 0.07f, 12, 6 }
         }}},
         { "Battery Love", 96.0, {{
-            { "Drums", {{ { "808 relay", "drum", 43.8f, 0.62f, 16, 1 }, { "Relay grit", "air", 1975.53f, 0.035f, 6, 2 } }} },
-            { "Bass", {{ { "Battery bass", "bass", 82.41f, 0.36f, 2, 1 }, { "Battery tick", "arp", 164.81f, 0.11f, 4, 1 } }} },
-            { "Arp", {{ { "Simple arp", "arp", 329.63f, 0.27f, 1, 1 }, { "Simple answer", "arp", 659.25f, 0.13f, 2, 1 } }} },
-            { "Chords", {{ { "Major lights", "chord", 164.81f, 0.22f, 8, 5 }, { "Light fizz", "air", 1318.51f, 0.045f, 10, 4 } }} },
-            { "Atmosphere", {{ { "Soft carrier", "air", 1318.51f, 0.07f, 12, 6 }, { "Carrier ping", "arp", 987.77f, 0.052f, 6, 2 } }} }
+            { "808 relay", "drum", 43.8f, 0.62f, 16, 1 },
+            { "Battery bass", "bass", 82.41f, 0.36f, 2, 1 },
+            { "Simple arp", "arp", 329.63f, 0.27f, 1, 1 },
+            { "Major lights", "chord", 164.81f, 0.22f, 8, 5 },
+            { "Soft carrier", "air", 1318.51f, 0.07f, 12, 6 }
         }}},
         { "Pocket Choir", 84.0, {{
-            { "Drums", {{ { "808 choir", "drum", 44.2f, 0.56f, 16, 1 }, { "Tape hiss", "air", 1480.00f, 0.035f, 6, 2 } }} },
-            { "Bass", {{ { "Round bass", "bass", 61.74f, 0.32f, 2, 1 }, { "Round tick", "arp", 123.47f, 0.095f, 4, 1 } }} },
-            { "Arp", {{ { "Choir arp", "arp", 246.94f, 0.24f, 1, 1 }, { "Choir reply", "arp", 493.88f, 0.12f, 2, 1 } }} },
-            { "Chords", {{ { "Soft buttons", "chord", 123.47f, 0.22f, 8, 5 }, { "Button air", "air", 987.77f, 0.048f, 10, 4 } }} },
-            { "Atmosphere", {{ { "Air tape", "air", 987.77f, 0.07f, 12, 6 }, { "Tape ping", "arp", 740.00f, 0.052f, 6, 2 } }} }
+            { "808 choir", "drum", 44.2f, 0.56f, 16, 1 },
+            { "Round bass", "bass", 61.74f, 0.32f, 2, 1 },
+            { "Choir arp", "arp", 246.94f, 0.24f, 1, 1 },
+            { "Soft buttons", "chord", 123.47f, 0.22f, 8, 5 },
+            { "Air tape", "air", 987.77f, 0.07f, 12, 6 }
         }}},
         { "Neon Postcard", 90.0, {{
-            { "Drums", {{ { "808 postcard", "drum", 45.6f, 0.59f, 16, 1 }, { "Stamp hiss", "air", 1661.22f, 0.035f, 6, 2 } }} },
-            { "Bass", {{ { "Postcard bass", "bass", 69.30f, 0.34f, 2, 1 }, { "Post tick", "arp", 138.59f, 0.10f, 4, 1 } }} },
-            { "Arp", {{ { "Neon arp", "arp", 277.18f, 0.26f, 1, 1 }, { "Neon answer", "arp", 554.37f, 0.12f, 2, 1 } }} },
-            { "Chords", {{ { "Blue chord", "chord", 138.59f, 0.21f, 8, 5 }, { "Blue edge", "air", 1108.73f, 0.045f, 10, 4 } }} },
-            { "Atmosphere", {{ { "Tape star", "air", 1108.73f, 0.07f, 12, 6 }, { "Star ping", "arp", 830.61f, 0.052f, 6, 2 } }} }
-        }}},
-        { "Metro Bloom", 86.0, {{
-            { "Drums", {{ { "808 bloom", "drum", 42.9f, 0.61f, 16, 1 }, { "Rail mist", "air", 1396.91f, 0.035f, 6, 2 } }} },
-            { "Bass", {{ { "Metro bass", "bass", 58.27f, 0.33f, 2, 1 }, { "Metro tick", "arp", 116.54f, 0.10f, 4, 1 } }} },
-            { "Arp", {{ { "Platform arp", "arp", 233.08f, 0.25f, 1, 1 }, { "Platform bell", "arp", 466.16f, 0.12f, 2, 1 } }} },
-            { "Chords", {{ { "Ticket chord", "chord", 116.54f, 0.21f, 8, 5 }, { "Ticket air", "air", 932.33f, 0.046f, 10, 4 } }} },
-            { "Atmosphere", {{ { "Tunnel glow", "air", 932.33f, 0.07f, 12, 6 }, { "Departure", "arp", 698.46f, 0.052f, 6, 2 } }} }
+            { "808 postcard", "drum", 45.6f, 0.59f, 16, 1 },
+            { "Postcard bass", "bass", 69.30f, 0.34f, 2, 1 },
+            { "Neon arp", "arp", 277.18f, 0.26f, 1, 1 },
+            { "Blue chord", "chord", 138.59f, 0.21f, 8, 5 },
+            { "Tape star", "air", 1108.73f, 0.07f, 12, 6 }
         }}}
     };
 }
@@ -95,18 +82,6 @@ inline std::vector<StateSpec> makeDefaultStates()
 inline juce::String chuckFloat (float value)
 {
     return juce::String (static_cast<double> (value), 5);
-}
-
-inline std::vector<LaneSpec> flattenLanes (const StateSpec& state)
-{
-    std::vector<LaneSpec> lanes;
-    lanes.reserve (state.tracks.size() * 2);
-
-    for (const auto& track : state.tracks)
-        for (const auto& lane : track.lanes)
-            lanes.push_back (lane);
-
-    return lanes;
 }
 
 inline juce::String chuckInt (int value)
@@ -295,38 +270,59 @@ inline void appendLaneControl (juce::String& program, const LaneSpec& lane, int 
 inline juce::String buildStateProgram (const StateSpec& state)
 {
     juce::String program;
-    const auto lanes = flattenLanes (state);
-
     program << "Gain master => dac;\n";
     program << "0.0 => master.gain;\n\n";
 
-    for (int i = 0; i < static_cast<int> (lanes.size()); ++i)
-        appendLaneDeclaration (program, lanes[static_cast<size_t> (i)], i);
+    for (int i = 0; i < static_cast<int> (state.lanes.size()); ++i)
+        appendLaneDeclaration (program, state.lanes[static_cast<size_t> (i)], i);
 
     program << "0 => int tick;\n";
     program << "0.0 => float stepPhase;\n";
-
-    const std::array<juce::String, 9> laneVariables
-    {
-        "laneLevel",
-        "laneFreq",
-        "laneTarget",
-        "kickLevel",
-        "kickClick",
-        "snareLevel",
-        "snareSnap",
-        "snareClap",
-        "hatLevel"
-    };
-
-    for (const auto& variable : laneVariables)
-    {
-        for (int i = 0; i < static_cast<int> (lanes.size()); ++i)
-            program << "0.0 => float " << variable << i << ";\n";
-
-        program << "\n";
-    }
-
+    program << "0.0 => float laneLevel0;\n";
+    program << "0.0 => float laneLevel1;\n";
+    program << "0.0 => float laneLevel2;\n";
+    program << "0.0 => float laneLevel3;\n";
+    program << "0.0 => float laneLevel4;\n\n";
+    program << "0.0 => float laneFreq0;\n";
+    program << "0.0 => float laneFreq1;\n";
+    program << "0.0 => float laneFreq2;\n";
+    program << "0.0 => float laneFreq3;\n";
+    program << "0.0 => float laneFreq4;\n\n";
+    program << "0.0 => float laneTarget0;\n";
+    program << "0.0 => float laneTarget1;\n";
+    program << "0.0 => float laneTarget2;\n";
+    program << "0.0 => float laneTarget3;\n";
+    program << "0.0 => float laneTarget4;\n\n";
+    program << "0.0 => float kickLevel0;\n";
+    program << "0.0 => float kickLevel1;\n";
+    program << "0.0 => float kickLevel2;\n";
+    program << "0.0 => float kickLevel3;\n";
+    program << "0.0 => float kickLevel4;\n";
+    program << "0.0 => float kickClick0;\n";
+    program << "0.0 => float kickClick1;\n";
+    program << "0.0 => float kickClick2;\n";
+    program << "0.0 => float kickClick3;\n";
+    program << "0.0 => float kickClick4;\n";
+    program << "0.0 => float snareLevel0;\n";
+    program << "0.0 => float snareLevel1;\n";
+    program << "0.0 => float snareLevel2;\n";
+    program << "0.0 => float snareLevel3;\n";
+    program << "0.0 => float snareLevel4;\n";
+    program << "0.0 => float snareSnap0;\n";
+    program << "0.0 => float snareSnap1;\n";
+    program << "0.0 => float snareSnap2;\n";
+    program << "0.0 => float snareSnap3;\n";
+    program << "0.0 => float snareSnap4;\n";
+    program << "0.0 => float snareClap0;\n";
+    program << "0.0 => float snareClap1;\n";
+    program << "0.0 => float snareClap2;\n";
+    program << "0.0 => float snareClap3;\n";
+    program << "0.0 => float snareClap4;\n";
+    program << "0.0 => float hatLevel0;\n";
+    program << "0.0 => float hatLevel1;\n";
+    program << "0.0 => float hatLevel2;\n";
+    program << "0.0 => float hatLevel3;\n";
+    program << "0.0 => float hatLevel4;\n\n";
     program << "0.0 => float smoothedMaster;\n\n";
     program << "while (true)\n";
     program << "{\n";
@@ -346,8 +342,8 @@ inline juce::String buildStateProgram (const StateSpec& state)
     program << "        1 => didTick;\n";
     program << "    }\n\n";
 
-    for (int i = 0; i < static_cast<int> (lanes.size()); ++i)
-        appendLaneControl (program, lanes[static_cast<size_t> (i)], i);
+    for (int i = 0; i < static_cast<int> (state.lanes.size()); ++i)
+        appendLaneControl (program, state.lanes[static_cast<size_t> (i)], i);
 
     program << "    5::ms => now;\n";
     program << "}\n";
