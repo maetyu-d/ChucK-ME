@@ -18,6 +18,7 @@ namespace
 constexpr int maxHostChannels = 16;
 constexpr int fallbackBlockSize = 4096;
 constexpr int engineOutputChannels = 2;
+constexpr int maxTopLevelStates = 16;
 
 juce::Colour ink() { return juce::Colour (0xffeef3ee); }
 juce::Colour mutedInk() { return juce::Colour (0xff9da8a2); }
@@ -483,8 +484,15 @@ public:
         styleLabel (statusLabel, 0.72f);
         addAndMakeVisible (statusLabel);
 
-        setupButton (stateButton1, "State 1", green(), [this] { selectTopLevelState (0); });
-        setupButton (stateButton2, "State 2", blue(), [this] { selectTopLevelState (1); });
+        for (int i = 0; i < maxTopLevelStates; ++i)
+        {
+            auto& button = stateButtons[static_cast<size_t> (i)];
+            setupButton (button,
+                         "State " + juce::String (i + 1),
+                         i == 0 ? green() : blue(),
+                         [this, i] { selectTopLevelState (i); });
+        }
+
         setupButton (runScriptButton, "Run", amber(), [this] { runGlobalScript(); });
 
         globalScriptEditor.setMultiLine (true);
@@ -553,7 +561,7 @@ public:
 
         auto content = area.reduced (18);
         auto top = content.removeFromTop (48);
-        auto stateRow = content.removeFromTop (30);
+        auto stateRow = content.removeFromTop (60);
         auto scriptRow = content.removeFromTop (70);
         g.setColour (mutedInk().withAlpha (0.18f));
         g.drawLine (static_cast<float> (content.getX()),
@@ -580,10 +588,22 @@ public:
         titleLabel.setBounds (header.removeFromLeft (260));
         statusLabel.setBounds (header);
 
-        auto stateRow = area.removeFromTop (30);
+        auto stateRow = area.removeFromTop (60);
         stateRow.removeFromLeft (10);
-        stateButton1.setBounds (stateRow.removeFromLeft (96).reduced (0, 2));
-        stateButton2.setBounds (stateRow.removeFromLeft (96).reduced (8, 2));
+
+        const auto buttonGap = 6;
+        auto firstStateRow = stateRow.removeFromTop (30);
+        auto secondStateRow = stateRow.removeFromTop (30);
+        const auto buttonWidth = juce::jmax (52, (firstStateRow.getWidth() - buttonGap * 7) / 8);
+
+        for (int i = 0; i < maxTopLevelStates; ++i)
+        {
+            auto& row = i < 8 ? firstStateRow : secondStateRow;
+            auto buttonArea = row.removeFromLeft (buttonWidth);
+            stateButtons[static_cast<size_t> (i)].setBounds (buttonArea.reduced (0, 3));
+            row.removeFromLeft (buttonGap);
+        }
+
         auto scriptRow = area.removeFromTop (70);
         scriptRow.removeFromLeft (10);
         runScriptButton.setBounds (scriptRow.removeFromRight (86).reduced (8, 16));
@@ -636,7 +656,7 @@ private:
 
     void selectTopLevelState (int index)
     {
-        const auto nextState = juce::jlimit (0, 1, index);
+        const auto nextState = juce::jlimit (0, maxTopLevelStates - 1, index);
         if (selectedTopLevelState == nextState)
         {
             refreshLabels();
@@ -658,7 +678,7 @@ private:
     {
         std::vector<GlobalScriptStep> parsed;
         const auto text = globalScriptEditor.getText().toStdString();
-        const std::regex stepRegex ("state\\s*([12])[\\s\\S]*?(\\d+(?:\\.\\d+)?)\\s*bars?",
+        const std::regex stepRegex ("state\\s*(1[0-6]|[1-9])[\\s\\S]*?(\\d+(?:\\.\\d+)?)\\s*bars?",
                                     std::regex_constants::icase);
 
         for (std::sregex_iterator it (text.begin(), text.end(), stepRegex), end; it != end; ++it)
@@ -666,7 +686,7 @@ private:
             const auto stateIndex = std::stoi ((*it)[1].str()) - 1;
             const auto bars = std::stod ((*it)[2].str());
 
-            if (stateIndex >= 0 && stateIndex <= 1 && bars > 0.0)
+            if (stateIndex >= 0 && stateIndex < maxTopLevelStates && bars > 0.0)
                 parsed.push_back ({ stateIndex, bars });
         }
 
@@ -719,8 +739,8 @@ private:
 
     void refreshLabels()
     {
-        stateButton1.setToggleState (selectedTopLevelState == 0, juce::dontSendNotification);
-        stateButton2.setToggleState (selectedTopLevelState == 1, juce::dontSendNotification);
+        for (int i = 0; i < maxTopLevelStates; ++i)
+            stateButtons[static_cast<size_t> (i)].setToggleState (selectedTopLevelState == i, juce::dontSendNotification);
 
         const auto& state = states[static_cast<size_t> (selectedState)];
         selectedLabel.setText (state.name + "  " + juce::String (state.tempoBpm, 1) + " bpm", juce::dontSendNotification);
@@ -796,7 +816,7 @@ private:
 
     float getTopLevelTempoScale() const
     {
-        return selectedTopLevelState == 1 ? 0.5f : 1.0f;
+        return topLevelTempoScales[static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, selectedTopLevelState))];
     }
 
     float getCurrentMasterGain() const
@@ -852,8 +872,7 @@ private:
     std::array<juce::Label, 5> laneLabels;
 
     OrbitCanvas orbitCanvas;
-    juce::TextButton stateButton1;
-    juce::TextButton stateButton2;
+    std::array<juce::TextButton, maxTopLevelStates> stateButtons;
     juce::TextButton runScriptButton;
     juce::TextButton playButton;
     juce::TextButton previousButton;
@@ -864,6 +883,13 @@ private:
     juce::Slider intensitySlider;
     juce::Slider brightnessSlider;
     juce::TextEditor globalScriptEditor;
+    std::array<float, maxTopLevelStates> topLevelTempoScales
+    {
+        1.0f, 0.5f, 1.0f, 1.0f,
+        1.0f, 1.0f, 1.0f, 1.0f,
+        1.0f, 1.0f, 1.0f, 1.0f,
+        1.0f, 1.0f, 1.0f, 1.0f
+    };
 
     int selectedTopLevelState = 0;
     int selectedState = 0;
