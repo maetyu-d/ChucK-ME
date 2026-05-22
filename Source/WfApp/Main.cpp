@@ -458,10 +458,8 @@ public:
         styleLabel (statusLabel, 0.72f);
         addAndMakeVisible (statusLabel);
 
-        stateRowLabel.setText ("State 1", juce::dontSendNotification);
-        stateRowLabel.setFont (juce::FontOptions (15.0f, juce::Font::bold));
-        styleLabel (stateRowLabel, 0.90f);
-        addAndMakeVisible (stateRowLabel);
+        setupButton (stateButton1, "State 1", green(), [this] { selectTopLevelState (0); });
+        setupButton (stateButton2, "State 2", blue(), [this] { selectTopLevelState (1); });
 
         selectedLabel.setFont (juce::FontOptions (18.0f, juce::Font::bold));
         styleLabel (selectedLabel);
@@ -540,7 +538,9 @@ public:
         statusLabel.setBounds (header);
 
         auto stateRow = area.removeFromTop (30);
-        stateRowLabel.setBounds (stateRow.reduced (10, 2));
+        stateRow.removeFromLeft (10);
+        stateButton1.setBounds (stateRow.removeFromLeft (96).reduced (0, 2));
+        stateButton2.setBounds (stateRow.removeFromLeft (96).reduced (8, 2));
         area.removeFromTop (12);
         auto controls = area.removeFromBottom (118);
         auto right = area.removeFromRight (260);
@@ -587,6 +587,12 @@ private:
         addAndMakeVisible (slider);
     }
 
+    void selectTopLevelState (int index)
+    {
+        selectedTopLevelState = juce::jlimit (0, 1, index);
+        refreshLabels();
+    }
+
     void selectState (int index)
     {
         if (states.empty())
@@ -618,6 +624,9 @@ private:
 
     void refreshLabels()
     {
+        stateButton1.setToggleState (selectedTopLevelState == 0, juce::dontSendNotification);
+        stateButton2.setToggleState (selectedTopLevelState == 1, juce::dontSendNotification);
+
         const auto& state = states[static_cast<size_t> (selectedState)];
         selectedLabel.setText (state.name + "  " + juce::String (state.tempoBpm, 1) + " bpm", juce::dontSendNotification);
 
@@ -680,12 +689,13 @@ private:
 
     juce::Label titleLabel;
     juce::Label statusLabel;
-    juce::Label stateRowLabel;
     juce::Label selectedLabel;
     juce::Label laneHeader;
     std::array<juce::Label, 5> laneLabels;
 
     OrbitCanvas orbitCanvas;
+    juce::TextButton stateButton1;
+    juce::TextButton stateButton2;
     juce::TextButton playButton;
     juce::TextButton previousButton;
     juce::TextButton nextButton;
@@ -695,6 +705,7 @@ private:
     juce::Slider intensitySlider;
     juce::Slider brightnessSlider;
 
+    int selectedTopLevelState = 0;
     int selectedState = 0;
     float orbitPhase = 0.0f;
     bool running = true;
