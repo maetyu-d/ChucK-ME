@@ -588,6 +588,11 @@ public:
         setupTextEditor (trackNameEditor, "Track name");
         trackNameEditor.onTextChange = [this] { applyTrackNameEdit(); };
 
+        trackDurationLabel.setText ("duration", juce::dontSendNotification);
+        trackDurationLabel.setFont (juce::FontOptions (13.0f, juce::Font::bold));
+        styleLabel (trackDurationLabel, 0.72f);
+        addAndMakeVisible (trackDurationLabel);
+
         setupTextEditor (trackDurationBarsEditor, "Bars");
         trackDurationBarsEditor.onTextChange = [this] { applyTrackDurationEdit(); };
 
@@ -779,9 +784,11 @@ public:
         trackNameEditor.setBounds (codePane.removeFromTop (28));
         codePane.removeFromTop (6);
         auto trackEditRow = codePane.removeFromTop (30);
-        trackDurationBarsEditor.setBounds (trackEditRow.removeFromLeft (82).reduced (0, 2));
+        trackDurationLabel.setBounds (trackEditRow.removeFromLeft (74).reduced (0, 2));
         trackEditRow.removeFromLeft (8);
-        trackDurationBeatsEditor.setBounds (trackEditRow.removeFromLeft (82).reduced (0, 2));
+        trackDurationBarsEditor.setBounds (trackEditRow.removeFromLeft (74).reduced (0, 2));
+        trackEditRow.removeFromLeft (8);
+        trackDurationBeatsEditor.setBounds (trackEditRow.removeFromLeft (74).reduced (0, 2));
         codePane.removeFromTop (8);
         laneNameEditor.setBounds (codePane.removeFromTop (28));
         codePane.removeFromTop (6);
@@ -1660,6 +1667,7 @@ private:
     juce::Label stateTempoLabel;
     juce::Label stateTimeSigLabel;
     juce::Label laneCodeHeader;
+    juce::Label trackDurationLabel;
     juce::Label selectedLabel;
     juce::Label laneHeader;
     std::array<juce::TextButton, maxTrackLanes> laneButtons;
