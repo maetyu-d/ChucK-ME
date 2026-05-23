@@ -1752,7 +1752,9 @@ public:
 
         setupTextEditor (laneTempoEditor, "track");
         laneTempoEditor.setInputRestrictions (6, "0123456789.");
-        laneTempoEditor.onTextChange = [this] { applyLaneTempoEdit(); };
+        laneTempoEditor.onTextChange = [this] { applyLaneTempoEdit (false); };
+        laneTempoEditor.onReturnKey = [this] { applyLaneTempoEdit (true); };
+        laneTempoEditor.onFocusLost = [this] { applyLaneTempoEdit (true); };
 
         laneDurationLabel.setText ("lane duration (Bar.Beat)", juce::dontSendNotification);
         laneDurationLabel.setFont (juce::FontOptions (13.0f, juce::Font::bold));
@@ -1760,7 +1762,19 @@ public:
         addAndMakeVisible (laneDurationLabel);
 
         setupTextEditor (laneDurationEditor, "track");
-        laneDurationEditor.onTextChange = [this] { applyLaneDurationEdit(); };
+        laneDurationEditor.onTextChange = [this] { applyLaneDurationEdit (false); };
+        laneDurationEditor.onReturnKey = [this] { applyLaneDurationEdit (true); };
+        laneDurationEditor.onFocusLost = [this] { applyLaneDurationEdit (true); };
+
+        auto exitFocusedTrackView = [this]
+        {
+            if (mainView == MainView::track)
+                setMainView (MainView::arrangement);
+        };
+
+        laneNameEditor.onEscapeKey = exitFocusedTrackView;
+        laneTempoEditor.onEscapeKey = exitFocusedTrackView;
+        laneDurationEditor.onEscapeKey = exitFocusedTrackView;
 
         setupButton (muteLaneButton, "Mute", coral(), [this] { toggleSelectedLaneMute(); });
         setupButton (soloLaneButton, "Solo", amber(), [this] { toggleSelectedLaneSolo(); });
@@ -1777,11 +1791,7 @@ public:
         laneCodeEditor.setColour (juce::TextEditor::highlightColourId, blue().withAlpha (0.24f));
         laneCodeEditor.setFont (juce::FontOptions (11.5f));
         laneCodeEditor.onTextChange = [this] { markLaneCodeEdited(); };
-        laneCodeEditor.onEscapeKey = [this]
-        {
-            if (mainView == MainView::track)
-                setMainView (MainView::arrangement);
-        };
+        laneCodeEditor.onEscapeKey = exitFocusedTrackView;
         addAndMakeVisible (laneCodeEditor);
 
         setupButton (laneCodeRunButton, "Run", green(), [this] { applyLaneCodeEdit(); });
@@ -2102,6 +2112,8 @@ public:
             area.removeFromLeft (trackFocusPaneGap);
             trackFocusCanvas.setBounds (area.reduced (8, 0));
 
+            laneNameEditor.setBounds (codePane.removeFromTop (28).reduced (8, 0));
+            codePane.removeFromTop (8);
             auto laneTempoRow = codePane.removeFromTop (30);
             laneTempoLabel.setBounds (laneTempoRow.removeFromLeft (84).reduced (8, 2));
             laneTempoRow.removeFromLeft (8);
@@ -2276,7 +2288,7 @@ private:
         trackNameEditor.setVisible (arrangement);
         trackDurationLabel.setVisible (arrangement);
         trackDurationEditor.setVisible (arrangement);
-        laneNameEditor.setVisible (arrangement);
+        laneNameEditor.setVisible (arrangement || track);
         laneTempoLabel.setVisible (arrangement || track);
         laneTempoEditor.setVisible (arrangement || track);
         laneDurationLabel.setVisible (arrangement || track);
@@ -3176,7 +3188,7 @@ private:
         }
     }
 
-    void applyLaneTempoEdit()
+    void applyLaneTempoEdit (bool reloadAudioIfNeeded)
     {
         if (suppressEditCallbacks)
             return;
@@ -3189,11 +3201,11 @@ private:
             else
                 lane->tempoBpm = juce::jlimit (30.0f, 220.0f, static_cast<float> (text.getDoubleValue()));
 
-            refreshAfterStructureEdit (true);
+            refreshAfterStructureEdit (reloadAudioIfNeeded);
         }
     }
 
-    void applyLaneDurationEdit()
+    void applyLaneDurationEdit (bool reloadAudioIfNeeded)
     {
         if (suppressEditCallbacks)
             return;
@@ -3206,7 +3218,7 @@ private:
             else
                 lane->duration.reset();
 
-            refreshAfterStructureEdit (true);
+            refreshAfterStructureEdit (reloadAudioIfNeeded);
         }
     }
 
@@ -3784,6 +3796,7 @@ private:
         performingTrackIndex = juce::jlimit (0, static_cast<int> (performingTracks->size()) - 1, performingTrackIndex);
         auto audioTrack = (*performingTracks)[static_cast<size_t> (performingTrackIndex)];
         audioTrack.clockBeatsPerBar = static_cast<int> (getPerformingBeatsPerBar());
+        audioTrack.clockQuarterNotesPerBar = getPerformingQuarterNotesPerBar();
         static_cast<void> (audioCallback.loadStateWithControls (audioTrack,
                                                                 getCurrentMasterGain(),
                                                                 getCurrentTempoHz(),

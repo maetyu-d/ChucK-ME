@@ -123,6 +123,47 @@ int main()
         return 6;
     }
 
+    auto laneClockState = states.front();
+    laneClockState.name = "lane tempo duration check";
+    laneClockState.clockBeatsPerBar = 3;
+    laneClockState.clockQuarterNotesPerBar = 1.5;
+    laneClockState.lanes.resize (2);
+    laneClockState.lanes[0].tempoBpm = 132.0f;
+    laneClockState.lanes[0].duration = Wf::TrackDurationSpec { 1, 1 };
+    laneClockState.lanes[1].tempoBpm = 66.0f;
+    laneClockState.lanes[1].duration = Wf::TrackDurationSpec { 0, 2 };
+
+    const auto laneClockProgram = Wf::buildStateProgram (laneClockState);
+    if (! laneClockProgram.contains ("laneQuarterNotesPerBar")
+        || ! laneClockProgram.contains ("* 0.005")
+        || ! laneClockProgram.contains ("laneActive0")
+        || ! laneClockProgram.contains ("2.20000 => float laneTempo0"))
+    {
+        std::cerr << "lane clock program missing expected timing code\n";
+        return 50;
+    }
+
+    if (! engine.loadProgram (laneClockProgram, bindings))
+    {
+        std::cerr << "lane clock program failed: " << engine.getLastError() << '\n';
+        return 51;
+    }
+
+    static_cast<void> (engine.setParameterValue ("hostMasterGain", 0.24f));
+    static_cast<void> (engine.setParameterValue ("hostTempoHz", static_cast<float> (laneClockState.tempoBpm / 60.0)));
+    static_cast<void> (engine.setParameterValue ("hostIntensity", 0.68f));
+    static_cast<void> (engine.setParameterValue ("hostBrightness", 0.52f));
+    static_cast<void> (engine.setParameterValue ("hostOrbitPhase", 0.2f));
+
+    const auto laneClockEnergy = renderEnergy (engine, input, output, 160);
+    if (laneClockEnergy <= 0.0
+        || engine.getRenderExceptionCount() != 0
+        || engine.getInternalErrorCount() != 0)
+    {
+        std::cerr << "lane clock render failed: " << laneClockEnergy << '\n';
+        return 52;
+    }
+
     auto eightLaneState = states.front();
     eightLaneState.name = "eight lane edit check";
     const std::array<juce::String, 8> roles { "drum", "bass", "arp", "chord", "air", "snare", "pulse", "arp" };

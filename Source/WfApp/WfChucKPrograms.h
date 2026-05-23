@@ -68,6 +68,7 @@ struct StateSpec
     std::optional<TrackDurationSpec> duration;
     std::optional<int> transitionProbabilityPercent;
     int clockBeatsPerBar = 4;
+    double clockQuarterNotesPerBar = 4.0;
     std::array<TrackEffectSlotSpec, 3> effectSlots {};
 };
 
@@ -363,6 +364,7 @@ inline juce::String buildStateProgram (const StateSpec& state)
     program << "1 => int firstFrame;\n";
     program << "0.0 => float stepPhase;\n";
     program << juce::String (std::max (1, state.clockBeatsPerBar)) << ".0 => float laneBeatsPerBar;\n";
+    program << chuckFloat (static_cast<float> (std::max (0.25, state.clockQuarterNotesPerBar))) << " => float laneQuarterNotesPerBar;\n";
 
     for (const auto name : { "laneLevel", "laneFreq", "laneTarget", "kickLevel", "kickClick", "snareLevel", "snareSnap", "snareClap", "hatLevel" })
     {
@@ -419,7 +421,7 @@ inline juce::String buildStateProgram (const StateSpec& state)
         program << "    0 => int laneDidTickClock" << suffix << ";\n";
         program << "    " << (laneTempoHz > 0.0f ? chuckFloat (laneTempoHz) : juce::String ("tempo")) << " => float laneTempo" << suffix << ";\n";
         program << "    laneStepPhaseClock" << suffix << " + (laneTempo" << suffix << " * 0.020) => laneStepPhaseClock" << suffix << ";\n";
-        program << "    laneElapsedBars" << suffix << " + ((laneTempo" << suffix << " * 0.020) / laneBeatsPerBar) => laneElapsedBars" << suffix << ";\n";
+        program << "    laneElapsedBars" << suffix << " + ((laneTempo" << suffix << " * 0.005) / laneQuarterNotesPerBar) => laneElapsedBars" << suffix << ";\n";
         program << "    if (laneStepPhaseClock" << suffix << " >= 1.0)\n";
         program << "    {\n";
         program << "        laneTickClock" << suffix << " + 1 => laneTickClock" << suffix << ";\n";
