@@ -53,6 +53,7 @@ void styleButton (juce::TextButton& button, juce::Colour colour)
     button.setColour (juce::TextButton::buttonOnColourId, colour.withAlpha (0.22f));
     button.setColour (juce::TextButton::textColourOffId, ink());
     button.setColour (juce::TextButton::textColourOnId, ink());
+    button.setMouseCursor (juce::MouseCursor::PointingHandCursor);
 }
 
 void styleEmptyStateButton (juce::TextButton& button)
@@ -443,16 +444,16 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (juce::Colour (0xff101412));
+        g.fillAll (juce::Colour (0xff0f1412));
 
         auto area = getLocalBounds().toFloat().reduced (24.0f);
         const auto radius = juce::jmin (area.getWidth(), area.getHeight()) * 0.36f;
         const auto centre = area.getCentre();
 
-        g.setColour (panelSoft());
+        g.setColour (panelSoft().withAlpha (0.58f));
         g.fillEllipse (centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f);
 
-        g.setColour (mutedInk().withAlpha (0.26f));
+        g.setColour (mutedInk().withAlpha (0.22f));
         g.drawEllipse (centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f, 1.2f);
 
         if (states == nullptr || states->empty())
@@ -464,8 +465,8 @@ public:
         for (int i = 0; i < count; ++i)
         {
             const auto next = (i + 1) % count;
-            g.setColour (mutedInk().withAlpha (0.20f));
-            g.drawLine ({ nodeCentres[static_cast<size_t> (i)], nodeCentres[static_cast<size_t> (next)] }, 1.4f);
+            g.setColour (mutedInk().withAlpha (0.17f));
+            g.drawLine ({ nodeCentres[static_cast<size_t> (i)], nodeCentres[static_cast<size_t> (next)] }, 1.25f);
         }
 
         for (int i = 0; i < count; ++i)
@@ -473,12 +474,12 @@ public:
             const auto selected = i == selectedIndex;
             const auto point = nodeCentres[static_cast<size_t> (i)];
             const auto colour = selected ? green() : blue().withAlpha (0.72f);
-            const auto size = selected ? 62.0f : 48.0f;
+            const auto size = selected ? 64.0f : 50.0f;
             const auto laneCount = static_cast<int> ((*states)[static_cast<size_t> (i)].lanes.size());
 
             g.setColour (colour.withAlpha (selected ? 0.28f : 0.16f));
             g.fillEllipse (point.x - size * 0.5f, point.y - size * 0.5f, size, size);
-            g.setColour (colour);
+            g.setColour (colour.withAlpha (selected ? 0.98f : 0.78f));
             g.drawEllipse (point.x - size * 0.5f, point.y - size * 0.5f, size, size, selected ? 2.0f : 1.2f);
             drawLaneDots (g, point, size, laneCount, selected);
 
@@ -561,8 +562,10 @@ private:
         {
             auto& editor = transitionProbabilityEditors[static_cast<size_t> (i)];
             const auto active = i < count && count > 1;
+            const auto hasProbability = active && (*states)[static_cast<size_t> (i)].transitionProbabilityPercent.has_value();
             editor.setVisible (active);
             editor.setEnabled (active);
+            styleTransitionProbabilityEditor (editor, hasProbability);
 
             if (active && ! editor.hasKeyboardFocus (true))
                 editor.setText (formatTransitionProbability ((*states)[static_cast<size_t> (i)].transitionProbabilityPercent),
@@ -595,9 +598,20 @@ private:
             const auto from = nodeCentres[static_cast<size_t> (i)];
             const auto to = nodeCentres[static_cast<size_t> (next)];
             const auto midpoint = (from + to) * 0.5f;
-            editor.setBounds (juce::Rectangle<int> (48, 22).withCentre ({ static_cast<int> (std::round (midpoint.x)),
+            editor.setBounds (juce::Rectangle<int> (40, 18).withCentre ({ static_cast<int> (std::round (midpoint.x)),
                                                                           static_cast<int> (std::round (midpoint.y)) }));
         }
+    }
+
+    static void styleTransitionProbabilityEditor (juce::TextEditor& editor, bool hasProbability)
+    {
+        editor.setColour (juce::TextEditor::backgroundColourId,
+                          hasProbability ? panel().withAlpha (0.88f) : panel().withAlpha (0.28f));
+        editor.setColour (juce::TextEditor::outlineColourId,
+                          hasProbability ? amber().withAlpha (0.34f) : mutedInk().withAlpha (0.10f));
+        editor.setColour (juce::TextEditor::textColourId,
+                          hasProbability ? ink() : mutedInk().withAlpha (0.62f));
+        editor.setTextToShowWhenEmpty ("%", mutedInk().withAlpha (0.26f));
     }
 
     static std::optional<int> parseTransitionProbability (juce::String text)
@@ -768,7 +782,7 @@ public:
         laneCodeEditor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.22f));
         laneCodeEditor.setColour (juce::TextEditor::focusedOutlineColourId, mutedInk().withAlpha (0.34f));
         laneCodeEditor.setColour (juce::TextEditor::highlightColourId, blue().withAlpha (0.24f));
-        laneCodeEditor.setFont (juce::FontOptions (13.0f));
+        laneCodeEditor.setFont (juce::FontOptions (12.0f));
         laneCodeEditor.onTextChange = [this] { markLaneCodeEdited(); };
         addAndMakeVisible (laneCodeEditor);
 
@@ -898,6 +912,21 @@ public:
         auto top = content.removeFromTop (48);
         auto stateRow = content.removeFromTop (60);
         auto scriptRow = content.removeFromTop (70);
+        auto body = content;
+        body.removeFromTop (12);
+        auto transport = body.removeFromBottom (52);
+        auto leftPane = body.removeFromLeft (280);
+        body.removeFromLeft (18);
+        auto rightPane = body.removeFromRight (260);
+
+        g.setColour (juce::Colour (0xff101512).withAlpha (0.42f));
+        g.fillRoundedRectangle (leftPane.toFloat(), 4.0f);
+        g.fillRoundedRectangle (rightPane.toFloat(), 4.0f);
+
+        g.setColour (mutedInk().withAlpha (0.075f));
+        g.drawRoundedRectangle (leftPane.toFloat(), 4.0f, 1.0f);
+        g.drawRoundedRectangle (rightPane.toFloat(), 4.0f, 1.0f);
+
         g.setColour (mutedInk().withAlpha (0.18f));
         g.drawLine (static_cast<float> (content.getX()),
                     static_cast<float> (top.getBottom()),
@@ -913,6 +942,13 @@ public:
                     static_cast<float> (scriptRow.getBottom()),
                     static_cast<float> (scriptRow.getRight()),
                     static_cast<float> (scriptRow.getBottom()),
+                    1.0f);
+
+        g.setColour (mutedInk().withAlpha (0.10f));
+        g.drawLine (static_cast<float> (transport.getX()),
+                    static_cast<float> (transport.getY()),
+                    static_cast<float> (transport.getRight()),
+                    static_cast<float> (transport.getY()),
                     1.0f);
     }
 
@@ -1428,6 +1464,7 @@ private:
                 button.setButtonText ("");
                 button.setToggleState (false, juce::dontSendNotification);
                 button.setEnabled (false);
+                button.setVisible (false);
             }
 
             syncEditControls (nullptr, nullptr);
@@ -1458,12 +1495,14 @@ private:
 
                 button.setButtonText (juce::String (i + 1) + "  " + prefix + lane.name);
                 button.setEnabled (true);
+                button.setVisible (true);
                 button.setToggleState (selectedLane == i, juce::dontSendNotification);
             }
             else
             {
                 button.setButtonText ("");
                 button.setEnabled (false);
+                button.setVisible (false);
                 button.setToggleState (false, juce::dontSendNotification);
             }
         }
