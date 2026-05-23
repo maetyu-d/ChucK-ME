@@ -694,12 +694,18 @@ public:
     void setProject (std::array<std::optional<std::vector<Wf::StateSpec>>, maxTopLevelStates>* statesToUse,
                      int viewedStateToUse,
                      int selectedTrackToUse,
-                     int selectedLaneToUse)
+                     int selectedLaneToUse,
+                     int playingStateToUse,
+                     int playingTrackToUse,
+                     bool runningToUse)
     {
         states = statesToUse;
         viewedState = viewedStateToUse;
         selectedTrack = selectedTrackToUse;
         selectedLane = selectedLaneToUse;
+        playingState = playingStateToUse;
+        playingTrack = playingTrackToUse;
+        running = runningToUse;
         rebuildChannels();
         repaint();
     }
@@ -707,6 +713,38 @@ public:
     int getPreferredWidth() const
     {
         return juce::jmax (1, horizontalPadding * 2 + static_cast<int> (channels.size()) * channelWidth);
+    }
+
+    std::optional<juce::Range<int>> getPlayingChannelRange() const
+    {
+        if (! running)
+            return {};
+
+        auto first = -1;
+        auto last = -1;
+
+        for (int i = 0; i < static_cast<int> (channels.size()); ++i)
+        {
+            const auto& channel = channels[static_cast<size_t> (i)];
+            if (isPlayingChannel (channel))
+            {
+                if (first < 0)
+                    first = i;
+
+                last = i;
+            }
+        }
+
+        if (first < 0 || last < 0)
+            return {};
+
+        return juce::Range<int> (horizontalPadding + first * channelWidth,
+                                 horizontalPadding + (last + 1) * channelWidth - channelGap);
+    }
+
+    bool isDraggingFader() const noexcept
+    {
+        return activeChannel >= 0;
     }
 
     void paint (juce::Graphics& g) override
@@ -733,6 +771,7 @@ public:
             const auto selected = channel.stateIndex == viewedState
                                && channel.trackIndex == selectedTrack
                                && channel.laneIndex == selectedLane;
+            const auto playing = isPlayingChannel (channel);
 
             if (i == 0 || channels[static_cast<size_t> (i - 1)].stateIndex != channel.stateIndex)
             {
@@ -742,10 +781,17 @@ public:
                                     strip.getBottom() - 4.0f);
             }
 
-            g.setColour (selected ? blue().withAlpha (0.16f) : panelSoft().withAlpha (0.30f));
+            g.setColour (playing ? green().withAlpha (selected ? 0.22f : 0.15f)
+                                  : (selected ? blue().withAlpha (0.16f) : panelSoft().withAlpha (0.30f)));
             g.fillRoundedRectangle (strip, 3.0f);
-            g.setColour ((selected ? blue() : mutedInk()).withAlpha (selected ? 0.44f : 0.14f));
-            g.drawRoundedRectangle (strip, 3.0f, selected ? 1.3f : 1.0f);
+            g.setColour ((playing ? green() : (selected ? blue() : mutedInk())).withAlpha (playing ? 0.58f : (selected ? 0.44f : 0.14f)));
+            g.drawRoundedRectangle (strip, 3.0f, playing ? 1.5f : (selected ? 1.3f : 1.0f));
+
+            if (playing)
+            {
+                g.setColour (green().withAlpha (0.90f));
+                g.fillRoundedRectangle (strip.reduced (6.0f, 0.0f).removeFromTop (3.0f), 1.5f);
+            }
 
             g.setColour (mutedInk().withAlpha (0.70f));
             g.setFont (juce::FontOptions (10.5f, juce::Font::bold));
@@ -849,6 +895,13 @@ private:
         }
     }
 
+    bool isPlayingChannel (const Channel& channel) const noexcept
+    {
+        return running
+            && channel.stateIndex == playingState
+            && channel.trackIndex == playingTrack;
+    }
+
     juce::Rectangle<float> channelBounds (int channelIndex) const
     {
         return { static_cast<float> (horizontalPadding + channelIndex * channelWidth),
@@ -939,7 +992,10 @@ private:
     int viewedState = 0;
     int selectedTrack = 0;
     int selectedLane = 0;
+    int playingState = 0;
+    int playingTrack = 0;
     int activeChannel = -1;
+    bool running = false;
 };
 
 class MainComponent final : public juce::Component,
@@ -1492,8 +1548,17 @@ private:
 
     void syncMixerView()
     {
-        mixerCanvas.setProject (&topLevelStates, viewedTopLevelState, selectedState, selectedLane);
+        mixerCanvas.setProject (&topLevelStates,
+                                viewedTopLevelState,
+                                selectedState,
+                                selectedLane,
+                                performingTopLevelState,
+                                performingTrackIndex,
+                                running);
         resizeMixerCanvas();
+
+        if (mainView == MainView::mixer)
+            scrollMixerToPlayingChannels();
     }
 
     void resizeMixerCanvas()
@@ -1501,6 +1566,30 @@ private:
         const auto width = juce::jmax (mixerViewport.getWidth(), mixerCanvas.getPreferredWidth());
         const auto height = juce::jmax (1, mixerViewport.getHeight());
         mixerCanvas.setSize (width, height);
+    }
+
+    void scrollMixerToPlayingChannels()
+    {
+        if (! running || mixerCanvas.isDraggingFader())
+            return;
+
+        const auto playingRange = mixerCanvas.getPlayingChannelRange();
+        if (! playingRange.has_value())
+            return;
+
+        const auto viewX = mixerViewport.getViewPositionX();
+        const auto viewY = mixerViewport.getViewPositionY();
+        const auto viewWidth = mixerViewport.getViewWidth();
+        const auto padding = 24;
+        auto targetX = viewX;
+
+        if (playingRange->getStart() < viewX + padding)
+            targetX = juce::jmax (0, playingRange->getStart() - padding);
+        else if (playingRange->getEnd() > viewX + viewWidth - padding)
+            targetX = juce::jmax (0, playingRange->getEnd() - viewWidth + padding);
+
+        if (targetX != viewX)
+            mixerViewport.setViewPosition (targetX, viewY);
     }
 
     void selectMixerChannel (int stateIndex, int trackIndex, int laneIndex)
