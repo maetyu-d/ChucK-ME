@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(WeldChucK VERSION 0.1.2 LANGUAGES C CXX)
+project(WeldChucK VERSION 0.1.3 LANGUAGES C CXX)
 enable_testing()
 
 set(CMAKE_CXX_STANDARD 17)
@@ -187,6 +187,12 @@ target_compile_definitions(wf
         JUCE_PLUGINHOST_VST=0
         JUCE_PLUGINHOST_LADSPA=0
         JUCE_PLUGINHOST_LV2=0)
+
+if(APPLE)
+    add_custom_command(TARGET wf POST_BUILD
+        COMMAND /usr/bin/codesign --force --deep --sign - "$<TARGET_BUNDLE_DIR:wf>"
+        COMMENT "Ad-hoc signing ChucK-ME.app")
+endif()
 
 add_executable(WeldChucKEngineBoundaryTest
     Tests/EngineBoundaryTest.cpp)

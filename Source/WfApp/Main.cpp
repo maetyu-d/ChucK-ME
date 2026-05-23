@@ -36,6 +36,8 @@ constexpr int defaultTrackFocusCodePaneWidth = 390;
 constexpr int minTrackFocusCodePaneWidth = 260;
 constexpr int minTrackFocusCanvasWidth = 380;
 constexpr int trackFocusPaneGap = 16;
+constexpr int codeViewDividerHeight = 14;
+constexpr int minCodeViewPaneHeight = 120;
 constexpr float defaultPlaybackRate = 1.0f;
 constexpr float defaultIntensity = 0.58f;
 constexpr float defaultBrightness = 0.48f;
@@ -336,6 +338,321 @@ public:
         g.fillEllipse (sliderPos - 5.0f, track.getCentreY() - 5.0f, 10.0f, 10.0f);
     }
 };
+
+class CodeTextEditor final : public juce::TextEditor
+{
+public:
+    CodeTextEditor()
+    {
+        setMultiLine (true, false);
+        setReturnKeyStartsNewLine (true);
+        setTabKeyUsedAsCharacter (true);
+        setScrollbarsShown (true);
+        setScrollBarThickness (7);
+        setPopupMenuEnabled (true);
+        setLineSpacing (1.08f);
+        setBorder ({ 0, 0, 0, 0 });
+        setIndents (gutterWidth + 10, 8);
+        setCodeFontSize (12.0f);
+    }
+
+    void setCodeFontSize (float size)
+    {
+        const juce::Font font { juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), size, juce::Font::plain) };
+        setFont (font);
+        applyFontToAllText (font);
+    }
+
+    bool keyPressed (const juce::KeyPress& key) override
+    {
+        const auto modifiers = key.getModifiers();
+        const auto keyCode = key.getKeyCode();
+
+        if (keyCode == juce::KeyPress::tabKey)
+        {
+            if (modifiers.isShiftDown())
+                unindentSelection();
+            else
+                indentSelection();
+
+            return true;
+        }
+
+        if (modifiers.isCommandDown() && keyCode == '/')
+        {
+            toggleLineComments();
+            return true;
+        }
+
+        if (keyCode == juce::KeyPress::returnKey && ! modifiers.isCommandDown() && ! modifiers.isAltDown())
+        {
+            insertSmartNewLine();
+            return true;
+        }
+
+        return juce::TextEditor::keyPressed (key);
+    }
+
+    void paintOverChildren (juce::Graphics& g) override
+    {
+        juce::TextEditor::paintOverChildren (g);
+        drawLineNumberGutter (g);
+    }
+
+private:
+    static constexpr int gutterWidth = 44;
+    static constexpr int tabSpaces = 4;
+
+    static bool isLineBreak (juce::juce_wchar character) noexcept
+    {
+        return character == '\n' || character == '\r';
+    }
+
+    static bool isIndentCharacter (juce::juce_wchar character) noexcept
+    {
+        return character == ' ' || character == '\t';
+    }
+
+    static int findLineStart (const juce::String& text, int position)
+    {
+        position = juce::jlimit (0, text.length(), position);
+        while (position > 0 && ! isLineBreak (text[position - 1]))
+            --position;
+
+        return position;
+    }
+
+    static int findLineEnd (const juce::String& text, int position)
+    {
+        position = juce::jlimit (0, text.length(), position);
+        while (position < text.length() && ! isLineBreak (text[position]))
+            ++position;
+
+        return position;
+    }
+
+    static juce::String leadingIndentOf (const juce::String& text)
+    {
+        auto indentEnd = 0;
+        while (indentEnd < text.length() && isIndentCharacter (text[indentEnd]))
+            ++indentEnd;
+
+        return text.substring (0, indentEnd);
+    }
+
+    static juce::String indentLine (const juce::String& line)
+    {
+        return juce::String::repeatedString (" ", tabSpaces) + line;
+    }
+
+    static juce::String unindentLine (const juce::String& line)
+    {
+        if (line.startsWithChar ('\t'))
+            return line.substring (1);
+
+        auto spacesToRemove = 0;
+        while (spacesToRemove < juce::jmin (tabSpaces, line.length()) && line[spacesToRemove] == ' ')
+            ++spacesToRemove;
+
+        return line.substring (spacesToRemove);
+    }
+
+    static std::vector<juce::String> splitLinesPreservingEmptyLines (const juce::String& text)
+    {
+        std::vector<juce::String> lines;
+        auto lineStart = 0;
+
+        for (int i = 0; i < text.length(); ++i)
+        {
+            if (isLineBreak (text[i]))
+            {
+                lines.push_back (text.substring (lineStart, i));
+
+                if (text[i] == '\r' && i + 1 < text.length() && text[i + 1] == '\n')
+                    ++i;
+
+                lineStart = i + 1;
+            }
+        }
+
+        lines.push_back (text.substring (lineStart));
+        return lines;
+    }
+
+    static juce::String joinLines (const std::vector<juce::String>& lines)
+    {
+        juce::String joined;
+
+        for (size_t i = 0; i < lines.size(); ++i)
+        {
+            if (i > 0)
+                joined << "\n";
+
+            joined << lines[i];
+        }
+
+        return joined;
+    }
+
+    juce::Range<int> getSelectedLineRange() const
+    {
+        const auto text = getText();
+        const auto selection = getHighlightedRegion();
+        const auto start = juce::jlimit (0, text.length(), selection.getStart());
+        auto end = juce::jlimit (0, text.length(), selection.getEnd());
+
+        if (end > start && end <= text.length() && isLineBreak (text[end - 1]))
+            --end;
+
+        return { findLineStart (text, start), findLineEnd (text, end) };
+    }
+
+    void replaceRangeAndSelect (juce::Range<int> range, const juce::String& replacement)
+    {
+        setHighlightedRegion (range);
+        insertTextAtCaret (replacement);
+        setHighlightedRegion ({ range.getStart(), range.getStart() + replacement.length() });
+    }
+
+    void indentSelection()
+    {
+        const auto selection = getHighlightedRegion();
+        if (selection.isEmpty())
+        {
+            insertTextAtCaret (juce::String::repeatedString (" ", tabSpaces));
+            return;
+        }
+
+        const auto range = getSelectedLineRange();
+        auto lines = splitLinesPreservingEmptyLines (getTextInRange (range));
+        for (auto& line : lines)
+            line = indentLine (line);
+
+        replaceRangeAndSelect (range, joinLines (lines));
+    }
+
+    void unindentSelection()
+    {
+        const auto range = getSelectedLineRange();
+        auto lines = splitLinesPreservingEmptyLines (getTextInRange (range));
+        for (auto& line : lines)
+            line = unindentLine (line);
+
+        replaceRangeAndSelect (range, joinLines (lines));
+    }
+
+    void toggleLineComments()
+    {
+        const auto range = getSelectedLineRange();
+        auto lines = splitLinesPreservingEmptyLines (getTextInRange (range));
+        auto allCommented = true;
+
+        for (const auto& line : lines)
+        {
+            const auto trimmed = line.trimStart();
+            if (trimmed.isNotEmpty() && ! trimmed.startsWith ("//"))
+            {
+                allCommented = false;
+                break;
+            }
+        }
+
+        for (auto& line : lines)
+        {
+            const auto indent = leadingIndentOf (line);
+            auto body = line.substring (indent.length());
+
+            if (allCommented)
+            {
+                if (body.startsWith ("// "))
+                    body = body.substring (3);
+                else if (body.startsWith ("//"))
+                    body = body.substring (2);
+            }
+            else if (body.isNotEmpty())
+            {
+                body = "// " + body;
+            }
+
+            line = indent + body;
+        }
+
+        replaceRangeAndSelect (range, joinLines (lines));
+    }
+
+    void insertSmartNewLine()
+    {
+        const auto text = getText();
+        const auto caret = getCaretPosition();
+        const auto lineStart = findLineStart (text, caret);
+        const auto lineBeforeCaret = text.substring (lineStart, caret);
+        auto indent = leadingIndentOf (lineBeforeCaret);
+        auto scan = caret - 1;
+
+        while (scan >= 0 && (text[scan] == ' ' || text[scan] == '\t'))
+            --scan;
+
+        if (scan >= 0 && (text[scan] == '{' || text[scan] == '(' || text[scan] == '['))
+            indent << juce::String::repeatedString (" ", tabSpaces);
+
+        insertTextAtCaret ("\n" + indent);
+    }
+
+    void drawLineNumberGutter (juce::Graphics& g)
+    {
+        const auto bounds = getLocalBounds();
+        g.setColour (juce::Colour (0xff070a08).withAlpha (0.78f));
+        g.fillRect (bounds.withWidth (gutterWidth));
+
+        g.setColour (mutedInk().withAlpha (0.10f));
+        g.drawVerticalLine (gutterWidth, 4.0f, static_cast<float> (bounds.getBottom() - 4));
+
+        const auto text = getText();
+        const auto totalChars = text.length();
+        const auto caretLineStart = findLineStart (text, getCaretPosition());
+        auto lineStart = 0;
+        auto lineNumber = 1;
+
+        g.setFont (juce::FontOptions (10.5f, juce::Font::plain));
+
+        while (lineStart <= totalChars)
+        {
+            const auto sampleEnd = lineStart < totalChars ? juce::jmin (totalChars, lineStart + 1) : totalChars;
+            const auto textBounds = getTextBounds ({ lineStart, sampleEnd }).getBounds();
+            const auto lineY = textBounds.isEmpty() ? 8 + (lineNumber - 1) * 15 : textBounds.getY();
+            const auto lineHeight = textBounds.isEmpty() ? 15 : juce::jmax (14, textBounds.getHeight());
+
+            if (lineY > bounds.getBottom())
+                break;
+
+            if (lineY + lineHeight >= 0)
+            {
+                const auto currentLine = lineStart == caretLineStart;
+                g.setColour ((currentLine ? ink() : mutedInk()).withAlpha (currentLine ? 0.62f : 0.34f));
+                g.drawText (juce::String (lineNumber),
+                            0,
+                            lineY,
+                            gutterWidth - 8,
+                            lineHeight,
+                            juce::Justification::centredRight,
+                            false);
+            }
+
+            auto nextLineStart = lineStart;
+            while (nextLineStart < totalChars && ! isLineBreak (text[nextLineStart]))
+                ++nextLineStart;
+
+            if (nextLineStart >= totalChars)
+                break;
+
+            if (text[nextLineStart] == '\r' && nextLineStart + 1 < totalChars && text[nextLineStart + 1] == '\n')
+                ++nextLineStart;
+
+            lineStart = nextLineStart + 1;
+            ++lineNumber;
+        }
+    }
+};
 }
 
 class WfAudioCallback final : public juce::AudioIODeviceCallback
@@ -351,15 +668,42 @@ class WfAudioCallback final : public juce::AudioIODeviceCallback
 
     struct ImportedPlaybackClip
     {
+        int effectGroupIndex = -1;
         std::shared_ptr<const juce::AudioBuffer<float>> audio;
         double sampleRate = 48000.0;
         std::shared_ptr<std::atomic<float>> gain;
         std::shared_ptr<std::atomic<float>> pan;
     };
 
+    struct ImportedTrackEffectGroup
+    {
+        int stateIndex = -1;
+        int trackIndex = -1;
+        juce::AudioBuffer<float> buffer;
+        std::array<std::unique_ptr<juce::AudioPluginInstance>, maxTrackEffectSlots> effects;
+        juce::MidiBuffer midi;
+
+        ~ImportedTrackEffectGroup()
+        {
+            releaseResources();
+        }
+
+        void releaseResources()
+        {
+            for (auto& effect : effects)
+            {
+                if (effect != nullptr)
+                    effect->releaseResources();
+
+                effect.reset();
+            }
+        }
+    };
+
     struct ImportedPlaybackSet
     {
         std::vector<ImportedPlaybackClip> clips;
+        std::vector<std::unique_ptr<ImportedTrackEffectGroup>> trackEffectGroups;
         double lengthSeconds = 0.0;
     };
 
@@ -386,7 +730,6 @@ public:
             slot.inUse.store (false, std::memory_order_release);
             slot.targetGain.store (0.0f, std::memory_order_release);
             slot.gain = 0.0f;
-            releaseEffectChain (slot);
             slot.engine.release();
             slot.output.setSize (0, 0);
             slot.indexesReady = false;
@@ -431,7 +774,6 @@ public:
                                                numOutputChannels,
                                                numSamples);
             slot.engine.process (emptyInput, slotView);
-            processEffectChain (slot, slotView);
 
             const auto startGain = slot.gain;
             const auto targetGain = slot.targetGain.load (std::memory_order_acquire);
@@ -496,7 +838,6 @@ public:
         incoming.targetGain.store (0.0f, std::memory_order_release);
         incoming.gain = 0.0f;
         incoming.indexesReady = false;
-        releaseEffectChain (incoming);
 
         if (! incoming.engine.loadProgram (Wf::buildStateProgram (state), Wf::makeWfParameterBindings()))
             return false;
@@ -504,8 +845,6 @@ public:
         refreshWfParameterIndexes (incoming);
         if (! incoming.indexesReady)
             return false;
-
-        loadEffectChain (incoming, state);
 
         applyControlsToSlot (incoming,
                              masterGain,
@@ -551,10 +890,15 @@ public:
             applyControlsToSlot (slot, masterGain, tempoHz, intensity, brightness, orbitPhase);
     }
 
-    bool loadImportedAudioClips (const std::vector<ImportedLaneAudioClip>& clips)
+    bool loadImportedAudioClips (const std::vector<ImportedLaneAudioClip>& clips,
+                                 const std::array<std::optional<std::vector<Wf::StateSpec>>, maxTopLevelStates>* states = nullptr,
+                                 bool restartPosition = true)
     {
         auto playbackSet = std::make_shared<ImportedPlaybackSet>();
         playbackSet->clips.reserve (clips.size());
+        const auto currentSampleRate = lastSampleRate.load (std::memory_order_relaxed);
+        const auto sampleRate = currentSampleRate > 0.0 ? currentSampleRate : 48000.0;
+        const auto blockSize = juce::jmax (fallbackBlockSize, preparedBlockSize.load (std::memory_order_relaxed));
 
         for (const auto& clip : clips)
         {
@@ -562,6 +906,12 @@ public:
                 continue;
 
             ImportedPlaybackClip playbackClip;
+            playbackClip.effectGroupIndex = getOrCreateImportedTrackEffectGroup (*playbackSet,
+                                                                                  clip.stateIndex,
+                                                                                  clip.trackIndex,
+                                                                                  states,
+                                                                                  sampleRate,
+                                                                                  blockSize);
             playbackClip.audio = clip.audioData;
             playbackClip.sampleRate = juce::jmax (1.0, clip.audioSampleRate);
             playbackClip.gain = std::make_shared<std::atomic<float>> (clip.mixGain);
@@ -571,14 +921,16 @@ public:
             playbackSet->clips.push_back (std::move (playbackClip));
         }
 
+        const auto previousPosition = importedPositionSamples.load (std::memory_order_acquire);
+        const auto wasPlaying = importedPlaying.load (std::memory_order_acquire);
         const juce::SpinLock::ScopedLockType lock (importedPlaybackLock);
         importedPlaybackSet = std::move (playbackSet);
-        importedPositionSamples.store (0, std::memory_order_release);
+        importedPositionSamples.store (restartPosition ? 0 : previousPosition, std::memory_order_release);
         const auto hasImportedClips = importedPlaybackSet != nullptr && ! importedPlaybackSet->clips.empty();
 
         if (hasImportedClips)
         {
-            importedPlaying.store (false, std::memory_order_release);
+            importedPlaying.store (restartPosition ? false : wasPlaying, std::memory_order_release);
             for (auto& slot : slots)
             {
                 slot.inUse.store (false, std::memory_order_release);
@@ -708,8 +1060,6 @@ private:
         float gain = 0.0f;
         std::atomic<float> targetGain { 0.0f };
         std::atomic<bool> inUse { false };
-        std::array<std::unique_ptr<juce::AudioPluginInstance>, maxTrackEffectSlots> effects;
-        juce::MidiBuffer midi;
     };
 
     void processImportedAudio (float* const* outputChannelData, int numOutputChannels, int numSamples)
@@ -738,6 +1088,10 @@ private:
         const auto masterGain = lastMasterGain.load (std::memory_order_relaxed);
         if (masterGain > 0.000001f)
         {
+            for (auto& group : playbackSet->trackEffectGroups)
+                if (group != nullptr && group->buffer.getNumSamples() >= numSamples)
+                    group->buffer.clear (0, numSamples);
+
             for (const auto& clip : playbackSet->clips)
             {
                 if (clip.audio == nullptr || clip.audio->getNumSamples() <= 0)
@@ -748,8 +1102,11 @@ private:
                     continue;
 
                 const auto pan = clip.pan != nullptr ? clip.pan->load (std::memory_order_acquire) : 0.0f;
-                const auto panGains = linearPanGains (masterGain * gain, pan);
+                const auto panGains = linearPanGains (gain, pan);
                 const auto sourceScale = clip.sampleRate / deviceSampleRate;
+                auto* group = getImportedTrackEffectGroup (*playbackSet, clip.effectGroupIndex);
+                if (group == nullptr || group->buffer.getNumChannels() < engineOutputChannels || group->buffer.getNumSamples() < numSamples)
+                    continue;
 
                 for (int sample = 0; sample < numSamples; ++sample)
                 {
@@ -760,14 +1117,32 @@ private:
                     const auto left = readInterpolatedSample (*clip.audio, 0, sourcePosition);
                     const auto right = readInterpolatedSample (*clip.audio, clip.audio->getNumChannels() > 1 ? 1 : 0, sourcePosition);
 
-                    if (numOutputChannels > 0 && outputChannelData[0] != nullptr)
-                        outputChannelData[0][sample] += left * panGains[0];
-                    if (numOutputChannels > 1 && outputChannelData[1] != nullptr)
-                        outputChannelData[1][sample] += right * panGains[1];
+                    group->buffer.addSample (0, sample, left * panGains[0]);
+                    group->buffer.addSample (1, sample, right * panGains[1]);
+                }
+            }
 
+            for (auto& group : playbackSet->trackEffectGroups)
+            {
+                if (group == nullptr || group->buffer.getNumChannels() < engineOutputChannels || group->buffer.getNumSamples() < numSamples)
+                    continue;
+
+                juce::AudioBuffer<float> groupView (group->buffer.getArrayOfWritePointers(),
+                                                    engineOutputChannels,
+                                                    numSamples);
+                processImportedEffectChain (*group, groupView);
+
+                if (numOutputChannels > 0 && outputChannelData[0] != nullptr)
+                    juce::FloatVectorOperations::addWithMultiply (outputChannelData[0], groupView.getReadPointer (0), masterGain, numSamples);
+                if (numOutputChannels > 1 && outputChannelData[1] != nullptr)
+                    juce::FloatVectorOperations::addWithMultiply (outputChannelData[1], groupView.getReadPointer (1), masterGain, numSamples);
+
+                for (int sample = 0; sample < numSamples && numOutputChannels > 2; ++sample)
+                {
+                    const auto mono = 0.5f * (groupView.getSample (0, sample) + groupView.getSample (1, sample)) * masterGain;
                     for (int channel = 2; channel < numOutputChannels; ++channel)
                         if (outputChannelData[channel] != nullptr)
-                            outputChannelData[channel][sample] += 0.5f * (left + right) * masterGain * gain;
+                            outputChannelData[channel][sample] += mono;
                 }
             }
         }
@@ -800,7 +1175,6 @@ private:
             slot.targetGain.store (0.0f, std::memory_order_release);
             slot.gain = 0.0f;
             slot.indexesReady = false;
-            releaseEffectChain (slot);
             slot.engine.release();
             slot.output.setSize (maxHostChannels, blockSize, false, false, true);
             slot.output.clear();
@@ -848,16 +1222,67 @@ private:
         static_cast<void> (slot.engine.setParameterValue (slot.parameterIndexes[4], orbitPhase));
     }
 
-    void loadEffectChain (EngineSlot& slot, const Wf::StateSpec& state)
+    int getOrCreateImportedTrackEffectGroup (ImportedPlaybackSet& playbackSet,
+                                             int stateIndex,
+                                             int trackIndex,
+                                             const std::array<std::optional<std::vector<Wf::StateSpec>>, maxTopLevelStates>* states,
+                                             double sampleRate,
+                                             int blockSize)
     {
-        const auto sampleRate = lastSampleRate.load (std::memory_order_relaxed);
-        const auto blockSize = preparedBlockSize.load (std::memory_order_relaxed);
-        if (sampleRate <= 0.0 || blockSize <= 0)
-            return;
+        for (int index = 0; index < static_cast<int> (playbackSet.trackEffectGroups.size()); ++index)
+        {
+            const auto* group = playbackSet.trackEffectGroups[static_cast<size_t> (index)].get();
+            if (group != nullptr && group->stateIndex == stateIndex && group->trackIndex == trackIndex)
+                return index;
+        }
 
+        auto group = std::make_unique<ImportedTrackEffectGroup>();
+        group->stateIndex = stateIndex;
+        group->trackIndex = trackIndex;
+        group->buffer.setSize (engineOutputChannels, blockSize, false, false, true);
+        group->buffer.clear();
+
+        if (const auto* track = getTrackForImportedEffects (states, stateIndex, trackIndex))
+            loadImportedEffectChain (*group, *track, sampleRate, blockSize);
+
+        playbackSet.trackEffectGroups.push_back (std::move (group));
+        return static_cast<int> (playbackSet.trackEffectGroups.size()) - 1;
+    }
+
+    static const Wf::StateSpec* getTrackForImportedEffects (const std::array<std::optional<std::vector<Wf::StateSpec>>, maxTopLevelStates>* states,
+                                                            int stateIndex,
+                                                            int trackIndex)
+    {
+        if (states == nullptr || stateIndex < 0 || stateIndex >= maxTopLevelStates)
+            return nullptr;
+
+        const auto& stateSlot = (*states)[static_cast<size_t> (stateIndex)];
+        if (! stateSlot.has_value())
+            return nullptr;
+
+        const auto& tracks = *stateSlot;
+        if (trackIndex < 0 || trackIndex >= static_cast<int> (tracks.size()))
+            return nullptr;
+
+        return &tracks[static_cast<size_t> (trackIndex)];
+    }
+
+    static ImportedTrackEffectGroup* getImportedTrackEffectGroup (ImportedPlaybackSet& playbackSet, int groupIndex)
+    {
+        if (groupIndex < 0 || groupIndex >= static_cast<int> (playbackSet.trackEffectGroups.size()))
+            return nullptr;
+
+        return playbackSet.trackEffectGroups[static_cast<size_t> (groupIndex)].get();
+    }
+
+    void loadImportedEffectChain (ImportedTrackEffectGroup& group,
+                                  const Wf::StateSpec& track,
+                                  double sampleRate,
+                                  int blockSize)
+    {
         for (int effectIndex = 0; effectIndex < maxTrackEffectSlots; ++effectIndex)
         {
-            const auto& spec = state.effectSlots[static_cast<size_t> (effectIndex)];
+            const auto& spec = track.effectSlots[static_cast<size_t> (effectIndex)];
             if (! spec.active || spec.pluginFileOrIdentifier.isEmpty())
                 continue;
 
@@ -870,8 +1295,27 @@ private:
 
                 plugin->setPlayConfigDetails (engineOutputChannels, engineOutputChannels, sampleRate, blockSize);
                 plugin->prepareToPlay (sampleRate, blockSize);
-                slot.effects[static_cast<size_t> (effectIndex)] = std::move (plugin);
+                plugin->reset();
+                group.effects[static_cast<size_t> (effectIndex)] = std::move (plugin);
             }
+        }
+    }
+
+    static void processImportedEffectChain (ImportedTrackEffectGroup& group, juce::AudioBuffer<float>& buffer)
+    {
+        group.midi.clear();
+
+        for (auto& effect : group.effects)
+        {
+            if (effect == nullptr)
+                continue;
+
+            const auto inputs = effect->getTotalNumInputChannels();
+            const auto outputs = effect->getTotalNumOutputChannels();
+            if (inputs <= 0 || outputs <= 0)
+                continue;
+
+            effect->processBlock (buffer, group.midi);
         }
     }
 
@@ -897,35 +1341,6 @@ private:
         }
 
         return {};
-    }
-
-    void processEffectChain (EngineSlot& slot, juce::AudioBuffer<float>& buffer)
-    {
-        slot.midi.clear();
-
-        for (auto& effect : slot.effects)
-        {
-            if (effect == nullptr)
-                continue;
-
-            const auto inputs = effect->getTotalNumInputChannels();
-            const auto outputs = effect->getTotalNumOutputChannels();
-            if (inputs <= 0 || outputs <= 0)
-                continue;
-
-            effect->processBlock (buffer, slot.midi);
-        }
-    }
-
-    static void releaseEffectChain (EngineSlot& slot)
-    {
-        for (auto& effect : slot.effects)
-        {
-            if (effect != nullptr)
-                effect->releaseResources();
-
-            effect.reset();
-        }
     }
 
     juce::AudioBuffer<float> emptyInput;
@@ -1333,6 +1748,7 @@ public:
     }
 
     std::function<void (int)> onLaneSelected;
+    std::function<void (int)> onLanePhaseOffsetEditStarted;
     std::function<void (int, float)> onLanePhaseOffsetChanged;
 
     void setTrack (const Wf::StateSpec* trackToUse,
@@ -1421,6 +1837,8 @@ public:
             draggedStartHandleLane = index;
             if (onLaneSelected != nullptr)
                 onLaneSelected (index);
+            if (onLanePhaseOffsetEditStarted != nullptr)
+                onLanePhaseOffsetEditStarted (index);
             updateDraggedStartHandle (event.position);
             return;
         }
@@ -1682,8 +2100,10 @@ class MixerCanvas final : public juce::Component
 {
 public:
     std::function<void (int, int, int)> onChannelSelected;
+    std::function<void()> onMixEditStarted;
     std::function<void (int, int, int, float)> onLaneVolumeChanged;
     std::function<void (int, int, int, float)> onLanePanChanged;
+    std::function<void (float)> onMasterVolumeChanged;
     std::function<void (int, int, int)> onEffectSlotClicked;
 
     void setProject (std::array<std::optional<std::vector<Wf::StateSpec>>, maxTopLevelStates>* statesToUse,
@@ -1694,7 +2114,8 @@ public:
                      int playingTrackToUse,
                      bool runningToUse,
                      std::vector<ImportedLaneAudioClip>* importedLaneClipsToUse,
-                     bool arrangementPlusToUse)
+                     bool arrangementPlusToUse,
+                     float masterGainToUse)
     {
         states = statesToUse;
         viewedState = viewedStateToUse;
@@ -1705,6 +2126,7 @@ public:
         running = runningToUse;
         importedLaneClips = importedLaneClipsToUse;
         arrangementPlus = arrangementPlusToUse;
+        masterGain = masterGainToUse;
         rebuildChannels();
         repaint();
     }
@@ -1749,13 +2171,14 @@ public:
     void paint (juce::Graphics& g) override
     {
         g.fillAll (juce::Colour (0xff0b0f0c));
+        drawMixerHeader (g);
 
         if (channels.empty())
         {
             g.setColour (mutedInk().withAlpha (0.55f));
             g.setFont (juce::FontOptions (15.0f, juce::Font::bold));
             g.drawFittedText (arrangementPlus ? "No imported audio clips to mix" : "No lanes to mix",
-                              getLocalBounds().reduced (24),
+                              getLocalBounds().withTrimmedTop (mixerHeaderHeight).reduced (24),
                               juce::Justification::centred,
                               1);
             return;
@@ -1770,12 +2193,22 @@ public:
                 continue;
 
             const auto& channel = channels[static_cast<size_t> (i)];
-            const auto selected = channel.stateIndex == viewedState
+            const auto selected = ! channel.isStereoOutput
+                               && channel.stateIndex == viewedState
                                && channel.trackIndex == selectedTrack
                                && channel.laneIndex == selectedLane;
-            const auto playing = isPlayingChannel (channel);
+            const auto playing = channel.isStereoOutput ? arrangementPlus && running
+                                                        : isPlayingChannel (channel);
+            const auto accent = channel.isStereoOutput ? amber() : (playing ? green() : (selected ? blue() : mutedInk()));
 
-            if (i == 0 || channels[static_cast<size_t> (i - 1)].stateIndex != channel.stateIndex)
+            if (channel.isStereoOutput)
+            {
+                g.setColour (amber().withAlpha (0.22f));
+                g.drawVerticalLine (static_cast<int> (strip.getX()) - 8,
+                                    strip.getY() + 2.0f,
+                                    strip.getBottom() - 2.0f);
+            }
+            else if (i == 0 || channels[static_cast<size_t> (i - 1)].stateIndex != channel.stateIndex)
             {
                 g.setColour (mutedInk().withAlpha (0.12f));
                 g.drawVerticalLine (static_cast<int> (strip.getX()) - 6,
@@ -1783,90 +2216,98 @@ public:
                                     strip.getBottom() - 4.0f);
             }
 
-            g.setColour (playing ? green().withAlpha (selected ? 0.22f : 0.15f)
-                                  : (selected ? blue().withAlpha (0.16f) : panelSoft().withAlpha (0.30f)));
-            g.fillRoundedRectangle (strip, 3.0f);
-            g.setColour ((playing ? green() : (selected ? blue() : mutedInk())).withAlpha (playing ? 0.58f : (selected ? 0.44f : 0.14f)));
-            g.drawRoundedRectangle (strip, 3.0f, playing ? 1.5f : (selected ? 1.3f : 1.0f));
+            g.setColour (channel.isStereoOutput ? amber().withAlpha (0.075f)
+                                                : (playing ? green().withAlpha (0.13f)
+                                                           : (selected ? blue().withAlpha (0.13f)
+                                                                       : panelSoft().withAlpha (0.22f))));
+            g.fillRoundedRectangle (strip, 5.0f);
+            g.setColour (accent.withAlpha (channel.isStereoOutput ? 0.46f : (playing ? 0.52f : (selected ? 0.38f : 0.12f))));
+            g.drawRoundedRectangle (strip, 5.0f, channel.isStereoOutput ? 1.2f : (playing ? 1.35f : 1.0f));
 
             if (playing)
             {
-                g.setColour (green().withAlpha (0.90f));
-                g.fillRoundedRectangle (strip.reduced (6.0f, 0.0f).removeFromTop (3.0f), 1.5f);
+                g.setColour ((channel.isStereoOutput ? amber() : green()).withAlpha (0.88f));
+                g.fillRoundedRectangle (strip.reduced (7.0f, 0.0f).removeFromTop (3.0f), 1.5f);
             }
 
-            g.setColour (mutedInk().withAlpha (0.70f));
-            g.setFont (juce::FontOptions (10.5f, juce::Font::bold));
-            g.drawFittedText ((arrangementPlus ? "A+ " : "") + juce::String ("S") + juce::String (channel.stateIndex + 1) + " T" + juce::String (channel.trackIndex + 1),
-                              strip.removeFromTop (18).toNearestInt(),
-                              juce::Justification::centred,
-                              1);
-
-            auto labelArea = strip.removeFromTop (42).reduced (5.0f, 0.0f);
-            g.setColour (ink().withAlpha (0.84f));
-            g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
-            g.drawFittedText (channel.trackName, labelArea.removeFromTop (20).toNearestInt(), juce::Justification::centred, 1);
-            g.setColour (mutedInk().withAlpha (0.78f));
-            g.drawFittedText (channel.laneName, labelArea.toNearestInt(), juce::Justification::centred, 1);
-
-            if (arrangementPlus && channel.fileName.isNotEmpty())
-            {
-                g.setColour (blue().withAlpha (0.46f));
-                auto clipBadge = strip.removeFromTop (18).reduced (7.0f, 2.0f);
-                g.drawRoundedRectangle (clipBadge, 2.0f, 0.8f);
-                g.setColour (ink().withAlpha (0.66f));
-                g.setFont (juce::FontOptions (8.5f, juce::Font::bold));
-                g.drawFittedText (channel.fileName, clipBadge.toNearestInt().reduced (4, 0), juce::Justification::centred, 1);
-            }
-
-            auto pan = panBounds (i);
-            const auto panNorm = (juce::jlimit (-1.0f, 1.0f, channel.pan) + 1.0f) * 0.5f;
-            const auto panX = pan.getX() + pan.getWidth() * panNorm;
-            g.setColour (mutedInk().withAlpha (0.13f));
-            g.fillRoundedRectangle (pan, 3.0f);
-            g.setColour (amber().withAlpha (0.70f));
-            g.fillEllipse (panX - 5.0f, pan.getCentreY() - 5.0f, 10.0f, 10.0f);
-            g.setColour (mutedInk().withAlpha (0.62f));
+            auto metaArea = strip.removeFromTop (28).reduced (8.0f, 7.0f);
+            g.setColour (accent.withAlpha (channel.isStereoOutput ? 0.18f : 0.10f));
+            g.fillRoundedRectangle (metaArea, 3.0f);
+            g.setColour (accent.withAlpha (channel.isStereoOutput ? 0.78f : 0.58f));
             g.setFont (juce::FontOptions (9.5f, juce::Font::bold));
-            g.drawFittedText ("pan", pan.translated (0.0f, -14.0f).toNearestInt(), juce::Justification::centred, 1);
+            g.drawFittedText (channelMetaLabel (channel), metaArea.toNearestInt().reduced (3, 0), juce::Justification::centred, 1);
+
+            auto labelArea = strip.removeFromTop (55).reduced (8.0f, 2.0f);
+            g.setColour (ink().withAlpha (channel.isStereoOutput ? 0.90f : 0.82f));
+            g.setFont (juce::FontOptions (10.7f, juce::Font::bold));
+            g.drawFittedText (channel.trackName, labelArea.removeFromTop (21).toNearestInt(), juce::Justification::centred, 1);
+            g.setColour (mutedInk().withAlpha (channel.isStereoOutput ? 0.82f : 0.72f));
+            g.setFont (juce::FontOptions (10.5f, juce::Font::bold));
+            g.drawFittedText (channel.laneName, labelArea.removeFromTop (20).toNearestInt(), juce::Justification::centred, 1);
+
+            if (! channel.isStereoOutput)
+            {
+                auto pan = panBounds (i);
+                const auto panNorm = (juce::jlimit (-1.0f, 1.0f, channel.pan) + 1.0f) * 0.5f;
+                const auto panX = pan.getX() + pan.getWidth() * panNorm;
+                g.setColour (mutedInk().withAlpha (0.10f));
+                g.fillRoundedRectangle (pan, 3.0f);
+                g.setColour (mutedInk().withAlpha (0.18f));
+                g.drawVerticalLine (static_cast<int> (pan.getCentreX()), pan.getY() - 3.0f, pan.getBottom() + 3.0f);
+                g.setColour (amber().withAlpha (0.70f));
+                g.fillEllipse (panX - 5.0f, pan.getCentreY() - 5.0f, 10.0f, 10.0f);
+                g.setColour (mutedInk().withAlpha (0.52f));
+                g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
+                g.drawFittedText ("pan", pan.translated (0.0f, -14.0f).toNearestInt(), juce::Justification::centred, 1);
+            }
 
             auto fader = faderBounds (i);
-            const auto norm = juce::jlimit (0.0f, 1.0f, channel.volume / getMaxChannelGain());
+            const auto norm = juce::jlimit (0.0f, 1.0f, channel.volume / getMaxChannelGain (channel));
             const auto thumbY = fader.getBottom() - fader.getHeight() * norm;
 
+            g.setColour (mutedInk().withAlpha (0.10f));
+            auto rail = fader.withWidth (7.0f).withCentre ({ fader.getCentreX(), fader.getCentreY() });
+            g.fillRoundedRectangle (rail, 3.5f);
             g.setColour (mutedInk().withAlpha (0.12f));
-            g.fillRoundedRectangle (fader.withWidth (6.0f).withCentre ({ fader.getCentreX(), fader.getCentreY() }), 3.0f);
-            g.setColour (green().withAlpha (0.72f));
-            g.fillRoundedRectangle (juce::Rectangle<float> (6.0f, fader.getBottom() - thumbY).withPosition (fader.getCentreX() - 3.0f, thumbY), 3.0f);
+            for (int tick = 0; tick <= 4; ++tick)
+            {
+                const auto y = fader.getY() + fader.getHeight() * static_cast<float> (tick) / 4.0f;
+                g.drawLine (fader.getCentreX() - 11.0f, y, fader.getCentreX() - 6.0f, y, 1.0f);
+                g.drawLine (fader.getCentreX() + 6.0f, y, fader.getCentreX() + 11.0f, y, 1.0f);
+            }
+            g.setColour ((channel.isStereoOutput ? amber() : green()).withAlpha (0.72f));
+            g.fillRoundedRectangle (juce::Rectangle<float> (7.0f, fader.getBottom() - thumbY).withPosition (fader.getCentreX() - 3.5f, thumbY), 3.5f);
             g.setColour (ink());
-            g.fillEllipse (fader.getCentreX() - 7.0f, thumbY - 7.0f, 14.0f, 14.0f);
+            g.fillRoundedRectangle (fader.getCentreX() - 10.0f, thumbY - 7.0f, 20.0f, 14.0f, 7.0f);
+            g.setColour (juce::Colour (0xff07100a).withAlpha (0.36f));
+            g.drawHorizontalLine (static_cast<int> (std::round (thumbY)), fader.getCentreX() - 6.0f, fader.getCentreX() + 6.0f);
 
-            g.setColour (ink().withAlpha (0.88f));
-            g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
-            g.drawFittedText (juce::String (channel.volume, 2),
-                              juce::Rectangle<int> (static_cast<int> (fader.getX()) - 8,
-                                                    getHeight() - 38,
-                                                    static_cast<int> (fader.getWidth()) + 16,
-                                                    18),
+            g.setColour (ink().withAlpha (channel.isStereoOutput ? 0.92f : 0.84f));
+            g.setFont (juce::FontOptions (10.8f, juce::Font::bold));
+            g.drawFittedText (juce::String (channel.volume, channel.isStereoOutput ? 3 : 2),
+                              valueBounds (i).toNearestInt(),
                               juce::Justification::centred,
                               1);
 
-            for (int slotIndex = 0; slotIndex < maxTrackEffectSlots; ++slotIndex)
+            if (arrangementPlus && ! channel.isStereoOutput)
             {
-                const auto slot = effectSlotBounds (i, slotIndex);
-                const auto active = channel.effectActive[static_cast<size_t> (slotIndex)];
-                const auto hasPlugin = channel.effectNames[static_cast<size_t> (slotIndex)].isNotEmpty();
-                g.setColour (active ? amber().withAlpha (0.20f) : panel().withAlpha (0.90f));
-                g.fillRoundedRectangle (slot, 3.0f);
-                g.setColour ((active ? amber() : mutedInk()).withAlpha (active ? 0.68f : (hasPlugin ? 0.34f : 0.18f)));
-                g.drawRoundedRectangle (slot, 3.0f, active ? 1.1f : 0.9f);
-                g.setColour ((active ? ink() : mutedInk()).withAlpha (active ? 0.90f : (hasPlugin ? 0.68f : 0.50f)));
-                g.setFont (juce::FontOptions (9.5f, juce::Font::bold));
-                g.drawFittedText (hasPlugin ? shortEffectName (channel.effectNames[static_cast<size_t> (slotIndex)])
-                                             : "FX" + juce::String (slotIndex + 1),
-                                  slot.toNearestInt(),
-                                  juce::Justification::centred,
-                                  1);
+                for (int slotIndex = 0; slotIndex < maxTrackEffectSlots; ++slotIndex)
+                {
+                    const auto slot = effectSlotBounds (i, slotIndex);
+                    const auto active = channel.effectActive[static_cast<size_t> (slotIndex)];
+                    const auto hasPlugin = channel.effectNames[static_cast<size_t> (slotIndex)].isNotEmpty();
+                    g.setColour (active ? amber().withAlpha (0.18f) : panel().withAlpha (0.72f));
+                    g.fillRoundedRectangle (slot, 3.5f);
+                    g.setColour ((active ? amber() : mutedInk()).withAlpha (active ? 0.60f : (hasPlugin ? 0.28f : 0.13f)));
+                    g.drawRoundedRectangle (slot, 3.5f, active ? 1.0f : 0.8f);
+                    g.setColour ((active ? ink() : mutedInk()).withAlpha (active ? 0.88f : (hasPlugin ? 0.58f : 0.38f)));
+                    g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
+                    g.drawFittedText (hasPlugin ? shortEffectName (channel.effectNames[static_cast<size_t> (slotIndex)])
+                                                 : "FX" + juce::String (slotIndex + 1),
+                                      slot.toNearestInt(),
+                                      juce::Justification::centred,
+                                      1);
+                }
             }
         }
     }
@@ -1879,25 +2320,29 @@ public:
 
         selectActiveChannel();
 
-        if (const auto slot = findEffectSlotAt (activeChannel, event.position); slot >= 0)
+        const auto& channel = channels[static_cast<size_t> (activeChannel)];
+
+        if (arrangementPlus && ! channel.isStereoOutput && findEffectSlotAt (activeChannel, event.position) >= 0)
         {
+            const auto slot = findEffectSlotAt (activeChannel, event.position);
             if (activeChannel < static_cast<int> (channels.size()) && onEffectSlotClicked != nullptr)
-            {
-                const auto& channel = channels[static_cast<size_t> (activeChannel)];
                 onEffectSlotClicked (channel.stateIndex, channel.trackIndex, slot);
-            }
 
             activeControl = ActiveControl::none;
             activeChannel = -1;
         }
-        else if (panBounds (activeChannel).expanded (8.0f, 8.0f).contains (event.position))
+        else if (! channel.isStereoOutput && panBounds (activeChannel).expanded (8.0f, 8.0f).contains (event.position))
         {
             activeControl = ActiveControl::pan;
+            if (onMixEditStarted != nullptr)
+                onMixEditStarted();
             setActiveChannelPanFromX (event.position.x);
         }
         else if (faderBounds (activeChannel).expanded (14.0f, 8.0f).contains (event.position))
         {
             activeControl = ActiveControl::volume;
+            if (onMixEditStarted != nullptr)
+                onMixEditStarted();
             setActiveChannelVolumeFromY (event.position.y);
         }
         else
@@ -1941,6 +2386,7 @@ private:
         float pan = 0.0f;
         std::array<bool, maxTrackEffectSlots> effectActive {};
         std::array<juce::String, maxTrackEffectSlots> effectNames {};
+        bool isStereoOutput = false;
     };
 
     void rebuildChannels()
@@ -1958,6 +2404,9 @@ private:
                 if (channel.has_value())
                     channels.push_back (*channel);
             }
+
+            if (! channels.empty())
+                channels.push_back (stereoOutputChannel());
 
             return;
         }
@@ -2036,6 +2485,57 @@ private:
         return channel;
     }
 
+    Channel stereoOutputChannel() const
+    {
+        Channel channel;
+        channel.stateIndex = -1;
+        channel.trackIndex = -1;
+        channel.laneIndex = -1;
+        channel.trackName = "STEREO";
+        channel.laneName = "Output";
+        channel.volume = masterGain;
+        channel.isStereoOutput = true;
+        return channel;
+    }
+
+    void drawMixerHeader (juce::Graphics& g) const
+    {
+        auto header = getLocalBounds().toFloat().removeFromTop (mixerHeaderHeight).reduced (horizontalPadding, 8.0f);
+        if (header.getWidth() <= 0.0f)
+            return;
+
+        g.setColour (panelSoft().withAlpha (0.30f));
+        g.fillRoundedRectangle (header, 5.0f);
+        g.setColour (mutedInk().withAlpha (0.10f));
+        g.drawRoundedRectangle (header, 5.0f, 1.0f);
+
+        const auto title = arrangementPlus ? "Mixer+" : "Mixer";
+        auto left = header.reduced (12.0f, 0.0f);
+        auto right = left.removeFromRight (220.0f);
+
+        g.setColour (ink().withAlpha (0.88f));
+        g.setFont (juce::FontOptions (14.0f, juce::Font::bold));
+        g.drawFittedText (title, left.toNearestInt(), juce::Justification::centredLeft, 1);
+
+        const auto outputCount = channels.empty() ? 0 : static_cast<int> (channels.size()) - (arrangementPlus ? 1 : 0);
+        g.setColour (mutedInk().withAlpha (0.58f));
+        g.setFont (juce::FontOptions (10.5f, juce::Font::bold));
+        g.drawFittedText (juce::String (juce::jmax (0, outputCount)) + (outputCount == 1 ? " channel" : " channels"),
+                          right.toNearestInt(),
+                          juce::Justification::centredRight,
+                          1);
+    }
+
+    static juce::String channelMetaLabel (const Channel& channel)
+    {
+        if (channel.isStereoOutput)
+            return "OUT";
+
+        return juce::String ("S") + juce::String (channel.stateIndex + 1)
+             + "  T" + juce::String (channel.trackIndex + 1)
+             + "  L" + juce::String (channel.laneIndex + 1);
+    }
+
     bool isPlayingChannel (const Channel& channel) const noexcept
     {
         return running
@@ -2046,31 +2546,41 @@ private:
     juce::Rectangle<float> channelBounds (int channelIndex) const
     {
         return { static_cast<float> (horizontalPadding + channelIndex * channelWidth),
-                 12.0f,
+                 mixerHeaderHeight + 12.0f,
                  static_cast<float> (channelWidth - channelGap),
-                 static_cast<float> (juce::jmax (120, getHeight() - 24)) };
+                 static_cast<float> (juce::jmax (120, getHeight() - mixerHeaderHeight - 24)) };
     }
 
     juce::Rectangle<float> faderBounds (int channelIndex) const
     {
         auto strip = channelBounds (channelIndex).reduced (0.0f, 12.0f);
-        strip.removeFromTop (120.0f);
-        strip.removeFromBottom (94.0f);
-        const auto height = juce::jlimit (40.0f, 150.0f, strip.getHeight());
+        const auto& channel = channels[static_cast<size_t> (channelIndex)];
+        strip.removeFromTop (channel.isStereoOutput ? 92.0f : 126.0f);
+        strip.removeFromBottom (channel.isStereoOutput ? 42.0f : (arrangementPlus ? 104.0f : 44.0f));
+        const auto height = juce::jlimit (58.0f, 218.0f, strip.getHeight());
         return { strip.getCentreX() - 13.0f, strip.getCentreY() - height * 0.5f, 26.0f, height };
     }
 
     juce::Rectangle<float> panBounds (int channelIndex) const
     {
         auto strip = channelBounds (channelIndex).reduced (8.0f, 0.0f);
-        return { strip.getX(), strip.getY() + 88.0f, strip.getWidth(), 6.0f };
+        return { strip.getX(), strip.getY() + 100.0f, strip.getWidth(), 6.0f };
+    }
+
+    juce::Rectangle<float> valueBounds (int channelIndex) const
+    {
+        const auto& channel = channels[static_cast<size_t> (channelIndex)];
+        auto strip = channelBounds (channelIndex).reduced (9.0f, 0.0f);
+        const auto y = channel.isStereoOutput || ! arrangementPlus ? strip.getBottom() - 30.0f
+                                                                   : effectSlotBounds (channelIndex, 0).getY() - 25.0f;
+        return { strip.getX(), y, strip.getWidth(), 17.0f };
     }
 
     juce::Rectangle<float> effectSlotBounds (int channelIndex, int slotIndex) const
     {
         auto strip = channelBounds (channelIndex).reduced (7.0f, 0.0f);
-        const auto y = strip.getBottom() - 64.0f + static_cast<float> (slotIndex) * 20.0f;
-        return { strip.getX(), y, strip.getWidth(), 16.0f };
+        const auto y = strip.getBottom() - 70.0f + static_cast<float> (slotIndex) * 21.0f;
+        return { strip.getX(), y, strip.getWidth(), 17.0f };
     }
 
     int findChannelAt (juce::Point<float> point) const
@@ -2131,6 +2641,9 @@ private:
             return;
 
         const auto& channel = channels[static_cast<size_t> (activeChannel)];
+        if (channel.isStereoOutput)
+            return;
+
         if (onChannelSelected != nullptr)
             onChannelSelected (channel.stateIndex, channel.trackIndex, channel.laneIndex);
     }
@@ -2143,7 +2656,20 @@ private:
         auto& channel = channels[static_cast<size_t> (activeChannel)];
         const auto fader = faderBounds (activeChannel);
         const auto norm = 1.0f - juce::jlimit (0.0f, 1.0f, (y - fader.getY()) / juce::jmax (1.0f, fader.getHeight()));
-        const auto volume = juce::jlimit (0.0f, getMaxChannelGain(), norm * getMaxChannelGain());
+        const auto maxGain = getMaxChannelGain (channel);
+        const auto volume = juce::jlimit (0.0f, maxGain, norm * maxGain);
+
+        if (channel.isStereoOutput)
+        {
+            channel.volume = volume;
+            masterGain = volume;
+
+            if (onMasterVolumeChanged != nullptr)
+                onMasterVolumeChanged (volume);
+
+            repaint();
+            return;
+        }
 
         if (arrangementPlus)
         {
@@ -2176,6 +2702,9 @@ private:
             return;
 
         auto& channel = channels[static_cast<size_t> (activeChannel)];
+        if (channel.isStereoOutput)
+            return;
+
         const auto panArea = panBounds (activeChannel);
         const auto norm = juce::jlimit (0.0f, 1.0f, (x - panArea.getX()) / juce::jmax (1.0f, panArea.getWidth()));
         const auto pan = norm * 2.0f - 1.0f;
@@ -2218,11 +2747,18 @@ private:
         return arrangementPlus ? maxImportedClipGain : maxLaneVolume;
     }
 
-    static constexpr int horizontalPadding = 16;
-    static constexpr int channelWidth = 86;
-    static constexpr int channelGap = 8;
+    float getMaxChannelGain (const Channel& channel) const noexcept
+    {
+        return channel.isStereoOutput ? maxMasterGain : getMaxChannelGain();
+    }
+
+    static constexpr int mixerHeaderHeight = 44;
+    static constexpr int horizontalPadding = 18;
+    static constexpr int channelWidth = 102;
+    static constexpr int channelGap = 10;
     static constexpr float maxLaneVolume = 0.8f;
     static constexpr float maxImportedClipGain = 1.5f;
+    static constexpr float maxMasterGain = 0.8f;
 
     std::array<std::optional<std::vector<Wf::StateSpec>>, maxTopLevelStates>* states = nullptr;
     std::vector<ImportedLaneAudioClip>* importedLaneClips = nullptr;
@@ -2236,6 +2772,7 @@ private:
     ActiveControl activeControl = ActiveControl::none;
     bool running = false;
     bool arrangementPlus = false;
+    float masterGain = 0.18f;
 };
 
 class TrackFocusDivider final : public juce::Component
@@ -2282,6 +2819,53 @@ public:
     {
         if (onDragDelta != nullptr)
             onDragDelta (event.getDistanceFromDragStartX());
+    }
+};
+
+class CodeViewDivider final : public juce::Component
+{
+public:
+    CodeViewDivider()
+    {
+        setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
+    }
+
+    std::function<void()> onDragStart;
+    std::function<void (int)> onDragDelta;
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto bounds = getLocalBounds().toFloat();
+        const auto hover = isMouseOverOrDragging();
+        const auto y = bounds.getCentreY();
+
+        g.setColour (mutedInk().withAlpha (hover ? 0.13f : 0.045f));
+        g.fillRoundedRectangle (bounds.reduced (0.0f, 4.0f), 2.0f);
+
+        g.setColour ((hover ? blue() : mutedInk()).withAlpha (hover ? 0.48f : 0.16f));
+        g.drawLine (bounds.getX() + 14.0f, y, bounds.getRight() - 14.0f, y, hover ? 1.4f : 1.0f);
+    }
+
+    void mouseEnter (const juce::MouseEvent&) override
+    {
+        repaint();
+    }
+
+    void mouseExit (const juce::MouseEvent&) override
+    {
+        repaint();
+    }
+
+    void mouseDown (const juce::MouseEvent&) override
+    {
+        if (onDragStart != nullptr)
+            onDragStart();
+    }
+
+    void mouseDrag (const juce::MouseEvent& event) override
+    {
+        if (onDragDelta != nullptr)
+            onDragDelta (event.getDistanceFromDragStartY());
     }
 };
 
@@ -2801,6 +3385,21 @@ class MainComponent final : public juce::Component,
         mixer
     };
 
+    enum class ObjectClipboardKind
+    {
+        none,
+        topLevelState,
+        track,
+        lane
+    };
+
+    struct ProjectUndoSnapshot
+    {
+        juce::var project;
+        bool projectWasDirty = false;
+        juce::String label;
+    };
+
     enum MenuIds
     {
         menuNewProject = 1,
@@ -2809,7 +3408,11 @@ class MainComponent final : public juce::Component,
         menuSaveProjectAs,
         menuRenderLanes,
         menuRenderWav,
-        menuRemoveRenderedAudio
+        menuRemoveRenderedAudio,
+        menuUndo,
+        menuCopy,
+        menuPaste,
+        menuDuplicate
     };
 
 public:
@@ -2838,10 +3441,13 @@ public:
 
         setupSlider (gainSlider, "Volume", 0.0, 0.8, 0.18, green());
         gainSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 56, 22);
+        gainSlider.onDragStart = [this] { pushUndoSnapshot ("change master volume"); };
         gainSlider.onValueChange = [this]
         {
             markProjectDirty();
             applyCurrentAudioControls();
+            if (mainView == MainView::mixer)
+                syncMixerView();
         };
 
         for (int i = 0; i < maxTopLevelStates; ++i)
@@ -2866,7 +3472,7 @@ public:
         setupButton (duplicateStateButton, "Duplicate", amber(), [this] { duplicateViewedTopLevelState(); });
         setupButton (deleteStateButton, "Delete", coral(), [this] { deleteViewedTopLevelState(); });
 
-        globalScriptEditor.setMultiLine (true);
+        globalScriptEditor.setMultiLine (true, false);
         globalScriptEditor.setReturnKeyStartsNewLine (true);
         globalScriptEditor.setText (defaultGlobalScriptText(), juce::dontSendNotification);
         globalScriptEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff0c100d));
@@ -2874,13 +3480,15 @@ public:
         globalScriptEditor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.07f));
         globalScriptEditor.setColour (juce::TextEditor::focusedOutlineColourId, amber().withAlpha (0.34f));
         globalScriptEditor.setColour (juce::TextEditor::highlightColourId, amber().withAlpha (0.24f));
-        globalScriptEditor.setFont (juce::FontOptions (13.0f));
+        globalScriptEditor.setCodeFontSize (12.6f);
         globalScriptEditor.onTextChange = [this]
         {
+            beginUndoSnapshotForTextEdit (globalScriptEditor, "edit state code");
             markProjectDirty();
             if (mainView == MainView::timeline)
                 syncArrangementTimelineView();
         };
+        globalScriptEditor.onFocusLost = [this] { endUndoSnapshotForTextEdit (globalScriptEditor); };
         addAndMakeVisible (globalScriptEditor);
 
         laneCodeHeader.setText ("lane code", juce::dontSendNotification);
@@ -2895,6 +3503,7 @@ public:
 
         setupTextEditor (trackNameEditor, "Track name");
         trackNameEditor.onTextChange = [this] { applyTrackNameEdit(); };
+        trackNameEditor.onFocusLost = [this] { endUndoSnapshotForTextEdit (trackNameEditor); };
 
         trackDurationLabel.setText ("track duration (Bar.Beat)", juce::dontSendNotification);
         trackDurationLabel.setFont (juce::FontOptions (13.0f, juce::Font::bold));
@@ -2903,6 +3512,7 @@ public:
 
         setupTextEditor (trackDurationEditor, "1.0");
         trackDurationEditor.onTextChange = [this] { applyTrackDurationEdit(); };
+        trackDurationEditor.onFocusLost = [this] { endUndoSnapshotForTextEdit (trackDurationEditor); };
 
         trackSectionLabel.setText ("track", juce::dontSendNotification);
         trackSectionLabel.setFont (juce::FontOptions (15.0f, juce::Font::bold));
@@ -2911,6 +3521,7 @@ public:
 
         setupTextEditor (laneNameEditor, "Lane name");
         laneNameEditor.onTextChange = [this] { applyLaneNameEdit(); };
+        laneNameEditor.onFocusLost = [this] { endUndoSnapshotForTextEdit (laneNameEditor); };
 
         laneSectionLabel.setText ("lane", juce::dontSendNotification);
         laneSectionLabel.setFont (juce::FontOptions (15.0f, juce::Font::bold));
@@ -2931,7 +3542,11 @@ public:
         laneTempoEditor.setInputRestrictions (6, "0123456789.");
         laneTempoEditor.onTextChange = [this] { applyLaneTempoEdit (false); };
         laneTempoEditor.onReturnKey = [this] { applyLaneTempoEdit (true); };
-        laneTempoEditor.onFocusLost = [this] { applyLaneTempoEdit (true); };
+        laneTempoEditor.onFocusLost = [this]
+        {
+            applyLaneTempoEdit (true);
+            endUndoSnapshotForTextEdit (laneTempoEditor);
+        };
 
         laneDurationLabel.setText ("lane duration (Bar.Beat)", juce::dontSendNotification);
         laneDurationLabel.setFont (juce::FontOptions (13.0f, juce::Font::bold));
@@ -2941,7 +3556,11 @@ public:
         setupTextEditor (laneDurationEditor, "track");
         laneDurationEditor.onTextChange = [this] { applyLaneDurationEdit (false); };
         laneDurationEditor.onReturnKey = [this] { applyLaneDurationEdit (true); };
-        laneDurationEditor.onFocusLost = [this] { applyLaneDurationEdit (true); };
+        laneDurationEditor.onFocusLost = [this]
+        {
+            applyLaneDurationEdit (true);
+            endUndoSnapshotForTextEdit (laneDurationEditor);
+        };
 
         laneCountLabel.setText ("Lanes", juce::dontSendNotification);
         styleLabel (laneCountLabel, 0.76f);
@@ -2952,7 +3571,11 @@ public:
         laneCountEditor.setSelectAllWhenFocused (true);
         laneCountEditor.onTextChange = [this] { applyLaneCountEdit(); };
         laneCountEditor.onReturnKey = [this] { applyLaneCountEdit(); };
-        laneCountEditor.onFocusLost = [this] { applyLaneCountEdit(); };
+        laneCountEditor.onFocusLost = [this]
+        {
+            applyLaneCountEdit();
+            endUndoSnapshotForTextEdit (laneCountEditor);
+        };
 
         auto exitFocusedTrackView = [this]
         {
@@ -2969,7 +3592,7 @@ public:
         setupButton (duplicateLaneButton, "Duplicate", blue(), [this] { duplicateSelectedLane(); });
         setupButton (deleteLaneButton, "Delete", coral(), [this] { deleteSelectedLane(); });
 
-        laneCodeEditor.setMultiLine (true);
+        laneCodeEditor.setMultiLine (true, false);
         laneCodeEditor.setReturnKeyStartsNewLine (true);
         laneCodeEditor.setReadOnly (false);
         laneCodeEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff090d0a));
@@ -2977,7 +3600,7 @@ public:
         laneCodeEditor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.08f));
         laneCodeEditor.setColour (juce::TextEditor::focusedOutlineColourId, blue().withAlpha (0.30f));
         laneCodeEditor.setColour (juce::TextEditor::highlightColourId, blue().withAlpha (0.24f));
-        laneCodeEditor.setFont (juce::FontOptions (11.5f));
+        laneCodeEditor.setCodeFontSize (11.8f);
         laneCodeEditor.onTextChange = [this] { markLaneCodeEdited(); };
         laneCodeEditor.onEscapeKey = exitFocusedTrackView;
         addAndMakeVisible (laneCodeEditor);
@@ -3004,6 +3627,7 @@ public:
         setupSlider (stateTempoSlider, "State tempo", 30.0, 220.0, 88.0, amber());
         stateTempoSlider.setSkewFactorFromMidPoint (100.0);
         stateTempoSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 62, 22);
+        stateTempoSlider.onDragStart = [this] { pushUndoSnapshot ("change state tempo"); };
         stateTempoSlider.onValueChange = [this]
         {
             if (suppressStateControlCallbacks)
@@ -3028,6 +3652,11 @@ public:
         stateTrackCountEditor.setInputRestrictions (2, "0123456789");
         stateTrackCountEditor.setSelectAllWhenFocused (true);
         stateTrackCountEditor.onTextChange = [this] { applyStateTrackCountEdit(); };
+        stateTrackCountEditor.onFocusLost = [this]
+        {
+            applyStateTrackCountEdit();
+            endUndoSnapshotForTextEdit (stateTrackCountEditor);
+        };
 
         for (int numerator = 1; numerator <= 16; ++numerator)
             timeSigNumeratorBox.addItem (juce::String (numerator), numerator);
@@ -3045,6 +3674,7 @@ public:
             if (suppressStateControlCallbacks)
                 return;
 
+            pushUndoSnapshot ("change time signature");
             topLevelTimeSigNumerators[static_cast<size_t> (viewedTopLevelState)] = timeSigNumeratorBox.getSelectedId();
             markProjectDirty();
             refreshLabels();
@@ -3055,6 +3685,7 @@ public:
             if (suppressStateControlCallbacks)
                 return;
 
+            pushUndoSnapshot ("change time signature");
             topLevelTimeSigDenominators[static_cast<size_t> (viewedTopLevelState)] = timeSigDenominatorBox.getSelectedId();
             markProjectDirty();
             refreshLabels();
@@ -3076,11 +3707,15 @@ public:
         addAndMakeVisible (overallCanvas);
 
         trackFocusCanvas.onLaneSelected = [this] (int index) { selectFocusedLane (index); };
+        trackFocusCanvas.onLanePhaseOffsetEditStarted = [this] (int) { pushUndoSnapshot ("change lane phase"); };
         trackFocusCanvas.onLanePhaseOffsetChanged = [this] (int index, float phaseOffset) { setLanePhaseOffset (index, phaseOffset); };
         addAndMakeVisible (trackFocusCanvas);
         trackFocusDivider.onDragStart = [this] { trackFocusCodePaneDragStartWidth = trackFocusCodePaneWidthPx; };
         trackFocusDivider.onDragDelta = [this] (int delta) { setTrackFocusCodePaneWidth (trackFocusCodePaneDragStartWidth + delta); };
         addAndMakeVisible (trackFocusDivider);
+        codeViewDivider.onDragStart = [this] { codeViewSplitDragStartHeightPx = codeViewStatePaneHeightForCurrentBounds(); };
+        codeViewDivider.onDragDelta = [this] (int delta) { setCodeViewStatePaneHeight (codeViewSplitDragStartHeightPx + delta); };
+        addAndMakeVisible (codeViewDivider);
 
         mixerViewport.setViewedComponent (&mixerCanvas, false);
         mixerViewport.setScrollBarsShown (false, true);
@@ -3088,6 +3723,7 @@ public:
         {
             selectMixerChannel (stateIndex, trackIndex, laneIndex);
         };
+        mixerCanvas.onMixEditStarted = [this] { pushUndoSnapshot ("mix lane"); };
         mixerCanvas.onLaneVolumeChanged = [this] (int stateIndex, int trackIndex, int laneIndex, float volume)
         {
             applyMixerLaneVolumeChange (stateIndex, trackIndex, laneIndex, volume);
@@ -3095,6 +3731,10 @@ public:
         mixerCanvas.onLanePanChanged = [this] (int stateIndex, int trackIndex, int laneIndex, float pan)
         {
             applyMixerLanePanChange (stateIndex, trackIndex, laneIndex, pan);
+        };
+        mixerCanvas.onMasterVolumeChanged = [this] (float volume)
+        {
+            applyMixerMasterVolumeChange (volume);
         };
         mixerCanvas.onEffectSlotClicked = [this] (int stateIndex, int trackIndex, int slotIndex)
         {
@@ -3125,6 +3765,7 @@ public:
         arrangementHorizontalZoomSlider.setRange (0.35, 3.25, 0.01);
         arrangementHorizontalZoomSlider.setNumDecimalPlacesToDisplay (2);
         arrangementHorizontalZoomSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 44, 22);
+        arrangementHorizontalZoomSlider.onDragStart = [this] { pushUndoSnapshot ("change arrangement zoom"); };
         arrangementHorizontalZoomSlider.onValueChange = [this] { applyArrangementZoomChange(); };
 
         arrangementVerticalZoomLabel.setText ("V zoom", juce::dontSendNotification);
@@ -3134,6 +3775,7 @@ public:
         arrangementVerticalZoomSlider.setRange (0.55, 3.0, 0.01);
         arrangementVerticalZoomSlider.setNumDecimalPlacesToDisplay (2);
         arrangementVerticalZoomSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 44, 22);
+        arrangementVerticalZoomSlider.onDragStart = [this] { pushUndoSnapshot ("change arrangement zoom"); };
         arrangementVerticalZoomSlider.onValueChange = [this] { applyArrangementZoomChange(); };
 
         addAndMakeVisible (laneHeader);
@@ -3178,24 +3820,44 @@ public:
 
     juce::StringArray getMenuBarNames() override
     {
-        return { "File" };
+        return { "File", "Edit" };
     }
 
     juce::PopupMenu getMenuForIndex (int menuIndex, const juce::String&) override
     {
         juce::PopupMenu menu;
+        auto addShortcutItem = [&menu] (int itemID,
+                                        const juce::String& text,
+                                        bool isEnabled,
+                                        const juce::String& shortcut)
+        {
+            juce::PopupMenu::Item item (text);
+            item.itemID = itemID;
+            item.isEnabled = isEnabled;
+            item.shortcutKeyDescription = shortcut;
+            menu.addItem (std::move (item));
+        };
 
         if (menuIndex == 0)
         {
             menu.addItem (menuNewProject, "New Project");
             menu.addSeparator();
             menu.addItem (menuLoadProject, "Load Project...");
-            menu.addItem (menuSaveProject, "Save Project", projectDirty || currentProjectFile == juce::File());
+            menu.addItem (menuSaveProject, "Save Project", projectDirty || laneCodeDirty || currentProjectFile == juce::File());
             menu.addItem (menuSaveProjectAs, "Save Project As...");
             menu.addSeparator();
             menu.addItem (menuRenderLanes, "Render Lanes...");
             menu.addItem (menuRenderWav, arrangementPlusMode ? "Render WAV+..." : "Render WAV...");
             menu.addItem (menuRemoveRenderedAudio, "Remove Rendered Audio", arrangementPlusMode);
+        }
+        else if (menuIndex == 1)
+        {
+            addShortcutItem (menuUndo, "Undo", canUndo(), "Cmd+Z");
+            menu.addSeparator();
+            addShortcutItem (menuCopy, "Copy", canCopy(), "Cmd+C");
+            addShortcutItem (menuPaste, "Paste", canPaste(), "Cmd+V");
+            menu.addSeparator();
+            addShortcutItem (menuDuplicate, "Duplicate", canDuplicate(), "Cmd+D");
         }
 
         return menu;
@@ -3208,10 +3870,14 @@ public:
             case menuNewProject: confirmUnsavedChangesThen ([this] { newProject(); }); break;
             case menuLoadProject: confirmUnsavedChangesThen ([this] { chooseProjectToLoad(); }); break;
             case menuSaveProject: saveProject(); break;
-            case menuSaveProjectAs: chooseProjectSaveFile(); break;
-            case menuRenderLanes: chooseArrangementLaneRenderDirectory(); break;
-            case menuRenderWav: chooseArrangementRenderFile(); break;
+            case menuSaveProjectAs: saveProjectAs(); break;
+            case menuRenderLanes: confirmPendingLaneCodeThen ([this] { chooseArrangementLaneRenderDirectory(); }); break;
+            case menuRenderWav: confirmPendingLaneCodeThen ([this] { chooseArrangementRenderFile(); }); break;
             case menuRemoveRenderedAudio: removeRenderedAudioAndReturnToCodePlayback(); break;
+            case menuUndo: performUndo(); break;
+            case menuCopy: performCopy(); break;
+            case menuPaste: performPaste(); break;
+            case menuDuplicate: performDuplicate(); break;
             default: break;
         }
     }
@@ -3224,6 +3890,34 @@ public:
     bool keyPressed (const juce::KeyPress& key) override
     {
         const auto keyCode = key.getKeyCode();
+        const auto modifiers = key.getModifiers();
+        if (modifiers.isCommandDown())
+        {
+            if (keyCode == 'z' || keyCode == 'Z')
+            {
+                performUndo();
+                return true;
+            }
+
+            if (keyCode == 'c' || keyCode == 'C')
+            {
+                performCopy();
+                return true;
+            }
+
+            if (keyCode == 'v' || keyCode == 'V')
+            {
+                performPaste();
+                return true;
+            }
+
+            if (keyCode == 'd' || keyCode == 'D')
+            {
+                performDuplicate();
+                return true;
+            }
+        }
+
         if (keyCode == juce::KeyPress::escapeKey && mainView == MainView::track)
         {
             setMainView (MainView::arrangement);
@@ -3302,8 +3996,9 @@ public:
         else if (mainView == MainView::code)
         {
             content.removeFromTop (12);
-            auto stateCodePane = content.removeFromTop ((content.getHeight() - 16) / 3);
-            content.removeFromTop (16);
+            const auto split = codeViewStatePaneHeightForAvailableHeight (content.getHeight());
+            auto stateCodePane = content.removeFromTop (split);
+            content.removeFromTop (codeViewDividerHeight);
             auto laneCodePane = content;
 
             g.setColour (juce::Colour (0xff0b0f0c).withAlpha (0.42f));
@@ -3379,8 +4074,9 @@ public:
         if (mainView == MainView::code)
         {
             area.removeFromTop (12);
-            auto stateCodePane = area.removeFromTop ((area.getHeight() - 16) / 3);
-            area.removeFromTop (16);
+            auto stateCodePane = area.removeFromTop (codeViewStatePaneHeightForAvailableHeight (area.getHeight()));
+            auto dividerArea = area.removeFromTop (codeViewDividerHeight);
+            codeViewDivider.setBounds (dividerArea);
             auto laneCodePane = area;
 
             auto stateCodeHeaderRow = stateCodePane.removeFromTop (32);
@@ -3588,6 +4284,45 @@ private:
         return juce::jlimit (minTrackFocusCodePaneWidth, maximumWidth, requestedWidth);
     }
 
+    int codeViewAvailableHeightForCurrentBounds() const
+    {
+        auto area = getLocalBounds().reduced (34);
+        area.removeFromTop (44);
+        area.removeFromBottom (48);
+        area.removeFromTop (12);
+        return juce::jmax (0, area.getHeight());
+    }
+
+    int codeViewStatePaneHeightForCurrentBounds() const
+    {
+        return codeViewStatePaneHeightForAvailableHeight (codeViewAvailableHeightForCurrentBounds());
+    }
+
+    int codeViewStatePaneHeightForAvailableHeight (int availableHeight) const
+    {
+        const auto usableHeight = juce::jmax (0, availableHeight - codeViewDividerHeight);
+        if (usableHeight <= minCodeViewPaneHeight * 2)
+            return juce::jmax (0, usableHeight / 2);
+
+        const auto requested = static_cast<int> (std::round (static_cast<float> (usableHeight) * codeViewStatePaneRatio));
+        return juce::jlimit (minCodeViewPaneHeight, usableHeight - minCodeViewPaneHeight, requested);
+    }
+
+    void setCodeViewStatePaneHeight (int requestedHeight)
+    {
+        const auto availableHeight = codeViewAvailableHeightForCurrentBounds();
+        const auto usableHeight = juce::jmax (0, availableHeight - codeViewDividerHeight);
+        if (usableHeight <= 0)
+            return;
+
+        const auto height = usableHeight <= minCodeViewPaneHeight * 2
+                                ? juce::jmax (0, usableHeight / 2)
+                                : juce::jlimit (minCodeViewPaneHeight, usableHeight - minCodeViewPaneHeight, requestedHeight);
+        codeViewStatePaneRatio = juce::jlimit (0.12f, 0.88f, static_cast<float> (height) / static_cast<float> (usableHeight));
+        resized();
+        repaint();
+    }
+
     void setupButton (juce::TextButton& button, const juce::String& text, juce::Colour colour, std::function<void()> action)
     {
         button.setButtonText (text);
@@ -3678,6 +4413,7 @@ private:
         overallCanvas.setVisible (overall);
         trackFocusCanvas.setVisible (track);
         trackFocusDivider.setVisible (track);
+        codeViewDivider.setVisible (code);
         stateSettingsLabel.setVisible (arrangement);
         stateTempoLabel.setVisible (arrangement);
         stateTempoSlider.setVisible (arrangement);
@@ -3730,7 +4466,8 @@ private:
                                 performingTrackIndex,
                                 running,
                                 &importedLaneAudioClips,
-                                arrangementPlusMode);
+                                arrangementPlusMode,
+                                static_cast<float> (gainSlider.getValue()));
         resizeMixerCanvas();
 
         if (mainView == MainView::mixer)
@@ -4304,7 +5041,7 @@ private:
         return true;
     }
 
-    void resetProjectToDefaults()
+    void resetProjectToEmptyProject()
     {
         running = false;
         scriptRunning = false;
@@ -4312,13 +5049,13 @@ private:
         scriptStepElapsedBars = 0.0;
         globalScriptSteps.clear();
         audioCallback.clearImportedAudioPlayback();
+        audioCallback.useChucKPlayback();
         importedLaneAudioClips.clear();
         arrangementPlusMode = false;
 
         for (auto& slot : topLevelStates)
             slot.reset();
-        topLevelStates[0] = Wf::makeDefaultStates();
-        topLevelStates[1] = Wf::makeDefaultStates();
+
         topLevelTemposBpm = defaultTopLevelTempos();
         topLevelTimeSigNumerators = defaultTopLevelTimeSigNumerators();
         topLevelTimeSigDenominators = defaultTopLevelTimeSigDenominators();
@@ -4326,7 +5063,7 @@ private:
         {
             juce::ScopedValueSetter<bool> editGuard (suppressEditCallbacks, true);
             juce::ScopedValueSetter<bool> laneGuard (suppressLaneCodeCallbacks, true);
-            globalScriptEditor.setText (defaultGlobalScriptText(), juce::dontSendNotification);
+            globalScriptEditor.setText ({}, juce::dontSendNotification);
             gainSlider.setValue (0.18, juce::dontSendNotification);
             laneCodeDirty = false;
             laneCodeRunButton.setEnabled (false);
@@ -4357,19 +5094,376 @@ private:
         return file.getFileExtension().isEmpty() ? file.withFileExtension ("chuckme") : file;
     }
 
+    juce::TextEditor* getFocusedTextEditor()
+    {
+        for (auto* component = juce::Component::getCurrentlyFocusedComponent();
+             component != nullptr;
+             component = component->getParentComponent())
+        {
+            if (auto* editor = dynamic_cast<juce::TextEditor*> (component))
+                return editor;
+        }
+
+        return nullptr;
+    }
+
+    bool canUndo()
+    {
+        return getFocusedTextEditor() != nullptr || ! undoStack.empty();
+    }
+
+    bool canCopy()
+    {
+        if (getFocusedTextEditor() != nullptr)
+            return true;
+
+        if (mainView == MainView::overall)
+            return isTopLevelStatePopulated (viewedTopLevelState);
+
+        if (mainView == MainView::track)
+            return getSelectedViewedLane() != nullptr;
+
+        return getSelectedViewedTrack() != nullptr;
+    }
+
+    bool canPaste()
+    {
+        if (getFocusedTextEditor() != nullptr)
+            return true;
+
+        if (objectClipboardKind == ObjectClipboardKind::lane)
+        {
+            const auto* track = getSelectedViewedTrack();
+            return track != nullptr && static_cast<int> (track->lanes.size()) < maxTrackLanes;
+        }
+
+        if (objectClipboardKind == ObjectClipboardKind::track)
+        {
+            const auto* tracks = getViewedTracks();
+            return tracks != nullptr && static_cast<int> (tracks->size()) < maxStateTracks;
+        }
+
+        if (objectClipboardKind == ObjectClipboardKind::topLevelState)
+            return firstEmptyTopLevelState() >= 0 || ! isTopLevelStatePopulated (viewedTopLevelState);
+
+        return false;
+    }
+
+    bool canDuplicate()
+    {
+        if (getFocusedTextEditor() != nullptr)
+            return false;
+
+        if (mainView == MainView::track)
+        {
+            const auto* track = getSelectedViewedTrack();
+            return track != nullptr && static_cast<int> (track->lanes.size()) < maxTrackLanes;
+        }
+
+        if (mainView == MainView::overall)
+            return firstEmptyTopLevelState() >= 0 && isTopLevelStatePopulated (viewedTopLevelState);
+
+        const auto* tracks = getViewedTracks();
+        return tracks != nullptr && static_cast<int> (tracks->size()) < maxStateTracks;
+    }
+
+    void pushUndoSnapshot (const juce::String& label)
+    {
+        if (suppressProjectDirty || suppressProjectUndo)
+            return;
+
+        ProjectUndoSnapshot snapshot;
+        snapshot.project = projectToVar();
+        snapshot.projectWasDirty = projectDirty;
+        snapshot.label = label;
+        undoStack.push_back (std::move (snapshot));
+
+        constexpr size_t maxUndoSnapshots = 64;
+        while (undoStack.size() > maxUndoSnapshots)
+            undoStack.erase (undoStack.begin());
+
+        menuItemsChanged();
+    }
+
+    void clearUndoHistory()
+    {
+        undoStack.clear();
+        activeUndoTextEditor = nullptr;
+        menuItemsChanged();
+    }
+
+    void beginUndoSnapshotForTextEdit (juce::TextEditor& editor, const juce::String& label)
+    {
+        if (suppressEditCallbacks || suppressProjectUndo || suppressProjectDirty)
+            return;
+
+        if (activeUndoTextEditor == &editor)
+            return;
+
+        pushUndoSnapshot (label);
+        activeUndoTextEditor = &editor;
+    }
+
+    void endUndoSnapshotForTextEdit (juce::TextEditor& editor)
+    {
+        if (activeUndoTextEditor == &editor)
+            activeUndoTextEditor = nullptr;
+    }
+
+    void performUndo()
+    {
+        if (auto* editor = getFocusedTextEditor())
+        {
+            if (editor->undo())
+            {
+                syncLaneCodeDirtyAfterTextChange();
+                return;
+            }
+        }
+
+        if (undoStack.empty())
+            return;
+
+        auto snapshot = std::move (undoStack.back());
+        undoStack.pop_back();
+
+        juce::ScopedValueSetter<bool> undoGuard (suppressProjectUndo, true);
+        const auto restoredDirty = snapshot.projectWasDirty;
+        const auto restoredLabel = snapshot.label;
+
+        if (applyProjectVar (snapshot.project))
+        {
+            updateProjectDirtyState (restoredDirty);
+            statusLabel.setText (restoredLabel.isNotEmpty() ? "undid " + restoredLabel : "undo", juce::dontSendNotification);
+            menuItemsChanged();
+        }
+    }
+
+    void syncLaneCodeDirtyAfterTextChange()
+    {
+        if (! laneCodeEditor.hasKeyboardFocus (true))
+            return;
+
+        const auto matchesLastValidText = laneCodeEditor.getText() == laneCodeLastValidatedText;
+        laneCodeDirty = ! matchesLastValidText;
+        laneCodeRunButton.setEnabled (laneCodeDirty);
+        updateLaneCodeHeader (laneCodeDirty ? "lane code - edited" : "lane code",
+                              laneCodeDirty ? amber().withAlpha (0.62f) : mutedInk().withAlpha (0.22f));
+        refreshProjectDirtyIndicator();
+    }
+
+    void performCopy()
+    {
+        if (auto* editor = getFocusedTextEditor())
+        {
+            static_cast<void> (editor->copyToClipboard());
+            return;
+        }
+
+        if (mainView == MainView::overall)
+        {
+            if (isTopLevelStatePopulated (viewedTopLevelState))
+            {
+                copiedTopLevelState = topLevelStates[static_cast<size_t> (viewedTopLevelState)];
+                objectClipboardKind = ObjectClipboardKind::topLevelState;
+                statusLabel.setText ("copied State " + juce::String (viewedTopLevelState + 1), juce::dontSendNotification);
+                menuItemsChanged();
+            }
+            return;
+        }
+
+        if (mainView == MainView::track)
+        {
+            if (const auto* lane = getSelectedViewedLane())
+            {
+                copiedLane = *lane;
+                objectClipboardKind = ObjectClipboardKind::lane;
+                statusLabel.setText ("copied lane", juce::dontSendNotification);
+                menuItemsChanged();
+            }
+            return;
+        }
+
+        if (const auto* track = getSelectedViewedTrack())
+        {
+            copiedTrack = *track;
+            objectClipboardKind = ObjectClipboardKind::track;
+            statusLabel.setText ("copied track", juce::dontSendNotification);
+            menuItemsChanged();
+        }
+    }
+
+    void performPaste()
+    {
+        if (auto* editor = getFocusedTextEditor())
+        {
+            static_cast<void> (editor->pasteFromClipboard());
+            syncLaneCodeDirtyAfterTextChange();
+            return;
+        }
+
+        confirmPendingLaneCodeThen ([this]
+        {
+            pasteCopiedObject();
+        });
+    }
+
+    void pasteCopiedObject()
+    {
+        if (objectClipboardKind == ObjectClipboardKind::lane && copiedLane.has_value())
+        {
+            auto* track = getSelectedViewedTrack();
+            if (track == nullptr || static_cast<int> (track->lanes.size()) >= maxTrackLanes)
+                return;
+
+            pushUndoSnapshot ("paste lane");
+            auto lane = *copiedLane;
+            lane.name = lane.name + " copy";
+            const auto insertIndex = juce::jlimit (0, static_cast<int> (track->lanes.size()), selectedLane + 1);
+            track->lanes.insert (track->lanes.begin() + insertIndex, std::move (lane));
+            selectedLane = insertIndex;
+            refreshAfterStructureEdit (true);
+            return;
+        }
+
+        if (objectClipboardKind == ObjectClipboardKind::track && copiedTrack.has_value())
+        {
+            pasteCopiedTrack();
+            return;
+        }
+
+        if (objectClipboardKind == ObjectClipboardKind::topLevelState && copiedTopLevelState.has_value())
+        {
+            const auto target = isTopLevelStatePopulated (viewedTopLevelState) ? firstEmptyTopLevelState() : viewedTopLevelState;
+            if (target < 0 || target >= maxTopLevelStates)
+                return;
+
+            pushUndoSnapshot ("paste state");
+            topLevelStates[static_cast<size_t> (target)] = *copiedTopLevelState;
+            viewedTopLevelState = target;
+            selectedState = 0;
+            selectedLane = 0;
+            markProjectDirty();
+            selectViewedTopLevelState (target);
+        }
+    }
+
+    void pasteCopiedTrack()
+    {
+        auto* tracks = getViewedTracks();
+        if (tracks == nullptr || static_cast<int> (tracks->size()) >= maxStateTracks)
+            return;
+
+        pushUndoSnapshot ("paste track");
+        auto track = *copiedTrack;
+        track.name = trackDisplayName (track.name + " copy");
+        const auto insertIndex = juce::jlimit (0, static_cast<int> (tracks->size()), selectedState + 1);
+        tracks->insert (tracks->begin() + insertIndex, std::move (track));
+        selectedState = insertIndex;
+        selectedLane = 0;
+        refreshAfterStructureEdit (true);
+    }
+
+    void performDuplicate()
+    {
+        if (getFocusedTextEditor() != nullptr)
+            return;
+
+        confirmPendingLaneCodeThen ([this]
+        {
+            if (mainView == MainView::track)
+                duplicateSelectedLane();
+            else if (mainView == MainView::overall)
+                duplicateViewedTopLevelState();
+            else
+                duplicateSelectedTrack();
+        });
+    }
+
+    void duplicateSelectedTrack()
+    {
+        const auto* track = getSelectedViewedTrack();
+        auto* tracks = getViewedTracks();
+        if (track == nullptr || tracks == nullptr || static_cast<int> (tracks->size()) >= maxStateTracks)
+            return;
+
+        pushUndoSnapshot ("duplicate track");
+        auto copy = *track;
+        copy.name = trackDisplayName (copy.name + " copy");
+        const auto insertIndex = juce::jlimit (0, static_cast<int> (tracks->size()), selectedState + 1);
+        tracks->insert (tracks->begin() + insertIndex, std::move (copy));
+        selectedState = insertIndex;
+        selectedLane = 0;
+        refreshAfterStructureEdit (true);
+    }
+
+    bool hasUnsavedWork() const
+    {
+        return projectDirty || laneCodeDirty;
+    }
+
+    void refreshProjectDirtyIndicator()
+    {
+        const auto dirty = hasUnsavedWork();
+        titleLabel.setText (dirty ? "ChucK-ME *" : "ChucK-ME", juce::dontSendNotification);
+
+        if (auto* window = dynamic_cast<juce::DocumentWindow*> (getTopLevelComponent()))
+            window->setName (dirty ? "ChucK-ME *" : "ChucK-ME");
+    }
+
     void updateProjectDirtyState (bool dirty)
     {
         projectDirty = dirty;
-        titleLabel.setText (projectDirty ? "ChucK-ME *" : "ChucK-ME", juce::dontSendNotification);
-
-        if (auto* window = dynamic_cast<juce::DocumentWindow*> (getTopLevelComponent()))
-            window->setName (projectDirty ? "ChucK-ME *" : "ChucK-ME");
+        refreshProjectDirtyIndicator();
     }
 
     void markProjectDirty()
     {
         if (! suppressProjectDirty)
             updateProjectDirtyState (true);
+    }
+
+    void discardPendingLaneCodeEdit()
+    {
+        laneCodeDirty = false;
+        laneCodeRunButton.setEnabled (false);
+        updateLaneCodeHeader ("lane code", mutedInk().withAlpha (0.22f));
+        refreshProjectDirtyIndicator();
+        updateLaneCode();
+    }
+
+    void confirmPendingLaneCodeThen (std::function<void()> continueAction)
+    {
+        if (! laneCodeDirty)
+        {
+            if (continueAction != nullptr)
+                continueAction();
+            return;
+        }
+
+        juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                        .withIconType (juce::MessageBoxIconType::QuestionIcon)
+                                        .withTitle ("Lane code not run")
+                                        .withMessage ("Run this lane-code edit before continuing?")
+                                        .withButton ("Run")
+                                        .withButton ("Discard")
+                                        .withButton ("Cancel")
+                                        .withAssociatedComponent (this),
+                                      [this, actionAfterLaneCode = std::move (continueAction)] (int result) mutable
+                                      {
+                                          if (result == 1)
+                                          {
+                                              applyLaneCodeEdit();
+                                              if (! laneCodeDirty && actionAfterLaneCode != nullptr)
+                                                  actionAfterLaneCode();
+                                          }
+                                          else if (result == 2)
+                                          {
+                                              discardPendingLaneCodeEdit();
+                                              if (actionAfterLaneCode != nullptr)
+                                                  actionAfterLaneCode();
+                                          }
+                                      });
     }
 
     void saveCurrentProjectThen (std::function<void (bool)> afterSave)
@@ -4387,6 +5481,15 @@ private:
 
     void confirmUnsavedChangesThen (std::function<void()> continueAction)
     {
+        if (laneCodeDirty)
+        {
+            confirmPendingLaneCodeThen ([this, actionAfterLaneCode = std::move (continueAction)] () mutable
+            {
+                confirmUnsavedChangesThen (std::move (actionAfterLaneCode));
+            });
+            return;
+        }
+
         if (! projectDirty)
         {
             if (continueAction != nullptr)
@@ -4421,9 +5524,10 @@ private:
 
     void newProject()
     {
-        resetProjectToDefaults();
+        resetProjectToEmptyProject();
+        clearUndoHistory();
         updateProjectDirtyState (false);
-        statusLabel.setText ("new project", juce::dontSendNotification);
+        statusLabel.setText ("new empty project", juce::dontSendNotification);
     }
 
     void chooseProjectToLoad()
@@ -4473,6 +5577,12 @@ private:
 
     void saveProject()
     {
+        if (laneCodeDirty)
+        {
+            confirmPendingLaneCodeThen ([this] { saveProject(); });
+            return;
+        }
+
         if (currentProjectFile == juce::File())
         {
             chooseProjectSaveFile();
@@ -4480,6 +5590,11 @@ private:
         }
 
         saveProjectToFile (currentProjectFile);
+    }
+
+    void saveProjectAs()
+    {
+        confirmPendingLaneCodeThen ([this] { chooseProjectSaveFile(); });
     }
 
     bool saveProjectToFile (const juce::File& file)
@@ -4492,6 +5607,7 @@ private:
         }
 
         currentProjectFile = file;
+        clearUndoHistory();
         updateProjectDirtyState (false);
         statusLabel.setText ("saved " + file.getFileName(), juce::dontSendNotification);
         return true;
@@ -4612,6 +5728,152 @@ private:
         silent
     };
 
+    struct OfflineTrackMix
+    {
+        int stateIndex = -1;
+        int trackIndex = -1;
+        juce::AudioBuffer<float> buffer;
+        std::array<std::unique_ptr<juce::AudioPluginInstance>, maxTrackEffectSlots> effects;
+        juce::MidiBuffer midi;
+
+        ~OfflineTrackMix()
+        {
+            releaseResources();
+        }
+
+        void releaseResources()
+        {
+            for (auto& effect : effects)
+            {
+                if (effect != nullptr)
+                    effect->releaseResources();
+
+                effect.reset();
+            }
+        }
+    };
+
+    OfflineTrackMix* findOfflineTrackMix (std::vector<std::unique_ptr<OfflineTrackMix>>& trackMixes,
+                                          int stateIndex,
+                                          int trackIndex) const
+    {
+        for (auto& mix : trackMixes)
+            if (mix != nullptr && mix->stateIndex == stateIndex && mix->trackIndex == trackIndex)
+                return mix.get();
+
+        return nullptr;
+    }
+
+    std::unique_ptr<juce::PluginDescription> findPluginDescriptionForEffectSlot (const Wf::TrackEffectSlotSpec& spec)
+    {
+        for (auto* format : pluginFormatManager.getFormats())
+        {
+            if (format == nullptr)
+                continue;
+
+            juce::OwnedArray<juce::PluginDescription> descriptions;
+            format->findAllTypesForFile (descriptions, spec.pluginFileOrIdentifier);
+
+            for (auto* description : descriptions)
+            {
+                if (description == nullptr)
+                    continue;
+
+                const auto identifier = description->createIdentifierString();
+                if (spec.pluginIdentifier.isEmpty() || identifier == spec.pluginIdentifier)
+                    return std::make_unique<juce::PluginDescription> (*description);
+            }
+        }
+
+        return {};
+    }
+
+    bool loadOfflineTrackEffects (OfflineTrackMix& mix,
+                                  const Wf::StateSpec& track,
+                                  double sampleRate,
+                                  int blockSize,
+                                  juce::String& error)
+    {
+        for (int effectIndex = 0; effectIndex < maxTrackEffectSlots; ++effectIndex)
+        {
+            const auto& spec = track.effectSlots[static_cast<size_t> (effectIndex)];
+            if (! spec.active || spec.pluginFileOrIdentifier.isEmpty())
+                continue;
+
+            auto description = findPluginDescriptionForEffectSlot (spec);
+            if (description == nullptr)
+            {
+                error = spec.pluginName.isNotEmpty() ? spec.pluginName : spec.pluginFileOrIdentifier;
+                return false;
+            }
+
+            juce::String pluginError;
+            auto plugin = pluginFormatManager.createPluginInstance (*description, sampleRate, blockSize, pluginError);
+            if (plugin == nullptr)
+            {
+                error = spec.pluginName.isNotEmpty() ? spec.pluginName : pluginError;
+                return false;
+            }
+
+            plugin->setPlayConfigDetails (2, 2, sampleRate, blockSize);
+            plugin->prepareToPlay (sampleRate, blockSize);
+            plugin->reset();
+            mix.effects[static_cast<size_t> (effectIndex)] = std::move (plugin);
+        }
+
+        return true;
+    }
+
+    static void processOfflineTrackEffects (OfflineTrackMix& mix, juce::AudioBuffer<float>& buffer)
+    {
+        mix.midi.clear();
+
+        for (auto& effect : mix.effects)
+        {
+            if (effect == nullptr)
+                continue;
+
+            const auto inputs = effect->getTotalNumInputChannels();
+            const auto outputs = effect->getTotalNumOutputChannels();
+            if (inputs <= 0 || outputs <= 0)
+                continue;
+
+            effect->processBlock (buffer, mix.midi);
+        }
+    }
+
+    bool buildOfflineTrackMixes (std::vector<std::unique_ptr<OfflineTrackMix>>& trackMixes,
+                                 double sampleRate,
+                                 int blockSize,
+                                 juce::String& error)
+    {
+        for (const auto& clip : importedLaneAudioClips)
+        {
+            if (clip.audioData == nullptr || clip.audioData->getNumSamples() <= 0)
+                continue;
+
+            if (findOfflineTrackMix (trackMixes, clip.stateIndex, clip.trackIndex) != nullptr)
+                continue;
+
+            auto* track = getTrack (clip.stateIndex, clip.trackIndex);
+            if (track == nullptr)
+                continue;
+
+            auto mix = std::make_unique<OfflineTrackMix>();
+            mix->stateIndex = clip.stateIndex;
+            mix->trackIndex = clip.trackIndex;
+            mix->buffer.setSize (2, blockSize, false, false, true);
+            mix->buffer.clear();
+
+            if (! loadOfflineTrackEffects (*mix, *track, sampleRate, blockSize, error))
+                return false;
+
+            trackMixes.push_back (std::move (mix));
+        }
+
+        return ! trackMixes.empty();
+    }
+
     RenderResult renderImportedArrangementToWav (const juce::File& destination)
     {
         if (importedLaneAudioClips.empty())
@@ -4647,6 +5909,17 @@ private:
             return RenderResult::failed;
         }
 
+        std::vector<std::unique_ptr<OfflineTrackMix>> trackMixes;
+        juce::String effectError;
+        if (! buildOfflineTrackMixes (trackMixes, renderSampleRate, renderBlockSize, effectError))
+        {
+            statusLabel.setText (effectError.isNotEmpty()
+                                    ? "render WAV+ failed: could not load " + effectError
+                                    : "render WAV+ failed: no valid imported tracks",
+                                 juce::dontSendNotification);
+            return RenderResult::failed;
+        }
+
         juce::WavAudioFormat wavFormat;
         std::unique_ptr<juce::OutputStream> stream = destination.createOutputStream();
         if (stream == nullptr)
@@ -4676,13 +5949,20 @@ private:
         {
             const auto blockSamples = static_cast<int> (juce::jmin<int64_t> (renderBlockSize, totalSamples - renderedSamples));
             mixBuffer.clear (0, blockSamples);
+            for (auto& trackMix : trackMixes)
+                if (trackMix != nullptr)
+                    trackMix->buffer.clear (0, blockSamples);
 
             for (const auto& clip : importedLaneAudioClips)
             {
                 if (clip.audioData == nullptr || clip.audioData->getNumSamples() <= 0 || clip.mixGain <= 0.000001f)
                     continue;
 
-                const auto panGains = linearPanGains (renderMasterGain * clip.mixGain, clip.mixPan);
+                auto* trackMix = findOfflineTrackMix (trackMixes, clip.stateIndex, clip.trackIndex);
+                if (trackMix == nullptr)
+                    continue;
+
+                const auto panGains = linearPanGains (clip.mixGain, clip.mixPan);
                 const auto sourceScale = juce::jmax (1.0, clip.audioSampleRate) / renderSampleRate;
 
                 for (int sample = 0; sample < blockSamples; ++sample)
@@ -4693,9 +5973,23 @@ private:
 
                     const auto left = readInterpolatedSample (*clip.audioData, 0, sourcePosition);
                     const auto right = readInterpolatedSample (*clip.audioData, clip.audioData->getNumChannels() > 1 ? 1 : 0, sourcePosition);
-                    mixBuffer.addSample (0, sample, left * panGains[0]);
-                    mixBuffer.addSample (1, sample, right * panGains[1]);
+                    trackMix->buffer.addSample (0, sample, left * panGains[0]);
+                    trackMix->buffer.addSample (1, sample, right * panGains[1]);
                 }
+            }
+
+            for (auto& trackMix : trackMixes)
+            {
+                if (trackMix == nullptr)
+                    continue;
+
+                juce::AudioBuffer<float> trackView (trackMix->buffer.getArrayOfWritePointers(),
+                                                    renderChannels,
+                                                    blockSamples);
+                processOfflineTrackEffects (*trackMix, trackView);
+
+                for (int channel = 0; channel < renderChannels; ++channel)
+                    mixBuffer.addFrom (channel, 0, trackView, channel, 0, blockSamples, renderMasterGain);
             }
 
             for (int channel = 0; channel < renderChannels; ++channel)
@@ -4869,12 +6163,15 @@ private:
             return;
         }
 
+        if (markDirty)
+            pushUndoSnapshot ("import rendered audio");
+
         scriptRunning = false;
         running = false;
         audioCallback.clearImportedAudioPlayback();
         importedLaneAudioClips = std::move (renderedClips);
         arrangementPlusMode = true;
-        if (! audioCallback.loadImportedAudioClips (importedLaneAudioClips))
+        if (! audioCallback.loadImportedAudioClips (importedLaneAudioClips, &topLevelStates))
         {
             importedLaneAudioClips.clear();
             arrangementPlusMode = false;
@@ -4892,6 +6189,10 @@ private:
     void removeRenderedAudioAndReturnToCodePlayback()
     {
         const auto removedCount = static_cast<int> (importedLaneAudioClips.size());
+        if (removedCount <= 0)
+            return;
+
+        pushUndoSnapshot ("remove rendered audio");
         importedLaneAudioClips.clear();
         arrangementPlusMode = false;
         scriptRunning = false;
@@ -5348,6 +6649,13 @@ private:
             loadSelectedContentForCurrentState();
     }
 
+    void applyMixerMasterVolumeChange (float volume)
+    {
+        gainSlider.setValue (juce::jlimit (0.0f, 0.8f, volume), juce::dontSendNotification);
+        markProjectDirty();
+        applyCurrentAudioControls();
+    }
+
     void syncImportedPlaybackMix()
     {
         for (int clipIndex = 0; clipIndex < static_cast<int> (importedLaneAudioClips.size()); ++clipIndex)
@@ -5371,6 +6679,9 @@ private:
 
     void showEffectSlotMenu (int stateIndex, int trackIndex, int slotIndex)
     {
+        if (! arrangementPlusMode)
+            return;
+
         auto* track = getTrack (stateIndex, trackIndex);
         if (track == nullptr || slotIndex < 0 || slotIndex >= maxTrackEffectSlots)
             return;
@@ -5408,6 +6719,7 @@ private:
             auto& slot = track->effectSlots[static_cast<size_t> (slotIndex)];
             if (slot.pluginName.isNotEmpty())
             {
+                pushUndoSnapshot ("toggle effect slot");
                 slot.active = ! slot.active;
                 refreshAfterEffectSlotChange (stateIndex, trackIndex);
             }
@@ -5418,6 +6730,10 @@ private:
     {
         if (auto* track = getTrack (stateIndex, trackIndex))
         {
+            if (track->effectSlots[static_cast<size_t> (slotIndex)].pluginName.isEmpty())
+                return;
+
+            pushUndoSnapshot ("clear effect slot");
             track->effectSlots[static_cast<size_t> (slotIndex)] = {};
             refreshAfterEffectSlotChange (stateIndex, trackIndex);
         }
@@ -5442,6 +6758,7 @@ private:
                                             if (auto* track = getTrack (stateIndex, trackIndex))
                                             {
                                                 auto& slot = track->effectSlots[static_cast<size_t> (slotIndex)];
+                                                pushUndoSnapshot ("load effect slot");
                                                 slot.active = true;
                                                 slot.pluginName = description->name;
                                                 slot.pluginFormatName = description->pluginFormatName;
@@ -5472,8 +6789,15 @@ private:
 
     void refreshAfterEffectSlotChange (int stateIndex, int trackIndex)
     {
-        if (stateIndex == performingTopLevelState && trackIndex == performingTrackIndex)
+        if (arrangementPlusMode && ! importedLaneAudioClips.empty())
+        {
+            static_cast<void> (audioCallback.loadImportedAudioClips (importedLaneAudioClips, &topLevelStates, false));
+            syncImportedPlaybackMix();
+        }
+        else if (stateIndex == performingTopLevelState && trackIndex == performingTrackIndex)
+        {
             loadSelectedContentForCurrentState();
+        }
 
         markProjectDirty();
         refreshLabels();
@@ -5553,6 +6877,7 @@ private:
         if (target < 0 || target >= maxTopLevelStates)
             return;
 
+        pushUndoSnapshot ("new state");
         auto created = Wf::makeDefaultStates();
 
         for (int i = 0; i < static_cast<int> (created.size()); ++i)
@@ -5575,6 +6900,7 @@ private:
         if (target < 0 || ! isTopLevelStatePopulated (viewedTopLevelState))
             return;
 
+        pushUndoSnapshot ("duplicate state");
         const auto source = static_cast<size_t> (viewedTopLevelState);
         topLevelStates[static_cast<size_t> (target)] = topLevelStates[source];
         topLevelTemposBpm[static_cast<size_t> (target)] = topLevelTemposBpm[source];
@@ -5590,6 +6916,7 @@ private:
         if (! isTopLevelStatePopulated (target))
             return;
 
+        pushUndoSnapshot ("delete state");
         const auto deletingPerformingState = target == performingTopLevelState;
         if (deletingPerformingState)
         {
@@ -5790,7 +7117,7 @@ private:
         if (isUsingImportedAudioPlayback())
         {
             scriptRunning = false;
-            static_cast<void> (audioCallback.loadImportedAudioClips (importedLaneAudioClips));
+            static_cast<void> (audioCallback.loadImportedAudioClips (importedLaneAudioClips, &topLevelStates));
             syncImportedPlaybackMix();
             audioCallback.startImportedAudioPlayback (getCurrentMasterGain());
             applyCurrentAudioControls();
@@ -5894,7 +7221,12 @@ private:
         if (viewedTracks == nullptr || trackIndex < 0 || trackIndex >= static_cast<int> (viewedTracks->size()))
             return;
 
-        (*viewedTracks)[static_cast<size_t> (trackIndex)].transitionProbabilityPercent = probability;
+        auto& track = (*viewedTracks)[static_cast<size_t> (trackIndex)];
+        if (track.transitionProbabilityPercent == probability)
+            return;
+
+        pushUndoSnapshot ("change transition probability");
+        track.transitionProbabilityPercent = probability;
 
         if (viewedTopLevelState == performingTopLevelState && trackIndex == performingTrackIndex)
             nextBarTransitionCheck = std::floor (trackElapsedBars) + 1.0;
@@ -6037,6 +7369,9 @@ private:
 
     void updateLaneCode()
     {
+        if (laneCodeDirty)
+            return;
+
         const auto* viewedTracks = getViewedTracks();
         if (viewedTracks == nullptr || viewedTracks->empty())
             return;
@@ -6051,13 +7386,6 @@ private:
         }
 
         const auto laneIndex = static_cast<size_t> (juce::jlimit (0, static_cast<int> (state.lanes.size()) - 1, selectedLane));
-        if (laneCodeEditor.hasKeyboardFocus (true)
-            && laneCodeDirty
-            && laneCodeViewedTopLevelState == viewedTopLevelState
-            && laneCodeTrackIndex == selectedState
-            && laneCodeLaneIndex == selectedLane)
-            return;
-
         setLaneCodeEditorText (makeLaneCode (state.lanes[laneIndex], selectedLane));
         laneCodeViewedTopLevelState = viewedTopLevelState;
         laneCodeTrackIndex = selectedState;
@@ -6138,11 +7466,25 @@ private:
 
         if (auto* track = getSelectedViewedTrack())
         {
-            track->name = trackNameEditor.getText().trim().isNotEmpty()
+            const auto nextName = trackNameEditor.getText().trim().isNotEmpty()
                 ? trackDisplayName (trackNameEditor.getText().trim())
                 : trackDisplayName ("Track");
+            if (track->name == nextName)
+                return;
+
+            beginUndoSnapshotForTextEdit (trackNameEditor, "edit track name");
+            track->name = nextName;
             refreshAfterStructureEdit (false);
         }
+    }
+
+    static bool durationsEqual (const std::optional<Wf::TrackDurationSpec>& a,
+                                const std::optional<Wf::TrackDurationSpec>& b)
+    {
+        if (a.has_value() != b.has_value())
+            return false;
+
+        return ! a.has_value() || (a->bars == b->bars && a->beats == b->beats);
     }
 
     void applyTrackDurationEdit()
@@ -6156,11 +7498,11 @@ private:
                 return;
 
             const auto parsed = parseTrackDuration (trackDurationEditor.getText());
-            if (parsed.has_value())
-                track->duration = *parsed;
-            else
-                track->duration.reset();
+            if (durationsEqual (track->duration, parsed))
+                return;
 
+            beginUndoSnapshotForTextEdit (trackDurationEditor, "edit track duration");
+            track->duration = parsed;
             refreshAfterStructureEdit (false);
         }
     }
@@ -6195,7 +7537,12 @@ private:
 
         if (auto* lane = getSelectedViewedLane())
         {
-            lane->name = laneNameEditor.getText().trim().isNotEmpty() ? laneNameEditor.getText().trim() : "Lane";
+            const auto nextName = laneNameEditor.getText().trim().isNotEmpty() ? laneNameEditor.getText().trim() : "Lane";
+            if (lane->name == nextName)
+                return;
+
+            beginUndoSnapshotForTextEdit (laneNameEditor, "edit lane name");
+            lane->name = nextName;
             refreshAfterStructureEdit (false);
         }
     }
@@ -6208,11 +7555,19 @@ private:
         if (auto* lane = getSelectedViewedLane())
         {
             const auto text = laneTempoEditor.getText().trim();
+            std::optional<float> nextTempo;
             if (text.isEmpty())
-                lane->tempoBpm.reset();
+                nextTempo.reset();
             else
-                lane->tempoBpm = juce::jlimit (30.0f, 220.0f, static_cast<float> (text.getDoubleValue()));
+                nextTempo = juce::jlimit (30.0f, 220.0f, static_cast<float> (text.getDoubleValue()));
 
+            const auto unchanged = lane->tempoBpm.has_value() == nextTempo.has_value()
+                                && (! lane->tempoBpm.has_value() || std::abs (*lane->tempoBpm - *nextTempo) < 0.001f);
+            if (unchanged)
+                return;
+
+            beginUndoSnapshotForTextEdit (laneTempoEditor, "edit lane bpm");
+            lane->tempoBpm = nextTempo;
             refreshAfterStructureEdit (reloadAudioIfNeeded);
         }
     }
@@ -6225,11 +7580,11 @@ private:
         if (auto* lane = getSelectedViewedLane())
         {
             const auto parsed = parseTrackDuration (laneDurationEditor.getText());
-            if (parsed.has_value())
-                lane->duration = *parsed;
-            else
-                lane->duration.reset();
+            if (durationsEqual (lane->duration, parsed))
+                return;
 
+            beginUndoSnapshotForTextEdit (laneDurationEditor, "edit lane duration");
+            lane->duration = parsed;
             refreshAfterStructureEdit (reloadAudioIfNeeded);
         }
     }
@@ -6238,6 +7593,7 @@ private:
     {
         if (auto* lane = getSelectedViewedLane())
         {
+            pushUndoSnapshot ("mute lane");
             lane->muted = ! lane->muted;
             refreshAfterStructureEdit (true);
         }
@@ -6247,6 +7603,7 @@ private:
     {
         if (auto* lane = getSelectedViewedLane())
         {
+            pushUndoSnapshot ("solo lane");
             lane->solo = ! lane->solo;
             refreshAfterStructureEdit (true);
         }
@@ -6260,6 +7617,7 @@ private:
 
         selectedLane = index;
         auto& lane = track->lanes[static_cast<size_t> (index)];
+        pushUndoSnapshot ("mute lane");
         lane.muted = ! lane.muted;
         refreshAfterStructureEdit (true);
     }
@@ -6272,6 +7630,7 @@ private:
 
         selectedLane = index;
         auto& lane = track->lanes[static_cast<size_t> (index)];
+        pushUndoSnapshot ("solo lane");
         lane.solo = ! lane.solo;
         refreshAfterStructureEdit (true);
     }
@@ -6284,7 +7643,11 @@ private:
 
         selectedLane = index;
         auto& lane = track->lanes[static_cast<size_t> (index)];
-        lane.phaseOffsetBars = juce::jlimit (0.0f, 0.999f, phaseOffset);
+        const auto nextOffset = juce::jlimit (0.0f, 0.999f, phaseOffset);
+        if (std::abs (lane.phaseOffsetBars - nextOffset) < 0.0005f)
+            return;
+
+        lane.phaseOffsetBars = nextOffset;
         refreshAfterStructureEdit (true);
     }
 
@@ -6294,6 +7657,7 @@ private:
         if (track == nullptr || selectedLane < 0 || selectedLane >= static_cast<int> (track->lanes.size()) || static_cast<int> (track->lanes.size()) >= maxTrackLanes)
             return;
 
+        pushUndoSnapshot ("duplicate lane");
         auto copy = track->lanes[static_cast<size_t> (selectedLane)];
         copy.name = copy.name + " copy";
         track->lanes.insert (track->lanes.begin() + selectedLane + 1, copy);
@@ -6307,6 +7671,7 @@ private:
         if (track == nullptr || track->lanes.size() <= 1 || selectedLane < 0 || selectedLane >= static_cast<int> (track->lanes.size()))
             return;
 
+        pushUndoSnapshot ("delete lane");
         track->lanes.erase (track->lanes.begin() + selectedLane);
         selectedLane = juce::jlimit (0, static_cast<int> (track->lanes.size()) - 1, selectedLane);
         refreshAfterStructureEdit (true);
@@ -6421,6 +7786,7 @@ private:
         laneCodeDirty = true;
         laneCodeRunButton.setEnabled (true);
         updateLaneCodeHeader ("lane code - edited", amber().withAlpha (0.62f));
+        refreshProjectDirtyIndicator();
     }
 
     void applyLaneCodeEdit()
@@ -6431,8 +7797,8 @@ private:
 
         laneCodeLastValidatedText = text;
 
-        auto* track = getSelectedViewedTrack();
-        if (track == nullptr || selectedLane < 0 || selectedLane >= static_cast<int> (track->lanes.size()))
+        auto* track = getTrack (laneCodeViewedTopLevelState, laneCodeTrackIndex);
+        if (track == nullptr || laneCodeLaneIndex < 0 || laneCodeLaneIndex >= static_cast<int> (track->lanes.size()))
             return;
 
         const auto parsed = parseLaneCode (text);
@@ -6445,7 +7811,7 @@ private:
         }
 
         auto candidateTrack = *track;
-        auto& candidateLane = candidateTrack.lanes[static_cast<size_t> (selectedLane)];
+        auto& candidateLane = candidateTrack.lanes[static_cast<size_t> (laneCodeLaneIndex)];
         candidateLane.customDeclarationCode = parsed->declaration;
         candidateLane.customControlCode = parsed->control;
 
@@ -6458,7 +7824,19 @@ private:
             return;
         }
 
-        auto& lane = track->lanes[static_cast<size_t> (selectedLane)];
+        auto& lane = track->lanes[static_cast<size_t> (laneCodeLaneIndex)];
+        const auto declarationUnchanged = lane.customDeclarationCode.has_value() && *lane.customDeclarationCode == parsed->declaration;
+        const auto controlUnchanged = lane.customControlCode.has_value() && *lane.customControlCode == parsed->control;
+        if (declarationUnchanged && controlUnchanged)
+        {
+            laneCodeDirty = false;
+            laneCodeRunButton.setEnabled (false);
+            updateLaneCodeHeader ("lane code - live", green().withAlpha (0.58f));
+            refreshProjectDirtyIndicator();
+            return;
+        }
+
+        pushUndoSnapshot ("run lane code");
         lane.customDeclarationCode = parsed->declaration;
         lane.customControlCode = parsed->control;
         laneCodeDirty = false;
@@ -6467,8 +7845,10 @@ private:
         markProjectDirty();
         syncMixerView();
 
-        if (viewedTopLevelState == performingTopLevelState && selectedState == performingTrackIndex)
+        if (laneCodeViewedTopLevelState == performingTopLevelState && laneCodeTrackIndex == performingTrackIndex)
             loadSelectedContentForCurrentState();
+
+        refreshLabels();
     }
 
     void applyStateTrackCountEdit()
@@ -6526,6 +7906,7 @@ private:
         if (targetCount == previousCount)
             return;
 
+        pushUndoSnapshot ("change track count");
         if (targetCount > previousCount)
         {
             const auto defaults = Wf::makeDefaultStates();
@@ -6564,6 +7945,7 @@ private:
             loadSelectedContentForCurrentState();
         }
 
+        markProjectDirty();
         refreshLabels();
     }
 
@@ -6578,6 +7960,7 @@ private:
         if (targetCount == previousCount)
             return;
 
+        pushUndoSnapshot ("change lane count");
         if (targetCount > previousCount)
         {
             const auto defaults = Wf::makeDefaultStates();
@@ -6991,6 +8374,7 @@ private:
     OverallCanvas overallCanvas;
     TrackFocusCanvas trackFocusCanvas;
     TrackFocusDivider trackFocusDivider;
+    CodeViewDivider codeViewDivider;
     MixerCanvas mixerCanvas;
     juce::Viewport mixerViewport;
     ArrangementTimelineCanvas arrangementTimelineCanvas;
@@ -7019,8 +8403,8 @@ private:
     juce::Slider arrangementVerticalZoomSlider;
     juce::ComboBox timeSigNumeratorBox;
     juce::ComboBox timeSigDenominatorBox;
-    juce::TextEditor globalScriptEditor;
-    juce::TextEditor laneCodeEditor;
+    CodeTextEditor globalScriptEditor;
+    CodeTextEditor laneCodeEditor;
     juce::TextEditor trackNameEditor;
     juce::TextEditor trackDurationEditor;
     juce::TextEditor laneNameEditor;
@@ -7041,6 +8425,12 @@ private:
     int trackFocusCodePaneWidthPx = defaultTrackFocusCodePaneWidth;
     int trackFocusCodePaneDragStartWidth = defaultTrackFocusCodePaneWidth;
     std::vector<GlobalScriptStep> globalScriptSteps;
+    std::vector<ProjectUndoSnapshot> undoStack;
+    ObjectClipboardKind objectClipboardKind = ObjectClipboardKind::none;
+    std::optional<std::vector<Wf::StateSpec>> copiedTopLevelState;
+    std::optional<Wf::StateSpec> copiedTrack;
+    std::optional<Wf::LaneSpec> copiedLane;
+    juce::TextEditor* activeUndoTextEditor = nullptr;
     size_t scriptStepIndex = 0;
     double scriptStepElapsedBars = 0.0;
     bool scriptRunning = false;
@@ -7052,6 +8442,7 @@ private:
     bool suppressEditCallbacks = false;
     bool suppressLaneCodeCallbacks = false;
     bool suppressProjectDirty = false;
+    bool suppressProjectUndo = false;
     bool laneCodeDirty = false;
     bool projectDirty = false;
     MainView mainView = MainView::arrangement;
@@ -7059,7 +8450,9 @@ private:
     int laneCodeViewedTopLevelState = -1;
     int laneCodeTrackIndex = -1;
     int laneCodeLaneIndex = -1;
+    int codeViewSplitDragStartHeightPx = 0;
     int missingImportedAudioOnLastLoad = 0;
+    float codeViewStatePaneRatio = 1.0f / 3.0f;
     float orbitPhase = 0.0f;
     double trackElapsedBars = 0.0;
     double nextBarTransitionCheck = 1.0;
@@ -7071,7 +8464,7 @@ class WfApplication final : public juce::JUCEApplication
 {
 public:
     const juce::String getApplicationName() override { return "ChucK-ME"; }
-    const juce::String getApplicationVersion() override { return "0.1.2"; }
+    const juce::String getApplicationVersion() override { return "0.1.3"; }
     bool moreThanOneInstanceAllowed() override { return true; }
 
     void initialise (const juce::String&) override
