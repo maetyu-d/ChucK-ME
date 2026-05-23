@@ -2244,7 +2244,7 @@ private:
     float orbitPhase = 0.0f;
     double trackElapsedBars = 0.0;
     double nextBarTransitionCheck = 1.0;
-    bool running = true;
+    bool running = false;
     double lastTimerMs = 0.0;
 };
 
