@@ -685,9 +685,273 @@ private:
     bool suppressTransitionCallbacks = false;
 };
 
+class MixerCanvas final : public juce::Component
+{
+public:
+    std::function<void (int, int, int)> onChannelSelected;
+    std::function<void (int, int, int, float)> onLaneVolumeChanged;
+
+    void setProject (std::array<std::optional<std::vector<Wf::StateSpec>>, maxTopLevelStates>* statesToUse,
+                     int viewedStateToUse,
+                     int selectedTrackToUse,
+                     int selectedLaneToUse)
+    {
+        states = statesToUse;
+        viewedState = viewedStateToUse;
+        selectedTrack = selectedTrackToUse;
+        selectedLane = selectedLaneToUse;
+        rebuildChannels();
+        repaint();
+    }
+
+    int getPreferredWidth() const
+    {
+        return juce::jmax (1, horizontalPadding * 2 + static_cast<int> (channels.size()) * channelWidth);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        g.fillAll (juce::Colour (0xff0b0f0c));
+
+        if (channels.empty())
+        {
+            g.setColour (mutedInk().withAlpha (0.55f));
+            g.setFont (juce::FontOptions (15.0f, juce::Font::bold));
+            g.drawFittedText ("No lanes to mix", getLocalBounds().reduced (24), juce::Justification::centred, 1);
+            return;
+        }
+
+        auto clip = g.getClipBounds().toFloat();
+
+        for (int i = 0; i < static_cast<int> (channels.size()); ++i)
+        {
+            auto strip = channelBounds (i);
+            if (! strip.intersects (clip))
+                continue;
+
+            const auto& channel = channels[static_cast<size_t> (i)];
+            const auto selected = channel.stateIndex == viewedState
+                               && channel.trackIndex == selectedTrack
+                               && channel.laneIndex == selectedLane;
+
+            if (i == 0 || channels[static_cast<size_t> (i - 1)].stateIndex != channel.stateIndex)
+            {
+                g.setColour (mutedInk().withAlpha (0.12f));
+                g.drawVerticalLine (static_cast<int> (strip.getX()) - 6,
+                                    strip.getY() + 4.0f,
+                                    strip.getBottom() - 4.0f);
+            }
+
+            g.setColour (selected ? blue().withAlpha (0.16f) : panelSoft().withAlpha (0.30f));
+            g.fillRoundedRectangle (strip, 3.0f);
+            g.setColour ((selected ? blue() : mutedInk()).withAlpha (selected ? 0.44f : 0.14f));
+            g.drawRoundedRectangle (strip, 3.0f, selected ? 1.3f : 1.0f);
+
+            g.setColour (mutedInk().withAlpha (0.70f));
+            g.setFont (juce::FontOptions (10.5f, juce::Font::bold));
+            g.drawFittedText ("S" + juce::String (channel.stateIndex + 1) + " T" + juce::String (channel.trackIndex + 1),
+                              strip.removeFromTop (18).toNearestInt(),
+                              juce::Justification::centred,
+                              1);
+
+            auto labelArea = strip.removeFromTop (42).reduced (5.0f, 0.0f);
+            g.setColour (ink().withAlpha (0.84f));
+            g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+            g.drawFittedText (channel.trackName, labelArea.removeFromTop (20).toNearestInt(), juce::Justification::centred, 1);
+            g.setColour (mutedInk().withAlpha (0.78f));
+            g.drawFittedText (channel.laneName, labelArea.toNearestInt(), juce::Justification::centred, 1);
+
+            auto fader = faderBounds (i);
+            const auto norm = juce::jlimit (0.0f, 1.0f, channel.volume / maxLaneVolume);
+            const auto thumbY = fader.getBottom() - fader.getHeight() * norm;
+
+            g.setColour (mutedInk().withAlpha (0.12f));
+            g.fillRoundedRectangle (fader.withWidth (6.0f).withCentre ({ fader.getCentreX(), fader.getCentreY() }), 3.0f);
+            g.setColour (green().withAlpha (0.72f));
+            g.fillRoundedRectangle (juce::Rectangle<float> (6.0f, fader.getBottom() - thumbY).withPosition (fader.getCentreX() - 3.0f, thumbY), 3.0f);
+            g.setColour (ink());
+            g.fillEllipse (fader.getCentreX() - 7.0f, thumbY - 7.0f, 14.0f, 14.0f);
+
+            g.setColour (ink().withAlpha (0.88f));
+            g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+            g.drawFittedText (juce::String (channel.volume, 2),
+                              juce::Rectangle<int> (static_cast<int> (fader.getX()) - 8,
+                                                    getHeight() - 38,
+                                                    static_cast<int> (fader.getWidth()) + 16,
+                                                    18),
+                              juce::Justification::centred,
+                              1);
+        }
+    }
+
+    void mouseDown (const juce::MouseEvent& event) override
+    {
+        activeChannel = findChannelAt (event.position);
+        if (activeChannel < 0)
+            return;
+
+        selectActiveChannel();
+
+        if (faderBounds (activeChannel).expanded (14.0f, 8.0f).contains (event.position))
+            setActiveChannelVolumeFromY (event.position.y);
+    }
+
+    void mouseDrag (const juce::MouseEvent& event) override
+    {
+        if (activeChannel >= 0)
+            setActiveChannelVolumeFromY (event.position.y);
+    }
+
+    void mouseUp (const juce::MouseEvent&) override
+    {
+        activeChannel = -1;
+    }
+
+private:
+    struct Channel
+    {
+        int stateIndex = 0;
+        int trackIndex = 0;
+        int laneIndex = 0;
+        juce::String trackName;
+        juce::String laneName;
+        float volume = 0.0f;
+    };
+
+    void rebuildChannels()
+    {
+        channels.clear();
+
+        if (states == nullptr)
+            return;
+
+        for (int stateIndex = 0; stateIndex < maxTopLevelStates; ++stateIndex)
+        {
+            const auto& stateSlot = (*states)[static_cast<size_t> (stateIndex)];
+            if (! stateSlot.has_value())
+                continue;
+
+            const auto& tracks = *stateSlot;
+            for (int trackIndex = 0; trackIndex < static_cast<int> (tracks.size()); ++trackIndex)
+            {
+                const auto& track = tracks[static_cast<size_t> (trackIndex)];
+                for (int laneIndex = 0; laneIndex < static_cast<int> (track.lanes.size()); ++laneIndex)
+                {
+                    const auto& lane = track.lanes[static_cast<size_t> (laneIndex)];
+                    channels.push_back ({ stateIndex,
+                                          trackIndex,
+                                          laneIndex,
+                                          track.name,
+                                          lane.name,
+                                          lane.volume });
+                }
+            }
+        }
+    }
+
+    juce::Rectangle<float> channelBounds (int channelIndex) const
+    {
+        return { static_cast<float> (horizontalPadding + channelIndex * channelWidth),
+                 12.0f,
+                 static_cast<float> (channelWidth - channelGap),
+                 static_cast<float> (juce::jmax (120, getHeight() - 24)) };
+    }
+
+    juce::Rectangle<float> faderBounds (int channelIndex) const
+    {
+        auto strip = channelBounds (channelIndex).reduced (0.0f, 12.0f);
+        strip.removeFromTop (74.0f);
+        strip.removeFromBottom (36.0f);
+        return { strip.getCentreX() - 13.0f, strip.getY(), 26.0f, strip.getHeight() };
+    }
+
+    int findChannelAt (juce::Point<float> point) const
+    {
+        if (point.x < static_cast<float> (horizontalPadding))
+            return -1;
+
+        const auto channelIndex = static_cast<int> ((point.x - static_cast<float> (horizontalPadding)) / static_cast<float> (channelWidth));
+        if (channelIndex < 0 || channelIndex >= static_cast<int> (channels.size()))
+            return -1;
+
+        return channelBounds (channelIndex).contains (point) ? channelIndex : -1;
+    }
+
+    Wf::LaneSpec* getLane (const Channel& channel) const
+    {
+        if (states == nullptr || channel.stateIndex < 0 || channel.stateIndex >= maxTopLevelStates)
+            return nullptr;
+
+        auto& stateSlot = (*states)[static_cast<size_t> (channel.stateIndex)];
+        if (! stateSlot.has_value())
+            return nullptr;
+
+        auto& tracks = *stateSlot;
+        if (channel.trackIndex < 0 || channel.trackIndex >= static_cast<int> (tracks.size()))
+            return nullptr;
+
+        auto& lanes = tracks[static_cast<size_t> (channel.trackIndex)].lanes;
+        if (channel.laneIndex < 0 || channel.laneIndex >= static_cast<int> (lanes.size()))
+            return nullptr;
+
+        return &lanes[static_cast<size_t> (channel.laneIndex)];
+    }
+
+    void selectActiveChannel()
+    {
+        if (activeChannel < 0 || activeChannel >= static_cast<int> (channels.size()))
+            return;
+
+        const auto& channel = channels[static_cast<size_t> (activeChannel)];
+        if (onChannelSelected != nullptr)
+            onChannelSelected (channel.stateIndex, channel.trackIndex, channel.laneIndex);
+    }
+
+    void setActiveChannelVolumeFromY (float y)
+    {
+        if (activeChannel < 0 || activeChannel >= static_cast<int> (channels.size()))
+            return;
+
+        auto& channel = channels[static_cast<size_t> (activeChannel)];
+        auto* lane = getLane (channel);
+        if (lane == nullptr)
+            return;
+
+        const auto fader = faderBounds (activeChannel);
+        const auto norm = 1.0f - juce::jlimit (0.0f, 1.0f, (y - fader.getY()) / juce::jmax (1.0f, fader.getHeight()));
+        const auto volume = juce::jlimit (0.0f, maxLaneVolume, norm * maxLaneVolume);
+        lane->volume = volume;
+        channel.volume = volume;
+
+        if (onLaneVolumeChanged != nullptr)
+            onLaneVolumeChanged (channel.stateIndex, channel.trackIndex, channel.laneIndex, volume);
+
+        repaint();
+    }
+
+    static constexpr int horizontalPadding = 16;
+    static constexpr int channelWidth = 76;
+    static constexpr int channelGap = 8;
+    static constexpr float maxLaneVolume = 0.8f;
+
+    std::array<std::optional<std::vector<Wf::StateSpec>>, maxTopLevelStates>* states = nullptr;
+    std::vector<Channel> channels;
+    int viewedState = 0;
+    int selectedTrack = 0;
+    int selectedLane = 0;
+    int activeChannel = -1;
+};
+
 class MainComponent final : public juce::Component,
                             private juce::Timer
 {
+    enum class MainView
+    {
+        arrangement,
+        code,
+        mixer
+    };
+
 public:
     MainComponent()
     {
@@ -790,6 +1054,11 @@ public:
         setupButton (laneCodeRunButton, "Run", green(), [this] { applyLaneCodeEdit(); });
         laneCodeRunButton.setEnabled (false);
 
+        stateCodeHeader.setText ("state code", juce::dontSendNotification);
+        stateCodeHeader.setFont (juce::FontOptions (14.0f, juce::Font::bold));
+        styleLabel (stateCodeHeader, 0.82f);
+        addAndMakeVisible (stateCodeHeader);
+
         selectedLabel.setFont (juce::FontOptions (18.0f, juce::Font::bold));
         styleLabel (selectedLabel);
         addAndMakeVisible (selectedLabel);
@@ -864,10 +1133,21 @@ public:
         };
         addAndMakeVisible (orbitCanvas);
 
-        setupButton (playButton, running ? "Stop" : "Play", green(), [this] { toggleMainTransport(); });
-        setupButton (previousButton, "Prev", blue(), [this] { selectState (selectedState - 1); });
-        setupButton (nextButton, "Next", blue(), [this] { selectState (selectedState + 1); });
-        setupButton (shuffleButton, "Pick", amber(), [this] { pickState(); });
+        mixerViewport.setViewedComponent (&mixerCanvas, false);
+        mixerViewport.setScrollBarsShown (false, true);
+        mixerCanvas.onChannelSelected = [this] (int stateIndex, int trackIndex, int laneIndex)
+        {
+            selectMixerChannel (stateIndex, trackIndex, laneIndex);
+        };
+        mixerCanvas.onLaneVolumeChanged = [this] (int stateIndex, int trackIndex, int laneIndex, float volume)
+        {
+            applyMixerLaneVolumeChange (stateIndex, trackIndex, laneIndex, volume);
+        };
+        addAndMakeVisible (mixerViewport);
+
+        setupButton (arrangementButton, "Arrangement", green(), [this] { setMainView (MainView::arrangement); });
+        setupButton (codeViewButton, "Code", blue(), [this] { setMainView (MainView::code); });
+        setupButton (mixerViewButton, "Mixer", amber(), [this] { setMainView (MainView::mixer); });
 
         addAndMakeVisible (laneHeader);
         laneHeader.setText ("lanes", juce::dontSendNotification);
@@ -885,6 +1165,7 @@ public:
         audioDeviceManager.addAudioCallback (&audioCallback);
 
         selectState (0);
+        setMainView (MainView::arrangement);
         setSize (1240, 760);
         startTimerHz (30);
     }
@@ -920,22 +1201,7 @@ public:
 
         auto content = area.reduced (18);
         auto top = content.removeFromTop (48);
-        auto stateRow = content.removeFromTop (60);
-        auto scriptRow = content.removeFromTop (70);
-        auto body = content;
-        body.removeFromTop (12);
-        auto transport = body.removeFromBottom (52);
-        auto leftPane = body.removeFromLeft (280);
-        body.removeFromLeft (18);
-        auto rightPane = body.removeFromRight (260);
-
-        g.setColour (juce::Colour (0xff0d110e).withAlpha (0.58f));
-        g.fillRoundedRectangle (leftPane.toFloat(), 3.0f);
-        g.fillRoundedRectangle (rightPane.toFloat(), 3.0f);
-
-        g.setColour (mutedInk().withAlpha (0.055f));
-        g.drawRoundedRectangle (leftPane.toFloat(), 3.0f, 1.0f);
-        g.drawRoundedRectangle (rightPane.toFloat(), 3.0f, 1.0f);
+        auto navigation = content.removeFromBottom (52);
 
         g.setColour (mutedInk().withAlpha (0.11f));
         g.drawLine (static_cast<float> (content.getX()),
@@ -943,23 +1209,68 @@ public:
                     static_cast<float> (content.getRight()),
                     static_cast<float> (top.getBottom()),
                     1.0f);
-        g.drawLine (static_cast<float> (stateRow.getX()),
-                    static_cast<float> (stateRow.getBottom()),
-                    static_cast<float> (stateRow.getRight()),
-                    static_cast<float> (stateRow.getBottom()),
-                    1.0f);
-        g.drawLine (static_cast<float> (scriptRow.getX()),
-                    static_cast<float> (scriptRow.getBottom()),
-                    static_cast<float> (scriptRow.getRight()),
-                    static_cast<float> (scriptRow.getBottom()),
-                    1.0f);
 
         g.setColour (mutedInk().withAlpha (0.08f));
-        g.drawLine (static_cast<float> (transport.getX()),
-                    static_cast<float> (transport.getY()),
-                    static_cast<float> (transport.getRight()),
-                    static_cast<float> (transport.getY()),
+        g.drawLine (static_cast<float> (navigation.getX()),
+                    static_cast<float> (navigation.getY()),
+                    static_cast<float> (navigation.getRight()),
+                    static_cast<float> (navigation.getY()),
                     1.0f);
+
+        if (mainView == MainView::arrangement)
+        {
+            auto stateRow = content.removeFromTop (60);
+            auto scriptRow = content.removeFromTop (70);
+            auto body = content;
+            body.removeFromTop (12);
+            auto leftPane = body.removeFromLeft (280);
+            body.removeFromLeft (18);
+            auto rightPane = body.removeFromRight (260);
+
+            g.setColour (juce::Colour (0xff0d110e).withAlpha (0.58f));
+            g.fillRoundedRectangle (leftPane.toFloat(), 3.0f);
+            g.fillRoundedRectangle (rightPane.toFloat(), 3.0f);
+
+            g.setColour (mutedInk().withAlpha (0.055f));
+            g.drawRoundedRectangle (leftPane.toFloat(), 3.0f, 1.0f);
+            g.drawRoundedRectangle (rightPane.toFloat(), 3.0f, 1.0f);
+
+            g.setColour (mutedInk().withAlpha (0.11f));
+            g.drawLine (static_cast<float> (stateRow.getX()),
+                        static_cast<float> (stateRow.getBottom()),
+                        static_cast<float> (stateRow.getRight()),
+                        static_cast<float> (stateRow.getBottom()),
+                        1.0f);
+            g.drawLine (static_cast<float> (scriptRow.getX()),
+                        static_cast<float> (scriptRow.getBottom()),
+                        static_cast<float> (scriptRow.getRight()),
+                        static_cast<float> (scriptRow.getBottom()),
+                        1.0f);
+        }
+        else if (mainView == MainView::code)
+        {
+            content.removeFromTop (12);
+            auto stateCodePane = content.removeFromLeft ((content.getWidth() - 16) / 3);
+            content.removeFromLeft (16);
+            auto laneCodePane = content;
+
+            g.setColour (juce::Colour (0xff0d110e).withAlpha (0.58f));
+            g.fillRoundedRectangle (stateCodePane.toFloat(), 3.0f);
+            g.fillRoundedRectangle (laneCodePane.toFloat(), 3.0f);
+
+            g.setColour (mutedInk().withAlpha (0.055f));
+            g.drawRoundedRectangle (stateCodePane.toFloat(), 3.0f, 1.0f);
+            g.drawRoundedRectangle (laneCodePane.toFloat(), 3.0f, 1.0f);
+        }
+        else
+        {
+            content.removeFromTop (12);
+            g.setColour (juce::Colour (0xff0d110e).withAlpha (0.58f));
+            g.fillRoundedRectangle (content.toFloat(), 3.0f);
+
+            g.setColour (mutedInk().withAlpha (0.055f));
+            g.drawRoundedRectangle (content.toFloat(), 3.0f, 1.0f);
+        }
     }
 
     void resized() override
@@ -971,6 +1282,40 @@ public:
         volumeLabel.setBounds (volumeArea.removeFromLeft (66).reduced (0, 11));
         gainSlider.setBounds (volumeArea.reduced (0, 7));
         statusLabel.setBounds (header);
+
+        auto navigation = area.removeFromBottom (52);
+        navigation.removeFromTop (8);
+        auto viewButtons = navigation.removeFromTop (42);
+        arrangementButton.setBounds (viewButtons.removeFromLeft (126).reduced (0, 4));
+        codeViewButton.setBounds (viewButtons.removeFromLeft (86).reduced (6, 4));
+        mixerViewButton.setBounds (viewButtons.removeFromLeft (92).reduced (6, 4));
+
+        if (mainView == MainView::code)
+        {
+            area.removeFromTop (12);
+            auto stateCodePane = area.removeFromLeft ((area.getWidth() - 16) / 3);
+            area.removeFromLeft (16);
+            auto laneCodePane = area;
+
+            auto stateCodeHeaderRow = stateCodePane.removeFromTop (32);
+            runScriptButton.setBounds (stateCodeHeaderRow.removeFromRight (68).reduced (0, 3));
+            stateCodeHeader.setBounds (stateCodeHeaderRow.reduced (8, 2));
+            globalScriptEditor.setBounds (stateCodePane.reduced (8, 0));
+
+            auto laneCodeHeaderRow = laneCodePane.removeFromTop (32);
+            laneCodeRunButton.setBounds (laneCodeHeaderRow.removeFromRight (68).reduced (0, 3));
+            laneCodeHeader.setBounds (laneCodeHeaderRow.reduced (8, 2));
+            laneCodeEditor.setBounds (laneCodePane.reduced (8, 0));
+            return;
+        }
+
+        if (mainView == MainView::mixer)
+        {
+            area.removeFromTop (12);
+            mixerViewport.setBounds (area.reduced (8, 0));
+            resizeMixerCanvas();
+            return;
+        }
 
         auto stateRow = area.removeFromTop (60);
         stateRow.removeFromLeft (10);
@@ -993,7 +1338,6 @@ public:
         runScriptButton.setBounds (scriptRow.removeFromRight (86).reduced (8, 16));
         globalScriptEditor.setBounds (scriptRow.reduced (0, 8));
         area.removeFromTop (12);
-        auto controls = area.removeFromBottom (52);
         auto codePane = area.removeFromLeft (280);
         area.removeFromLeft (18);
         auto right = area.removeFromRight (260);
@@ -1048,13 +1392,6 @@ public:
 
         for (auto& button : laneButtons)
             button.setBounds (right.removeFromTop (25).reduced (0, 2));
-
-        controls.removeFromTop (8);
-        auto transport = controls.removeFromTop (42);
-        playButton.setBounds (transport.removeFromLeft (92).reduced (0, 4));
-        previousButton.setBounds (transport.removeFromLeft (82).reduced (6, 4));
-        nextButton.setBounds (transport.removeFromLeft (82).reduced (6, 4));
-        shuffleButton.setBounds (transport.removeFromLeft (82).reduced (6, 4));
     }
 
 private:
@@ -1085,6 +1422,110 @@ private:
         editor.setColour (juce::TextEditor::highlightColourId, blue().withAlpha (0.24f));
         editor.setFont (juce::FontOptions (13.0f));
         addAndMakeVisible (editor);
+    }
+
+    void setMainView (MainView nextView)
+    {
+        mainView = nextView;
+        syncMixerView();
+        syncViewVisibility();
+        syncViewButtons();
+        resized();
+        repaint();
+    }
+
+    void syncViewButtons()
+    {
+        arrangementButton.setToggleState (mainView == MainView::arrangement, juce::dontSendNotification);
+        codeViewButton.setToggleState (mainView == MainView::code, juce::dontSendNotification);
+        mixerViewButton.setToggleState (mainView == MainView::mixer, juce::dontSendNotification);
+    }
+
+    void syncViewVisibility()
+    {
+        const auto arrangement = mainView == MainView::arrangement;
+        const auto code = mainView == MainView::code;
+        const auto mixer = mainView == MainView::mixer;
+
+        for (auto& button : stateButtons)
+            button.setVisible (arrangement);
+
+        globalScriptEditor.setVisible (arrangement || code);
+        runScriptButton.setVisible (arrangement || code);
+        trackNameLabel.setVisible (arrangement);
+        trackNameEditor.setVisible (arrangement);
+        trackDurationLabel.setVisible (arrangement);
+        trackDurationEditor.setVisible (arrangement);
+        laneNameEditor.setVisible (arrangement);
+        muteLaneButton.setVisible (arrangement);
+        soloLaneButton.setVisible (arrangement);
+        duplicateLaneButton.setVisible (arrangement);
+        deleteLaneButton.setVisible (arrangement);
+        orbitCanvas.setVisible (arrangement);
+        stateSettingsLabel.setVisible (arrangement);
+        stateTempoLabel.setVisible (arrangement);
+        stateTempoSlider.setVisible (arrangement);
+        stateTimeSigLabel.setVisible (arrangement);
+        timeSigNumeratorBox.setVisible (arrangement);
+        timeSigDenominatorBox.setVisible (arrangement);
+        stateTrackCountLabel.setVisible (arrangement);
+        stateTrackCountEditor.setVisible (arrangement);
+        newStateButton.setVisible (arrangement);
+        duplicateStateButton.setVisible (arrangement);
+        deleteStateButton.setVisible (arrangement);
+        selectedLabel.setVisible (arrangement);
+        laneHeader.setVisible (arrangement);
+
+        for (auto& button : laneButtons)
+            button.setVisible (arrangement && button.isEnabled());
+
+        laneCodeHeader.setVisible (arrangement || code);
+        laneCodeEditor.setVisible (arrangement || code);
+        laneCodeRunButton.setVisible (arrangement || code);
+        stateCodeHeader.setVisible (code);
+        mixerViewport.setVisible (mixer);
+
+        arrangementButton.setVisible (true);
+        codeViewButton.setVisible (true);
+        mixerViewButton.setVisible (true);
+    }
+
+    void syncMixerView()
+    {
+        mixerCanvas.setProject (&topLevelStates, viewedTopLevelState, selectedState, selectedLane);
+        resizeMixerCanvas();
+    }
+
+    void resizeMixerCanvas()
+    {
+        const auto width = juce::jmax (mixerViewport.getWidth(), mixerCanvas.getPreferredWidth());
+        const auto height = juce::jmax (1, mixerViewport.getHeight());
+        mixerCanvas.setSize (width, height);
+    }
+
+    void selectMixerChannel (int stateIndex, int trackIndex, int laneIndex)
+    {
+        if (! isTopLevelStatePopulated (stateIndex))
+            return;
+
+        viewedTopLevelState = juce::jlimit (0, maxTopLevelStates - 1, stateIndex);
+        selectedState = juce::jlimit (0, getViewedTrackCount() - 1, trackIndex);
+
+        if (const auto* viewedTracks = getViewedTracks())
+        {
+            const auto& track = (*viewedTracks)[static_cast<size_t> (selectedState)];
+            selectedLane = juce::jlimit (0, juce::jmax (0, static_cast<int> (track.lanes.size()) - 1), laneIndex);
+        }
+
+        refreshLabels();
+    }
+
+    void applyMixerLaneVolumeChange (int stateIndex, int trackIndex, int laneIndex, float)
+    {
+        selectMixerChannel (stateIndex, trackIndex, laneIndex);
+
+        if (stateIndex == performingTopLevelState && trackIndex == performingTrackIndex)
+            loadSelectedContentForCurrentState();
     }
 
     void selectViewedTopLevelState (int index)
@@ -1388,7 +1829,6 @@ private:
     {
         const auto text = running ? "Stop" : "Play";
         runScriptButton.setButtonText (text);
-        playButton.setButtonText (text);
     }
 
     void selectState (int index)
@@ -1488,6 +1928,9 @@ private:
             laneCodeRunButton.setEnabled (false);
             setLaneCodeEditorText ("// Click New to create this state.");
             orbitCanvas.setState (nullptr, 0, orbitPhase, running);
+            syncMixerView();
+            syncViewVisibility();
+            syncViewButtons();
             return;
         }
 
@@ -1526,6 +1969,9 @@ private:
         syncEditControls (&state, state.lanes.empty() ? nullptr : &state.lanes[static_cast<size_t> (selectedLane)]);
         updateLaneCode();
         orbitCanvas.setState (viewedTracks, selectedState, orbitPhase, running);
+        syncMixerView();
+        syncViewVisibility();
+        syncViewButtons();
     }
 
     void updateLaneCode()
@@ -1860,6 +2306,7 @@ private:
         laneCodeDirty = false;
         laneCodeRunButton.setEnabled (false);
         updateLaneCodeHeader ("lane code - live", green().withAlpha (0.58f));
+        syncMixerView();
 
         if (viewedTopLevelState == performingTopLevelState && selectedState == performingTrackIndex)
             loadSelectedContentForCurrentState();
@@ -2268,6 +2715,7 @@ private:
     juce::Label stateTempoLabel;
     juce::Label stateTimeSigLabel;
     juce::Label stateTrackCountLabel;
+    juce::Label stateCodeHeader;
     juce::Label laneCodeHeader;
     juce::Label trackNameLabel;
     juce::Label trackDurationLabel;
@@ -2276,15 +2724,16 @@ private:
     std::array<juce::TextButton, maxTrackLanes> laneButtons;
 
     OrbitCanvas orbitCanvas;
+    MixerCanvas mixerCanvas;
+    juce::Viewport mixerViewport;
     std::array<juce::TextButton, maxTopLevelStates> stateButtons;
     juce::TextButton runScriptButton;
     juce::TextButton newStateButton;
     juce::TextButton duplicateStateButton;
     juce::TextButton deleteStateButton;
-    juce::TextButton playButton;
-    juce::TextButton previousButton;
-    juce::TextButton nextButton;
-    juce::TextButton shuffleButton;
+    juce::TextButton arrangementButton;
+    juce::TextButton codeViewButton;
+    juce::TextButton mixerViewButton;
     juce::TextButton muteLaneButton;
     juce::TextButton soloLaneButton;
     juce::TextButton duplicateLaneButton;
@@ -2336,6 +2785,7 @@ private:
     bool suppressEditCallbacks = false;
     bool suppressLaneCodeCallbacks = false;
     bool laneCodeDirty = false;
+    MainView mainView = MainView::arrangement;
     juce::String laneCodeLastValidatedText;
     int laneCodeViewedTopLevelState = -1;
     int laneCodeTrackIndex = -1;
