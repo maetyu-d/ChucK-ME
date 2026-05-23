@@ -1,4 +1,5 @@
 #include <juce_audio_devices/juce_audio_devices.h>
+#include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_extra/juce_gui_extra.h>
 
 #include <WeldChucKEngine.h>
@@ -22,6 +23,7 @@ constexpr int engineOutputChannels = 2;
 constexpr int maxTopLevelStates = 16;
 constexpr int maxStateTracks = 16;
 constexpr int maxTrackLanes = 8;
+constexpr int maxTrackEffectSlots = 3;
 constexpr int maxGraphTransitions = 32;
 constexpr float defaultPlaybackRate = 1.0f;
 constexpr float defaultIntensity = 0.58f;
@@ -94,6 +96,11 @@ void styleLabel (juce::Label& label, float alpha = 1.0f)
 class WfAudioCallback final : public juce::AudioIODeviceCallback
 {
 public:
+    WfAudioCallback()
+    {
+        juce::addDefaultFormatsToManager (pluginFormatManager);
+    }
+
     void audioDeviceAboutToStart (juce::AudioIODevice* device) override
     {
         const auto sampleRate = device != nullptr ? device->getCurrentSampleRate() : 44100.0;
@@ -110,6 +117,7 @@ public:
             slot.inUse.store (false, std::memory_order_release);
             slot.targetGain.store (0.0f, std::memory_order_release);
             slot.gain = 0.0f;
+            releaseEffectChain (slot);
             slot.engine.release();
             slot.output.setSize (0, 0);
             slot.indexesReady = false;
@@ -148,6 +156,7 @@ public:
                                                numOutputChannels,
                                                numSamples);
             slot.engine.process (emptyInput, slotView);
+            processEffectChain (slot, slotView);
 
             const auto startGain = slot.gain;
             const auto targetGain = slot.targetGain.load (std::memory_order_acquire);
@@ -212,6 +221,7 @@ public:
         incoming.targetGain.store (0.0f, std::memory_order_release);
         incoming.gain = 0.0f;
         incoming.indexesReady = false;
+        releaseEffectChain (incoming);
 
         if (! incoming.engine.loadProgram (Wf::buildStateProgram (state), Wf::makeWfParameterBindings()))
             return false;
@@ -219,6 +229,8 @@ public:
         refreshWfParameterIndexes (incoming);
         if (! incoming.indexesReady)
             return false;
+
+        loadEffectChain (incoming, state);
 
         applyControlsToSlot (incoming,
                              masterGain,
@@ -296,6 +308,8 @@ private:
         float gain = 0.0f;
         std::atomic<float> targetGain { 0.0f };
         std::atomic<bool> inUse { false };
+        std::array<std::unique_ptr<juce::AudioPluginInstance>, maxTrackEffectSlots> effects;
+        juce::MidiBuffer midi;
     };
 
     bool prepare (double sampleRate, int reportedBlockSize)
@@ -318,6 +332,7 @@ private:
             slot.targetGain.store (0.0f, std::memory_order_release);
             slot.gain = 0.0f;
             slot.indexesReady = false;
+            releaseEffectChain (slot);
             slot.engine.release();
             slot.output.setSize (maxHostChannels, blockSize, false, false, true);
             slot.output.clear();
@@ -364,8 +379,89 @@ private:
         static_cast<void> (slot.engine.setParameterValue (slot.parameterIndexes[4], orbitPhase));
     }
 
+    void loadEffectChain (EngineSlot& slot, const Wf::StateSpec& state)
+    {
+        const auto sampleRate = lastSampleRate.load (std::memory_order_relaxed);
+        const auto blockSize = preparedBlockSize.load (std::memory_order_relaxed);
+        if (sampleRate <= 0.0 || blockSize <= 0)
+            return;
+
+        for (int effectIndex = 0; effectIndex < maxTrackEffectSlots; ++effectIndex)
+        {
+            const auto& spec = state.effectSlots[static_cast<size_t> (effectIndex)];
+            if (! spec.active || spec.pluginFileOrIdentifier.isEmpty())
+                continue;
+
+            if (auto description = findPluginDescription (spec))
+            {
+                juce::String error;
+                auto plugin = pluginFormatManager.createPluginInstance (*description, sampleRate, blockSize, error);
+                if (plugin == nullptr)
+                    continue;
+
+                plugin->setPlayConfigDetails (engineOutputChannels, engineOutputChannels, sampleRate, blockSize);
+                plugin->prepareToPlay (sampleRate, blockSize);
+                slot.effects[static_cast<size_t> (effectIndex)] = std::move (plugin);
+            }
+        }
+    }
+
+    std::unique_ptr<juce::PluginDescription> findPluginDescription (const Wf::TrackEffectSlotSpec& spec)
+    {
+        for (auto* format : pluginFormatManager.getFormats())
+        {
+            if (format == nullptr)
+                continue;
+
+            juce::OwnedArray<juce::PluginDescription> descriptions;
+            format->findAllTypesForFile (descriptions, spec.pluginFileOrIdentifier);
+
+            for (auto* description : descriptions)
+            {
+                if (description == nullptr)
+                    continue;
+
+                const auto identifier = description->createIdentifierString();
+                if (spec.pluginIdentifier.isEmpty() || identifier == spec.pluginIdentifier)
+                    return std::make_unique<juce::PluginDescription> (*description);
+            }
+        }
+
+        return {};
+    }
+
+    void processEffectChain (EngineSlot& slot, juce::AudioBuffer<float>& buffer)
+    {
+        slot.midi.clear();
+
+        for (auto& effect : slot.effects)
+        {
+            if (effect == nullptr)
+                continue;
+
+            const auto inputs = effect->getTotalNumInputChannels();
+            const auto outputs = effect->getTotalNumOutputChannels();
+            if (inputs <= 0 || outputs <= 0)
+                continue;
+
+            effect->processBlock (buffer, slot.midi);
+        }
+    }
+
+    static void releaseEffectChain (EngineSlot& slot)
+    {
+        for (auto& effect : slot.effects)
+        {
+            if (effect != nullptr)
+                effect->releaseResources();
+
+            effect.reset();
+        }
+    }
+
     juce::AudioBuffer<float> emptyInput;
     std::array<EngineSlot, 2> slots;
+    juce::AudioPluginFormatManager pluginFormatManager;
     static constexpr double tailFadeSeconds = 0.42;
     std::atomic<bool> ready { false };
     std::atomic<int> activeSlot { -1 };
@@ -690,6 +786,8 @@ class MixerCanvas final : public juce::Component
 public:
     std::function<void (int, int, int)> onChannelSelected;
     std::function<void (int, int, int, float)> onLaneVolumeChanged;
+    std::function<void (int, int, int, float)> onLanePanChanged;
+    std::function<void (int, int, int)> onEffectSlotClicked;
 
     void setProject (std::array<std::optional<std::vector<Wf::StateSpec>>, maxTopLevelStates>* statesToUse,
                      int viewedStateToUse,
@@ -807,6 +905,17 @@ public:
             g.setColour (mutedInk().withAlpha (0.78f));
             g.drawFittedText (channel.laneName, labelArea.toNearestInt(), juce::Justification::centred, 1);
 
+            auto pan = panBounds (i);
+            const auto panNorm = (juce::jlimit (-1.0f, 1.0f, channel.pan) + 1.0f) * 0.5f;
+            const auto panX = pan.getX() + pan.getWidth() * panNorm;
+            g.setColour (mutedInk().withAlpha (0.13f));
+            g.fillRoundedRectangle (pan, 3.0f);
+            g.setColour (amber().withAlpha (0.70f));
+            g.fillEllipse (panX - 5.0f, pan.getCentreY() - 5.0f, 10.0f, 10.0f);
+            g.setColour (mutedInk().withAlpha (0.62f));
+            g.setFont (juce::FontOptions (9.5f, juce::Font::bold));
+            g.drawFittedText ("pan", pan.translated (0.0f, -14.0f).toNearestInt(), juce::Justification::centred, 1);
+
             auto fader = faderBounds (i);
             const auto norm = juce::jlimit (0.0f, 1.0f, channel.volume / maxLaneVolume);
             const auto thumbY = fader.getBottom() - fader.getHeight() * norm;
@@ -827,6 +936,24 @@ public:
                                                     18),
                               juce::Justification::centred,
                               1);
+
+            for (int slotIndex = 0; slotIndex < maxTrackEffectSlots; ++slotIndex)
+            {
+                const auto slot = effectSlotBounds (i, slotIndex);
+                const auto active = channel.effectActive[static_cast<size_t> (slotIndex)];
+                const auto hasPlugin = channel.effectNames[static_cast<size_t> (slotIndex)].isNotEmpty();
+                g.setColour (active ? amber().withAlpha (0.20f) : panel().withAlpha (0.90f));
+                g.fillRoundedRectangle (slot, 3.0f);
+                g.setColour ((active ? amber() : mutedInk()).withAlpha (active ? 0.68f : (hasPlugin ? 0.34f : 0.18f)));
+                g.drawRoundedRectangle (slot, 3.0f, active ? 1.1f : 0.9f);
+                g.setColour ((active ? ink() : mutedInk()).withAlpha (active ? 0.90f : (hasPlugin ? 0.68f : 0.50f)));
+                g.setFont (juce::FontOptions (9.5f, juce::Font::bold));
+                g.drawFittedText (hasPlugin ? shortEffectName (channel.effectNames[static_cast<size_t> (slotIndex)])
+                                             : "FX" + juce::String (slotIndex + 1),
+                                  slot.toNearestInt(),
+                                  juce::Justification::centred,
+                                  1);
+            }
         }
     }
 
@@ -838,22 +965,55 @@ public:
 
         selectActiveChannel();
 
-        if (faderBounds (activeChannel).expanded (14.0f, 8.0f).contains (event.position))
+        if (const auto slot = findEffectSlotAt (activeChannel, event.position); slot >= 0)
+        {
+            if (activeChannel < static_cast<int> (channels.size()) && onEffectSlotClicked != nullptr)
+            {
+                const auto& channel = channels[static_cast<size_t> (activeChannel)];
+                onEffectSlotClicked (channel.stateIndex, channel.trackIndex, slot);
+            }
+
+            activeControl = ActiveControl::none;
+            activeChannel = -1;
+        }
+        else if (panBounds (activeChannel).expanded (8.0f, 8.0f).contains (event.position))
+        {
+            activeControl = ActiveControl::pan;
+            setActiveChannelPanFromX (event.position.x);
+        }
+        else if (faderBounds (activeChannel).expanded (14.0f, 8.0f).contains (event.position))
+        {
+            activeControl = ActiveControl::volume;
             setActiveChannelVolumeFromY (event.position.y);
+        }
+        else
+        {
+            activeControl = ActiveControl::none;
+        }
     }
 
     void mouseDrag (const juce::MouseEvent& event) override
     {
-        if (activeChannel >= 0)
+        if (activeChannel >= 0 && activeControl == ActiveControl::volume)
             setActiveChannelVolumeFromY (event.position.y);
+        else if (activeChannel >= 0 && activeControl == ActiveControl::pan)
+            setActiveChannelPanFromX (event.position.x);
     }
 
     void mouseUp (const juce::MouseEvent&) override
     {
         activeChannel = -1;
+        activeControl = ActiveControl::none;
     }
 
 private:
+    enum class ActiveControl
+    {
+        none,
+        volume,
+        pan
+    };
+
     struct Channel
     {
         int stateIndex = 0;
@@ -862,6 +1022,9 @@ private:
         juce::String trackName;
         juce::String laneName;
         float volume = 0.0f;
+        float pan = 0.0f;
+        std::array<bool, maxTrackEffectSlots> effectActive {};
+        std::array<juce::String, maxTrackEffectSlots> effectNames {};
     };
 
     void rebuildChannels()
@@ -884,12 +1047,23 @@ private:
                 for (int laneIndex = 0; laneIndex < static_cast<int> (track.lanes.size()); ++laneIndex)
                 {
                     const auto& lane = track.lanes[static_cast<size_t> (laneIndex)];
-                    channels.push_back ({ stateIndex,
-                                          trackIndex,
-                                          laneIndex,
-                                          track.name,
-                                          lane.name,
-                                          lane.volume });
+                    Channel channel;
+                    channel.stateIndex = stateIndex;
+                    channel.trackIndex = trackIndex;
+                    channel.laneIndex = laneIndex;
+                    channel.trackName = track.name;
+                    channel.laneName = lane.name;
+                    channel.volume = lane.volume;
+                    channel.pan = lane.pan;
+
+                    for (int effectIndex = 0; effectIndex < maxTrackEffectSlots; ++effectIndex)
+                    {
+                        const auto& effect = track.effectSlots[static_cast<size_t> (effectIndex)];
+                        channel.effectActive[static_cast<size_t> (effectIndex)] = effect.active && effect.pluginName.isNotEmpty();
+                        channel.effectNames[static_cast<size_t> (effectIndex)] = effect.pluginName;
+                    }
+
+                    channels.push_back (std::move (channel));
                 }
             }
         }
@@ -913,9 +1087,23 @@ private:
     juce::Rectangle<float> faderBounds (int channelIndex) const
     {
         auto strip = channelBounds (channelIndex).reduced (0.0f, 12.0f);
-        strip.removeFromTop (74.0f);
-        strip.removeFromBottom (36.0f);
-        return { strip.getCentreX() - 13.0f, strip.getY(), 26.0f, strip.getHeight() };
+        strip.removeFromTop (120.0f);
+        strip.removeFromBottom (94.0f);
+        const auto height = juce::jlimit (40.0f, 150.0f, strip.getHeight());
+        return { strip.getCentreX() - 13.0f, strip.getCentreY() - height * 0.5f, 26.0f, height };
+    }
+
+    juce::Rectangle<float> panBounds (int channelIndex) const
+    {
+        auto strip = channelBounds (channelIndex).reduced (8.0f, 0.0f);
+        return { strip.getX(), strip.getY() + 88.0f, strip.getWidth(), 6.0f };
+    }
+
+    juce::Rectangle<float> effectSlotBounds (int channelIndex, int slotIndex) const
+    {
+        auto strip = channelBounds (channelIndex).reduced (7.0f, 0.0f);
+        const auto y = strip.getBottom() - 64.0f + static_cast<float> (slotIndex) * 20.0f;
+        return { strip.getX(), y, strip.getWidth(), 16.0f };
     }
 
     int findChannelAt (juce::Point<float> point) const
@@ -928,6 +1116,15 @@ private:
             return -1;
 
         return channelBounds (channelIndex).contains (point) ? channelIndex : -1;
+    }
+
+    int findEffectSlotAt (int channelIndex, juce::Point<float> point) const
+    {
+        for (int slotIndex = 0; slotIndex < maxTrackEffectSlots; ++slotIndex)
+            if (effectSlotBounds (channelIndex, slotIndex).contains (point))
+                return slotIndex;
+
+        return -1;
     }
 
     Wf::LaneSpec* getLane (const Channel& channel) const
@@ -982,8 +1179,38 @@ private:
         repaint();
     }
 
+    void setActiveChannelPanFromX (float x)
+    {
+        if (activeChannel < 0 || activeChannel >= static_cast<int> (channels.size()))
+            return;
+
+        auto& channel = channels[static_cast<size_t> (activeChannel)];
+        auto* lane = getLane (channel);
+        if (lane == nullptr)
+            return;
+
+        const auto panArea = panBounds (activeChannel);
+        const auto norm = juce::jlimit (0.0f, 1.0f, (x - panArea.getX()) / juce::jmax (1.0f, panArea.getWidth()));
+        const auto pan = norm * 2.0f - 1.0f;
+        lane->pan = pan;
+        channel.pan = pan;
+
+        if (onLanePanChanged != nullptr)
+            onLanePanChanged (channel.stateIndex, channel.trackIndex, channel.laneIndex, pan);
+
+        repaint();
+    }
+
+    static juce::String shortEffectName (const juce::String& name)
+    {
+        if (name.isEmpty())
+            return "FX";
+
+        return name.substring (0, 5);
+    }
+
     static constexpr int horizontalPadding = 16;
-    static constexpr int channelWidth = 76;
+    static constexpr int channelWidth = 86;
     static constexpr int channelGap = 8;
     static constexpr float maxLaneVolume = 0.8f;
 
@@ -995,6 +1222,7 @@ private:
     int playingState = 0;
     int playingTrack = 0;
     int activeChannel = -1;
+    ActiveControl activeControl = ActiveControl::none;
     bool running = false;
 };
 
@@ -1012,6 +1240,7 @@ public:
     MainComponent()
     {
         setWantsKeyboardFocus (true);
+        juce::addDefaultFormatsToManager (pluginFormatManager);
 
         topLevelStates[0] = Wf::makeDefaultStates();
         topLevelStates[1] = Wf::makeDefaultStates();
@@ -1198,6 +1427,14 @@ public:
         mixerCanvas.onLaneVolumeChanged = [this] (int stateIndex, int trackIndex, int laneIndex, float volume)
         {
             applyMixerLaneVolumeChange (stateIndex, trackIndex, laneIndex, volume);
+        };
+        mixerCanvas.onLanePanChanged = [this] (int stateIndex, int trackIndex, int laneIndex, float pan)
+        {
+            applyMixerLanePanChange (stateIndex, trackIndex, laneIndex, pan);
+        };
+        mixerCanvas.onEffectSlotClicked = [this] (int stateIndex, int trackIndex, int slotIndex)
+        {
+            showEffectSlotMenu (stateIndex, trackIndex, slotIndex);
         };
         addAndMakeVisible (mixerViewport);
 
@@ -1615,6 +1852,135 @@ private:
 
         if (stateIndex == performingTopLevelState && trackIndex == performingTrackIndex)
             loadSelectedContentForCurrentState();
+    }
+
+    void applyMixerLanePanChange (int stateIndex, int trackIndex, int laneIndex, float)
+    {
+        selectMixerChannel (stateIndex, trackIndex, laneIndex);
+
+        if (stateIndex == performingTopLevelState && trackIndex == performingTrackIndex)
+            loadSelectedContentForCurrentState();
+    }
+
+    Wf::StateSpec* getTrack (int stateIndex, int trackIndex)
+    {
+        if (! isTopLevelStatePopulated (stateIndex))
+            return nullptr;
+
+        auto& tracks = *topLevelStates[static_cast<size_t> (stateIndex)];
+        if (trackIndex < 0 || trackIndex >= static_cast<int> (tracks.size()))
+            return nullptr;
+
+        return &tracks[static_cast<size_t> (trackIndex)];
+    }
+
+    void showEffectSlotMenu (int stateIndex, int trackIndex, int slotIndex)
+    {
+        auto* track = getTrack (stateIndex, trackIndex);
+        if (track == nullptr || slotIndex < 0 || slotIndex >= maxTrackEffectSlots)
+            return;
+
+        auto& slot = track->effectSlots[static_cast<size_t> (slotIndex)];
+        juce::PopupMenu menu;
+
+        if (slot.pluginName.isNotEmpty())
+        {
+            menu.addItem (1, slot.active ? "Bypass " + slot.pluginName : "Activate " + slot.pluginName);
+            menu.addItem (2, "Replace...");
+            menu.addItem (3, "Clear");
+        }
+        else
+        {
+            menu.addItem (2, "Load AU/VST3...");
+        }
+
+        menu.showMenuAsync (juce::PopupMenu::Options(),
+                            [this, stateIndex, trackIndex, slotIndex] (int result)
+                            {
+                                if (result == 1)
+                                    toggleEffectSlot (stateIndex, trackIndex, slotIndex);
+                                else if (result == 2)
+                                    chooseEffectPluginForSlot (stateIndex, trackIndex, slotIndex);
+                                else if (result == 3)
+                                    clearEffectSlot (stateIndex, trackIndex, slotIndex);
+                            });
+    }
+
+    void toggleEffectSlot (int stateIndex, int trackIndex, int slotIndex)
+    {
+        if (auto* track = getTrack (stateIndex, trackIndex))
+        {
+            auto& slot = track->effectSlots[static_cast<size_t> (slotIndex)];
+            if (slot.pluginName.isNotEmpty())
+            {
+                slot.active = ! slot.active;
+                refreshAfterEffectSlotChange (stateIndex, trackIndex);
+            }
+        }
+    }
+
+    void clearEffectSlot (int stateIndex, int trackIndex, int slotIndex)
+    {
+        if (auto* track = getTrack (stateIndex, trackIndex))
+        {
+            track->effectSlots[static_cast<size_t> (slotIndex)] = {};
+            refreshAfterEffectSlotChange (stateIndex, trackIndex);
+        }
+    }
+
+    void chooseEffectPluginForSlot (int stateIndex, int trackIndex, int slotIndex)
+    {
+        pluginChooser = std::make_unique<juce::FileChooser> ("Choose an AU or VST3 effect",
+                                                             juce::File::getSpecialLocation (juce::File::userHomeDirectory),
+                                                             "*.vst3;*.component");
+        pluginChooser->launchAsync (juce::FileBrowserComponent::openMode
+                                    | juce::FileBrowserComponent::canSelectFiles
+                                    | juce::FileBrowserComponent::canSelectDirectories,
+                                    [this, stateIndex, trackIndex, slotIndex] (const juce::FileChooser& chooser)
+                                    {
+                                        const auto file = chooser.getResult();
+                                        if (! file.exists())
+                                            return;
+
+                                        if (auto description = findPluginDescriptionForFile (file))
+                                        {
+                                            if (auto* track = getTrack (stateIndex, trackIndex))
+                                            {
+                                                auto& slot = track->effectSlots[static_cast<size_t> (slotIndex)];
+                                                slot.active = true;
+                                                slot.pluginName = description->name;
+                                                slot.pluginFormatName = description->pluginFormatName;
+                                                slot.pluginFileOrIdentifier = file.getFullPathName();
+                                                slot.pluginIdentifier = description->createIdentifierString();
+                                                refreshAfterEffectSlotChange (stateIndex, trackIndex);
+                                            }
+                                        }
+                                    });
+    }
+
+    std::unique_ptr<juce::PluginDescription> findPluginDescriptionForFile (const juce::File& file)
+    {
+        for (auto* format : pluginFormatManager.getFormats())
+        {
+            if (format == nullptr)
+                continue;
+
+            juce::OwnedArray<juce::PluginDescription> descriptions;
+            format->findAllTypesForFile (descriptions, file.getFullPathName());
+
+            if (! descriptions.isEmpty() && descriptions[0] != nullptr)
+                return std::make_unique<juce::PluginDescription> (*descriptions[0]);
+        }
+
+        return {};
+    }
+
+    void refreshAfterEffectSlotChange (int stateIndex, int trackIndex)
+    {
+        if (stateIndex == performingTopLevelState && trackIndex == performingTrackIndex)
+            loadSelectedContentForCurrentState();
+
+        refreshLabels();
     }
 
     void selectViewedTopLevelState (int index)
@@ -2794,6 +3160,8 @@ private:
 
     WfAudioCallback audioCallback;
     juce::AudioDeviceManager audioDeviceManager;
+    juce::AudioPluginFormatManager pluginFormatManager;
+    std::unique_ptr<juce::FileChooser> pluginChooser;
     std::array<std::optional<std::vector<Wf::StateSpec>>, maxTopLevelStates> topLevelStates;
     std::mt19937 random { 0x5eed1234u };
 

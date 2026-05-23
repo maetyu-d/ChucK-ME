@@ -172,10 +172,20 @@ target_link_libraries(wf
     PRIVATE
         WeldChucK::Engine
         juce::juce_audio_devices
+        juce::juce_audio_processors
         juce::juce_gui_extra
+        "-framework CoreAudioKit"
     PUBLIC
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
+
+target_compile_definitions(wf
+    PRIVATE
+        JUCE_PLUGINHOST_AU=1
+        JUCE_PLUGINHOST_VST3=1
+        JUCE_PLUGINHOST_VST=0
+        JUCE_PLUGINHOST_LADSPA=0
+        JUCE_PLUGINHOST_LV2=0)
 
 add_executable(WeldChucKEngineBoundaryTest
     Tests/EngineBoundaryTest.cpp)

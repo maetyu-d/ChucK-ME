@@ -34,6 +34,7 @@ struct LaneSpec
     juce::String role;
     float baseHz = 220.0f;
     float volume = 0.2f;
+    float pan = 0.0f;
     int pulseTicks = 96;
     int openTicks = 18;
     bool muted = false;
@@ -48,6 +49,15 @@ struct TrackDurationSpec
     int beats = 0;
 };
 
+struct TrackEffectSlotSpec
+{
+    bool active = false;
+    juce::String pluginName;
+    juce::String pluginFormatName;
+    juce::String pluginFileOrIdentifier;
+    juce::String pluginIdentifier;
+};
+
 struct StateSpec
 {
     juce::String name;
@@ -55,6 +65,7 @@ struct StateSpec
     std::vector<LaneSpec> lanes {};
     std::optional<TrackDurationSpec> duration;
     std::optional<int> transitionProbabilityPercent;
+    std::array<TrackEffectSlotSpec, 3> effectSlots {};
 };
 
 inline std::vector<EmbeddedChucKEngine::ParameterBinding> makeWfParameterBindings()
@@ -164,20 +175,21 @@ inline void appendLaneDeclaration (juce::String& program, const LaneSpec& lane, 
 
     if (lane.role == "bass")
     {
-        program << "SawOsc lane" << suffix << " => LPF filter" << suffix << " => Gain laneGain" << suffix << " => Gain laneSmooth" << suffix << " => master;\n";
+        program << "SawOsc lane" << suffix << " => LPF filter" << suffix << " => Gain laneGain" << suffix << " => Gain laneSmooth" << suffix << " => Pan2 lanePan" << suffix << " => master;\n";
         program << "0.64 => filter" << suffix << ".Q;\n";
     }
     else if (lane.role == "drum" || lane.role == "snare")
     {
-        program << "SinOsc lane" << suffix << "Kick => Gain lane" << suffix << "KickGain => master;\n";
-        program << "SinOsc lane" << suffix << "Sub => Gain lane" << suffix << "SubGain => master;\n";
-        program << "TriOsc lane" << suffix << "Click => Gain lane" << suffix << "ClickGain => master;\n";
-        program << "TriOsc lane" << suffix << "SnareBody => Gain lane" << suffix << "SnareBodyGain => master;\n";
-        program << "SinOsc lane" << suffix << "SnareSnap => Gain lane" << suffix << "SnareSnapGain => master;\n";
-        program << "SqrOsc lane" << suffix << "SnareDrive => Gain lane" << suffix << "SnareDriveGain => master;\n";
-        program << "Noise lane" << suffix << "SnareNoise => Gain lane" << suffix << "SnareNoiseGain => master;\n";
-        program << "Noise lane" << suffix << "SnareClap => Gain lane" << suffix << "SnareClapGain => master;\n";
-        program << "Noise lane" << suffix << "HatNoise => Gain lane" << suffix << "HatGain => master;\n";
+        program << "Pan2 lanePan" << suffix << " => master;\n";
+        program << "SinOsc lane" << suffix << "Kick => Gain lane" << suffix << "KickGain => lanePan" << suffix << ";\n";
+        program << "SinOsc lane" << suffix << "Sub => Gain lane" << suffix << "SubGain => lanePan" << suffix << ";\n";
+        program << "TriOsc lane" << suffix << "Click => Gain lane" << suffix << "ClickGain => lanePan" << suffix << ";\n";
+        program << "TriOsc lane" << suffix << "SnareBody => Gain lane" << suffix << "SnareBodyGain => lanePan" << suffix << ";\n";
+        program << "SinOsc lane" << suffix << "SnareSnap => Gain lane" << suffix << "SnareSnapGain => lanePan" << suffix << ";\n";
+        program << "SqrOsc lane" << suffix << "SnareDrive => Gain lane" << suffix << "SnareDriveGain => lanePan" << suffix << ";\n";
+        program << "Noise lane" << suffix << "SnareNoise => Gain lane" << suffix << "SnareNoiseGain => lanePan" << suffix << ";\n";
+        program << "Noise lane" << suffix << "SnareClap => Gain lane" << suffix << "SnareClapGain => lanePan" << suffix << ";\n";
+        program << "Noise lane" << suffix << "HatNoise => Gain lane" << suffix << "HatGain => lanePan" << suffix << ";\n";
         program << "0.0 => lane" << suffix << "KickGain.gain;\n";
         program << "0.0 => lane" << suffix << "SubGain.gain;\n";
         program << "0.0 => lane" << suffix << "ClickGain.gain;\n";
@@ -191,13 +203,13 @@ inline void appendLaneDeclaration (juce::String& program, const LaneSpec& lane, 
     }
     else if (lane.role == "chord")
     {
-        program << "SinOsc lane" << suffix << "a => Gain laneGain" << suffix << " => Gain laneSmooth" << suffix << " => master;\n";
+        program << "SinOsc lane" << suffix << "a => Gain laneGain" << suffix << " => Gain laneSmooth" << suffix << " => Pan2 lanePan" << suffix << " => master;\n";
         program << "SinOsc lane" << suffix << "b => laneGain" << suffix << ";\n";
         program << "SinOsc lane" << suffix << "c => laneGain" << suffix << ";\n";
     }
     else
     {
-        program << "TriOsc lane" << suffix << " => Gain laneGain" << suffix << " => Gain laneSmooth" << suffix << " => master;\n";
+        program << "TriOsc lane" << suffix << " => Gain laneGain" << suffix << " => Gain laneSmooth" << suffix << " => Pan2 lanePan" << suffix << " => master;\n";
     }
 
     program << "1.0 => laneGain" << suffix << ".gain;\n";
@@ -212,6 +224,7 @@ inline void appendLaneControl (juce::String& program, const LaneSpec& lane, int 
     const auto volume = chuckFloat (lane.volume);
 
     program << "    tick % " << pulseTicks << " => int laneStep" << suffix << ";\n";
+    program << "    " << chuckFloat (juce::jlimit (-1.0f, 1.0f, lane.pan)) << " => lanePan" << suffix << ".pan;\n";
 
     if (lane.role == "drum" || lane.role == "snare")
     {
