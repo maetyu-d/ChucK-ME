@@ -655,6 +655,7 @@ public:
     }
 
     std::function<void (int)> onStateSelected;
+    std::function<void (int)> onStateDoubleClicked;
     std::function<void (int, std::optional<int>)> onTransitionProbabilityChanged;
 
     bool isEditingTransitionProbability() const
@@ -755,15 +756,36 @@ public:
     {
         grabKeyboardFocus();
 
-        if (nodeCentres.empty() || onStateSelected == nullptr)
+        if (onStateSelected == nullptr)
             return;
+
+        if (const auto index = nodeIndexAt (event.position, 80.0f); index >= 0)
+            onStateSelected (index);
+    }
+
+    void mouseDoubleClick (const juce::MouseEvent& event) override
+    {
+        grabKeyboardFocus();
+
+        if (onStateDoubleClicked == nullptr)
+            return;
+
+        if (const auto index = nodeIndexAt (event.position, 80.0f); index >= 0)
+            onStateDoubleClicked (index);
+    }
+
+private:
+    int nodeIndexAt (juce::Point<float> position, float maximumDistance) const
+    {
+        if (nodeCentres.empty())
+            return -1;
 
         auto bestIndex = -1;
         auto bestDistance = std::numeric_limits<float>::max();
 
         for (int i = 0; i < static_cast<int> (nodeCentres.size()); ++i)
         {
-            const auto distance = event.position.getDistanceFrom (nodeCentres[static_cast<size_t> (i)]);
+            const auto distance = position.getDistanceFrom (nodeCentres[static_cast<size_t> (i)]);
             if (distance < bestDistance)
             {
                 bestDistance = distance;
@@ -771,11 +793,9 @@ public:
             }
         }
 
-        if (bestIndex >= 0 && bestDistance < 80.0f)
-            onStateSelected (bestIndex);
+        return bestDistance < maximumDistance ? bestIndex : -1;
     }
 
-private:
     void rebuildNodeCentres()
     {
         nodeCentres.clear();
@@ -927,6 +947,189 @@ private:
     float phase = 0.0f;
     bool running = false;
     bool suppressTransitionCallbacks = false;
+};
+
+class TrackFocusCanvas final : public juce::Component
+{
+public:
+    std::function<void (int)> onLaneSelected;
+
+    void setTrack (const Wf::StateSpec* trackToUse, int selectedLaneToUse, float phaseToUse, bool runningToUse)
+    {
+        track = trackToUse;
+        selectedLane = selectedLaneToUse;
+        phase = phaseToUse;
+        running = runningToUse;
+        rebuildLaneCentres();
+        repaint();
+    }
+
+    void resized() override
+    {
+        rebuildLaneCentres();
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        g.fillAll (juce::Colour (0xff0b0f0c));
+
+        if (track == nullptr)
+        {
+            g.setColour (mutedInk().withAlpha (0.48f));
+            g.setFont (juce::FontOptions (18.0f, juce::Font::bold));
+            g.drawFittedText ("EMPTY STATE", getLocalBounds().reduced (32), juce::Justification::centred, 1);
+            return;
+        }
+
+        const auto local = getLocalBounds().toFloat().reduced (54.0f);
+        const auto centre = local.getCentre();
+        const auto nodeRadius = juce::jmin (local.getWidth(), local.getHeight()) * 0.22f;
+        const auto ringRadius = nodeRadius + 34.0f;
+
+        g.setColour (panelSoft().withAlpha (0.18f));
+        g.fillEllipse (centre.x - ringRadius, centre.y - ringRadius, ringRadius * 2.0f, ringRadius * 2.0f);
+
+        g.setColour (mutedInk().withAlpha (0.09f));
+        g.drawEllipse (centre.x - ringRadius, centre.y - ringRadius, ringRadius * 2.0f, ringRadius * 2.0f, 1.0f);
+
+        const auto selected = running;
+        g.setColour ((selected ? green() : blue()).withAlpha (selected ? 0.20f : 0.14f));
+        g.fillEllipse (centre.x - nodeRadius, centre.y - nodeRadius, nodeRadius * 2.0f, nodeRadius * 2.0f);
+
+        g.setColour ((selected ? green() : blue()).withAlpha (selected ? 0.96f : 0.70f));
+        g.drawEllipse (centre.x - nodeRadius, centre.y - nodeRadius, nodeRadius * 2.0f, nodeRadius * 2.0f, selected ? 2.0f : 1.3f);
+
+        g.setColour (ink());
+        g.setFont (juce::FontOptions (31.0f, juce::Font::bold));
+        g.drawFittedText (trackDisplayName (track->name),
+                          juce::Rectangle<int> (static_cast<int> (centre.x - nodeRadius * 1.10f),
+                                                static_cast<int> (centre.y - 24.0f),
+                                                static_cast<int> (nodeRadius * 2.20f),
+                                                48),
+                          juce::Justification::centred,
+                          1);
+
+        g.setColour (mutedInk().withAlpha (0.72f));
+        g.setFont (juce::FontOptions (13.0f, juce::Font::bold));
+        g.drawFittedText (juce::String (track->lanes.size()) + " lanes",
+                          juce::Rectangle<int> (static_cast<int> (centre.x - 84.0f),
+                                                static_cast<int> (centre.y + 30.0f),
+                                                168,
+                                                20),
+                          juce::Justification::centred,
+                          1);
+
+        rebuildLaneCentres();
+        drawLanes (g, centre, nodeRadius);
+
+        if (running)
+        {
+            const auto angle = juce::MathConstants<float>::twoPi * phase - juce::MathConstants<float>::halfPi;
+            const juce::Point<float> marker { centre.x + std::cos (angle) * (nodeRadius + 8.0f),
+                                              centre.y + std::sin (angle) * (nodeRadius + 8.0f) };
+
+            g.setColour (amber());
+            g.fillEllipse (marker.x - 5.0f, marker.y - 5.0f, 10.0f, 10.0f);
+        }
+    }
+
+    void mouseDown (const juce::MouseEvent& event) override
+    {
+        if (onLaneSelected == nullptr)
+            return;
+
+        for (int i = 0; i < static_cast<int> (laneCentres.size()); ++i)
+        {
+            if (event.position.getDistanceFrom (laneCentres[static_cast<size_t> (i)]) < 22.0f)
+            {
+                onLaneSelected (i);
+                return;
+            }
+        }
+    }
+
+private:
+    static juce::Colour laneDotColour (int index)
+    {
+        static const std::array<juce::Colour, 5> colours
+        {
+            green(),
+            amber(),
+            blue(),
+            coral(),
+            juce::Colour (0xffb4d06c)
+        };
+
+        return colours[static_cast<size_t> (index % static_cast<int> (colours.size()))];
+    }
+
+    void rebuildLaneCentres()
+    {
+        laneCentres.clear();
+
+        if (track == nullptr || track->lanes.empty())
+            return;
+
+        const auto local = getLocalBounds().toFloat().reduced (54.0f);
+        const auto centre = local.getCentre();
+        const auto nodeRadius = juce::jmin (local.getWidth(), local.getHeight()) * 0.22f;
+        const auto orbitRadius = nodeRadius + 34.0f;
+        const auto count = static_cast<int> (track->lanes.size());
+
+        laneCentres.reserve (static_cast<size_t> (count));
+        for (int i = 0; i < count; ++i)
+        {
+            const auto angle = juce::MathConstants<float>::twoPi * (static_cast<float> (i) / static_cast<float> (count))
+                             - juce::MathConstants<float>::halfPi;
+            laneCentres.push_back ({ centre.x + std::cos (angle) * orbitRadius,
+                                     centre.y + std::sin (angle) * orbitRadius });
+        }
+    }
+
+    void drawLanes (juce::Graphics& g, juce::Point<float> centre, float nodeRadius)
+    {
+        if (track == nullptr)
+            return;
+
+        for (int i = 0; i < static_cast<int> (laneCentres.size()); ++i)
+        {
+            const auto point = laneCentres[static_cast<size_t> (i)];
+            const auto laneIsSelected = i == selectedLane;
+            const auto& lane = track->lanes[static_cast<size_t> (i)];
+            const auto colour = laneDotColour (i);
+            const auto dotRadius = laneIsSelected ? 8.0f : 6.2f;
+            const auto distanceFromCentre = point.getDistanceFrom (centre);
+            const juce::Point<float> lineStart { centre.x + (point.x - centre.x) * (nodeRadius / distanceFromCentre),
+                                                 centre.y + (point.y - centre.y) * (nodeRadius / distanceFromCentre) };
+
+            g.setColour (mutedInk().withAlpha (0.09f));
+            g.drawLine (juce::Line<float> (lineStart, point), 1.0f);
+
+            g.setColour (juce::Colour (0xff0b0f0c).withAlpha (0.94f));
+            g.fillEllipse (point.x - dotRadius - 2.5f,
+                           point.y - dotRadius - 2.5f,
+                           (dotRadius + 2.5f) * 2.0f,
+                           (dotRadius + 2.5f) * 2.0f);
+
+            g.setColour (colour.withAlpha (laneIsSelected ? 0.98f : 0.70f));
+            g.fillEllipse (point.x - dotRadius, point.y - dotRadius, dotRadius * 2.0f, dotRadius * 2.0f);
+            g.setColour ((laneIsSelected ? ink() : mutedInk()).withAlpha (laneIsSelected ? 0.52f : 0.24f));
+            g.drawEllipse (point.x - dotRadius, point.y - dotRadius, dotRadius * 2.0f, dotRadius * 2.0f, 0.9f);
+
+            auto labelBounds = juce::Rectangle<int> (180, 24).withCentre ({ static_cast<int> (point.x),
+                                                                           static_cast<int> (point.y + (point.y < centre.y ? -30.0f : 30.0f)) });
+            const auto labelAlpha = lane.muted ? 0.42f : (laneIsSelected ? 0.96f : 0.72f);
+            g.setColour ((laneIsSelected ? ink() : mutedInk()).withAlpha (labelAlpha));
+            g.setFont (juce::FontOptions (laneIsSelected ? 13.5f : 12.0f, juce::Font::bold));
+            g.drawFittedText (lane.name, labelBounds, juce::Justification::centred, 1);
+        }
+    }
+
+    const Wf::StateSpec* track = nullptr;
+    std::vector<juce::Point<float>> laneCentres;
+    int selectedLane = 0;
+    float phase = 0.0f;
+    bool running = false;
 };
 
 class MixerCanvas final : public juce::Component
@@ -1380,6 +1583,7 @@ class MainComponent final : public juce::Component,
     enum class MainView
     {
         arrangement,
+        track,
         code,
         mixer
     };
@@ -1561,11 +1765,15 @@ public:
         };
 
         orbitCanvas.onStateSelected = [this] (int index) { selectState (index); };
+        orbitCanvas.onStateDoubleClicked = [this] (int index) { openTrackFocusView (index); };
         orbitCanvas.onTransitionProbabilityChanged = [this] (int index, std::optional<int> probability)
         {
             setTransitionProbability (index, probability);
         };
         addAndMakeVisible (orbitCanvas);
+
+        trackFocusCanvas.onLaneSelected = [this] (int index) { selectFocusedLane (index); };
+        addAndMakeVisible (trackFocusCanvas);
 
         mixerViewport.setViewedComponent (&mixerCanvas, false);
         mixerViewport.setScrollBarsShown (false, true);
@@ -1587,7 +1795,7 @@ public:
         };
         addAndMakeVisible (mixerViewport);
 
-        setupButton (arrangementButton, "Arrangement", green(), [this] { setMainView (MainView::arrangement); });
+        setupButton (arrangementButton, "Main", green(), [this] { setMainView (MainView::arrangement); });
         setupButton (codeViewButton, "Code", blue(), [this] { setMainView (MainView::code); });
         setupButton (mixerViewButton, "Mixer", amber(), [this] { setMainView (MainView::mixer); });
 
@@ -1771,6 +1979,13 @@ public:
             return;
         }
 
+        if (mainView == MainView::track)
+        {
+            area.removeFromTop (12);
+            trackFocusCanvas.setBounds (area.reduced (8, 0));
+            return;
+        }
+
         auto stateRow = area.removeFromTop (60);
         stateRow.removeFromLeft (10);
 
@@ -1905,6 +2120,7 @@ private:
     void syncViewVisibility()
     {
         const auto arrangement = mainView == MainView::arrangement;
+        const auto track = mainView == MainView::track;
         const auto code = mainView == MainView::code;
         const auto mixer = mainView == MainView::mixer;
 
@@ -1923,6 +2139,7 @@ private:
         duplicateLaneButton.setVisible (arrangement);
         deleteLaneButton.setVisible (arrangement);
         orbitCanvas.setVisible (arrangement);
+        trackFocusCanvas.setVisible (track);
         stateSettingsLabel.setVisible (arrangement);
         stateTempoLabel.setVisible (arrangement);
         stateTempoSlider.setVisible (arrangement);
@@ -1964,6 +2181,30 @@ private:
 
         if (mainView == MainView::mixer)
             scrollMixerToPlayingChannels();
+    }
+
+    void syncTrackFocusCanvas (const std::vector<Wf::StateSpec>* viewedTracks)
+    {
+        if (viewedTracks == nullptr || viewedTracks->empty())
+        {
+            focusedTrackIndex = 0;
+            trackFocusCanvas.setTrack (nullptr, 0, 0.0f, false);
+            return;
+        }
+
+        focusedTrackIndex = juce::jlimit (0, static_cast<int> (viewedTracks->size()) - 1, focusedTrackIndex);
+        const auto& track = (*viewedTracks)[static_cast<size_t> (focusedTrackIndex)];
+        const auto selectedLaneForFocus = focusedTrackIndex == selectedState
+                                            ? juce::jlimit (0, juce::jmax (0, static_cast<int> (track.lanes.size()) - 1), selectedLane)
+                                            : 0;
+        const auto focusedTrackIsPlaying = running
+                                        && viewedTopLevelState == performingTopLevelState
+                                        && focusedTrackIndex == performingTrackIndex;
+
+        trackFocusCanvas.setTrack (&track,
+                                   selectedLaneForFocus,
+                                   focusedTrackIsPlaying ? orbitPhase : 0.0f,
+                                   focusedTrackIsPlaying);
     }
 
     void resizeMixerCanvas()
@@ -2474,6 +2715,28 @@ private:
         refreshLabels();
     }
 
+    void openTrackFocusView (int index)
+    {
+        const auto* viewedTracks = getViewedTracks();
+        if (viewedTracks == nullptr || viewedTracks->empty())
+            return;
+
+        selectState (index);
+        focusedTrackIndex = selectedState;
+        setMainView (MainView::track);
+    }
+
+    void selectFocusedLane (int index)
+    {
+        const auto* viewedTracks = getViewedTracks();
+        if (viewedTracks == nullptr || viewedTracks->empty())
+            return;
+
+        focusedTrackIndex = juce::jlimit (0, static_cast<int> (viewedTracks->size()) - 1, focusedTrackIndex);
+        selectedState = focusedTrackIndex;
+        selectLane (index);
+    }
+
     void pickState()
     {
         const auto* viewedTracks = getViewedTracks();
@@ -2551,6 +2814,7 @@ private:
             laneCodeRunButton.setEnabled (false);
             setLaneCodeEditorText ("// Click New to create this state.");
             orbitCanvas.setState (nullptr, 0, orbitPhase, running);
+            syncTrackFocusCanvas (nullptr);
             syncMixerView();
             syncViewVisibility();
             syncViewButtons();
@@ -2592,6 +2856,7 @@ private:
         syncEditControls (&state, state.lanes.empty() ? nullptr : &state.lanes[static_cast<size_t> (selectedLane)]);
         updateLaneCode();
         orbitCanvas.setState (viewedTracks, selectedState, orbitPhase, running);
+        syncTrackFocusCanvas (viewedTracks);
         syncMixerView();
         syncViewVisibility();
         syncViewButtons();
@@ -3089,7 +3354,10 @@ private:
 
         statusLabel.setText (juce::String (running ? "running  " : "stopped  ") + audioCallback.diagnostics(), juce::dontSendNotification);
         if (const auto* viewedTracks = getViewedTracks())
+        {
             orbitCanvas.setState (viewedTracks, selectedState, orbitPhase, running);
+            syncTrackFocusCanvas (viewedTracks);
+        }
     }
 
     void advancePerformingTrack()
@@ -3352,6 +3620,7 @@ private:
     std::array<juce::TextButton, maxTrackLanes> laneButtons;
 
     OrbitCanvas orbitCanvas;
+    TrackFocusCanvas trackFocusCanvas;
     MixerCanvas mixerCanvas;
     juce::Viewport mixerViewport;
     std::array<juce::TextButton, maxTopLevelStates> stateButtons;
@@ -3402,6 +3671,7 @@ private:
     int viewedTopLevelState = 0;
     int performingTopLevelState = 0;
     int selectedState = 0;
+    int focusedTrackIndex = 0;
     int performingTrackIndex = 0;
     int selectedLane = 0;
     std::vector<GlobalScriptStep> globalScriptSteps;
