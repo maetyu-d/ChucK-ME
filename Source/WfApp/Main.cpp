@@ -1126,9 +1126,7 @@ private:
 
     void drawLanePlayhead (juce::Graphics& g, juce::Point<float> laneCentre, float ringRadius, const Wf::LaneSpec& lane, int laneIndex)
     {
-        const auto pulseTicks = juce::jmax (1, lane.pulseTicks);
-        const auto laneRate = 96.0f / static_cast<float> (pulseTicks);
-        const auto lanePhase = std::fmod (phase * laneRate + static_cast<float> (laneIndex) * 0.071f, 1.0f);
+        const auto lanePhase = std::fmod (phase + static_cast<float> (laneIndex) * 0.071f, 1.0f);
         const auto angle = juce::MathConstants<float>::twoPi * lanePhase - juce::MathConstants<float>::halfPi;
         const auto markerRadius = ringRadius + 1.0f;
         const juce::Point<float> marker { laneCentre.x + std::cos (angle) * markerRadius,
