@@ -91,6 +91,11 @@ void styleLabel (juce::Label& label, float alpha = 1.0f)
     label.setColour (juce::Label::textColourId, ink().withAlpha (alpha));
     label.setJustificationType (juce::Justification::centredLeft);
 }
+
+juce::String trackDisplayName (const juce::String& name)
+{
+    return name.toUpperCase();
+}
 }
 
 class WfAudioCallback final : public juce::AudioIODeviceCallback
@@ -582,7 +587,7 @@ public:
 
             g.setColour (ink());
             g.setFont (juce::FontOptions (selected ? 15.0f : 13.0f, juce::Font::bold));
-            g.drawFittedText ((*states)[static_cast<size_t> (i)].name,
+            g.drawFittedText (trackDisplayName ((*states)[static_cast<size_t> (i)].name),
                               juce::Rectangle<int> (static_cast<int> (point.x - 58.0f),
                                                     static_cast<int> (point.y - 10.0f),
                                                     116,
@@ -1051,7 +1056,7 @@ private:
                     channel.stateIndex = stateIndex;
                     channel.trackIndex = trackIndex;
                     channel.laneIndex = laneIndex;
-                    channel.trackName = track.name;
+                    channel.trackName = trackDisplayName (track.name);
                     channel.laneName = lane.name;
                     channel.volume = lane.volume;
                     channel.pan = lane.pan;
@@ -1457,7 +1462,9 @@ public:
         audioDeviceManager.initialiseWithDefaultDevices (0, 2);
         audioDeviceManager.addAudioCallback (&audioCallback);
 
-        selectState (0);
+        selectedState = 0;
+        selectedLane = 0;
+        refreshLabels();
         setMainView (MainView::arrangement);
         setSize (1240, 760);
         startTimerHz (30);
@@ -2060,7 +2067,7 @@ private:
         auto created = Wf::makeDefaultStates();
 
         for (int i = 0; i < static_cast<int> (created.size()); ++i)
-            created[static_cast<size_t> (i)].name = "Track " + juce::String (i + 1);
+            created[static_cast<size_t> (i)].name = trackDisplayName ("Track " + juce::String (i + 1));
 
         topLevelStates[static_cast<size_t> (target)] = std::move (created);
         topLevelTemposBpm[static_cast<size_t> (target)] = 88.0f;
@@ -2295,7 +2302,7 @@ private:
         selectedState = (index + static_cast<int> (viewedTracks->size())) % static_cast<int> (viewedTracks->size());
         orbitPhase = 0.0f;
 
-        if (viewedTopLevelState == performingTopLevelState)
+        if (running && viewedTopLevelState == performingTopLevelState)
         {
             performingTrackIndex = selectedState;
             trackElapsedBars = 0.0;
@@ -2391,7 +2398,7 @@ private:
 
         selectedState = juce::jlimit (0, static_cast<int> (viewedTracks->size()) - 1, selectedState);
         const auto& state = (*viewedTracks)[static_cast<size_t> (selectedState)];
-        selectedLabel.setText (state.name, juce::dontSendNotification);
+        selectedLabel.setText (trackDisplayName (state.name), juce::dontSendNotification);
         selectedLane = juce::jlimit (0, juce::jmax (0, static_cast<int> (state.lanes.size()) - 1), selectedLane);
 
         for (int i = 0; i < static_cast<int> (laneButtons.size()); ++i)
@@ -2479,7 +2486,7 @@ private:
         deleteLaneButton.setEnabled (hasLane && track != nullptr && track->lanes.size() > 1);
 
         if (! trackNameEditor.hasKeyboardFocus (true))
-            trackNameEditor.setText (hasTrack ? track->name : juce::String(), juce::dontSendNotification);
+            trackNameEditor.setText (hasTrack ? trackDisplayName (track->name) : juce::String(), juce::dontSendNotification);
 
         if (! trackDurationEditor.hasKeyboardFocus (true))
         {
@@ -2511,7 +2518,9 @@ private:
 
         if (auto* track = getSelectedViewedTrack())
         {
-            track->name = trackNameEditor.getText().trim().isNotEmpty() ? trackNameEditor.getText().trim() : "Track";
+            track->name = trackNameEditor.getText().trim().isNotEmpty()
+                ? trackDisplayName (trackNameEditor.getText().trim())
+                : trackDisplayName ("Track");
             refreshAfterStructureEdit (false);
         }
     }
@@ -2810,7 +2819,7 @@ private:
                     ? Wf::StateSpec { "Track " + juce::String (trackIndex + 1), 88.0, {}, Wf::TrackDurationSpec { 1, 0 }, {} }
                     : defaults[static_cast<size_t> (trackIndex % static_cast<int> (defaults.size()))];
 
-                track.name = "Track " + juce::String (trackIndex + 1);
+                track.name = trackDisplayName ("Track " + juce::String (trackIndex + 1));
                 track.duration = Wf::TrackDurationSpec { 1, 0 };
                 track.transitionProbabilityPercent.reset();
                 viewedTracks->push_back (std::move (track));
