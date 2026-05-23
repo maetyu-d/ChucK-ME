@@ -28,14 +28,14 @@ constexpr float defaultBrightness = 0.48f;
 constexpr auto laneDeclarationMarker = "// wf::declaration";
 constexpr auto laneControlMarker = "// wf::control";
 
-juce::Colour ink() { return juce::Colour (0xffeef3ee); }
-juce::Colour mutedInk() { return juce::Colour (0xff9da8a2); }
-juce::Colour panel() { return juce::Colour (0xff161b19); }
-juce::Colour panelSoft() { return juce::Colour (0xff202622); }
-juce::Colour green() { return juce::Colour (0xff7bd88f); }
-juce::Colour amber() { return juce::Colour (0xffd7a84f); }
-juce::Colour coral() { return juce::Colour (0xffdd7c6f); }
-juce::Colour blue() { return juce::Colour (0xff72a7d9); }
+juce::Colour ink() { return juce::Colour (0xfff2f4ef); }
+juce::Colour mutedInk() { return juce::Colour (0xff9aa29c); }
+juce::Colour panel() { return juce::Colour (0xff111512); }
+juce::Colour panelSoft() { return juce::Colour (0xff1a201c); }
+juce::Colour green() { return juce::Colour (0xff8adf9a); }
+juce::Colour amber() { return juce::Colour (0xffd6b15f); }
+juce::Colour coral() { return juce::Colour (0xffd27a70); }
+juce::Colour blue() { return juce::Colour (0xff8ab6dc); }
 
 void clearOutputs (float* const* outputChannelData, int numOutputChannels, int numSamples)
 {
@@ -49,9 +49,9 @@ void clearOutputs (float* const* outputChannelData, int numOutputChannels, int n
 
 void styleButton (juce::TextButton& button, juce::Colour colour)
 {
-    button.setColour (juce::TextButton::buttonColourId, panelSoft());
+    button.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff171d19));
     button.setColour (juce::TextButton::buttonOnColourId, colour.withAlpha (0.22f));
-    button.setColour (juce::TextButton::textColourOffId, ink());
+    button.setColour (juce::TextButton::textColourOffId, ink().withAlpha (0.88f));
     button.setColour (juce::TextButton::textColourOnId, ink());
     button.setMouseCursor (juce::MouseCursor::PointingHandCursor);
 }
@@ -70,16 +70,16 @@ void styleSlider (juce::Slider& slider, juce::Colour colour)
     slider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 56, 22);
     slider.setColour (juce::Slider::trackColourId, colour);
     slider.setColour (juce::Slider::thumbColourId, ink());
-    slider.setColour (juce::Slider::backgroundColourId, panelSoft());
+    slider.setColour (juce::Slider::backgroundColourId, mutedInk().withAlpha (0.10f));
     slider.setColour (juce::Slider::textBoxTextColourId, ink());
     slider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
 }
 
 void styleComboBox (juce::ComboBox& comboBox)
 {
-    comboBox.setColour (juce::ComboBox::backgroundColourId, panelSoft());
+    comboBox.setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xff151a17));
     comboBox.setColour (juce::ComboBox::textColourId, ink());
-    comboBox.setColour (juce::ComboBox::outlineColourId, mutedInk().withAlpha (0.26f));
+    comboBox.setColour (juce::ComboBox::outlineColourId, mutedInk().withAlpha (0.18f));
     comboBox.setColour (juce::ComboBox::arrowColourId, ink());
 }
 
@@ -444,16 +444,16 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (juce::Colour (0xff0f1412));
+        g.fillAll (juce::Colour (0xff0b0f0c));
 
         auto area = getLocalBounds().toFloat().reduced (24.0f);
         const auto radius = juce::jmin (area.getWidth(), area.getHeight()) * 0.36f;
         const auto centre = area.getCentre();
 
-        g.setColour (panelSoft().withAlpha (0.58f));
+        g.setColour (panelSoft().withAlpha (0.28f));
         g.fillEllipse (centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f);
 
-        g.setColour (mutedInk().withAlpha (0.22f));
+        g.setColour (mutedInk().withAlpha (0.14f));
         g.drawEllipse (centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f, 1.2f);
 
         if (states == nullptr || states->empty())
@@ -465,8 +465,8 @@ public:
         for (int i = 0; i < count; ++i)
         {
             const auto next = (i + 1) % count;
-            g.setColour (mutedInk().withAlpha (0.17f));
-            g.drawLine ({ nodeCentres[static_cast<size_t> (i)], nodeCentres[static_cast<size_t> (next)] }, 1.25f);
+            g.setColour (mutedInk().withAlpha (0.12f));
+            g.drawLine ({ nodeCentres[static_cast<size_t> (i)], nodeCentres[static_cast<size_t> (next)] }, 1.1f);
         }
 
         for (int i = 0; i < count; ++i)
@@ -474,17 +474,17 @@ public:
             const auto selected = i == selectedIndex;
             const auto point = nodeCentres[static_cast<size_t> (i)];
             const auto colour = selected ? green() : blue().withAlpha (0.72f);
-            const auto size = selected ? 64.0f : 50.0f;
+            const auto size = selected ? 62.0f : 47.0f;
             const auto laneCount = static_cast<int> ((*states)[static_cast<size_t> (i)].lanes.size());
 
-            g.setColour (colour.withAlpha (selected ? 0.28f : 0.16f));
+            g.setColour (colour.withAlpha (selected ? 0.20f : 0.10f));
             g.fillEllipse (point.x - size * 0.5f, point.y - size * 0.5f, size, size);
             g.setColour (colour.withAlpha (selected ? 0.98f : 0.78f));
             g.drawEllipse (point.x - size * 0.5f, point.y - size * 0.5f, size, size, selected ? 2.0f : 1.2f);
             drawLaneDots (g, point, size, laneCount, selected);
 
             g.setColour (ink());
-            g.setFont (selected ? 15.0f : 13.0f);
+            g.setFont (juce::FontOptions (selected ? 15.0f : 13.0f, juce::Font::bold));
             g.drawFittedText ((*states)[static_cast<size_t> (i)].name,
                               juce::Rectangle<int> (static_cast<int> (point.x - 58.0f),
                                                     static_cast<int> (point.y - 10.0f),
@@ -502,7 +502,7 @@ public:
                                               base.y + std::sin (angle) * 34.0f };
 
             g.setColour (running ? amber() : coral());
-            g.fillEllipse (marker.x - 5.0f, marker.y - 5.0f, 10.0f, 10.0f);
+            g.fillEllipse (marker.x - 4.0f, marker.y - 4.0f, 8.0f, 8.0f);
         }
     }
 
@@ -606,12 +606,12 @@ private:
     static void styleTransitionProbabilityEditor (juce::TextEditor& editor, bool hasProbability)
     {
         editor.setColour (juce::TextEditor::backgroundColourId,
-                          hasProbability ? panel().withAlpha (0.88f) : panel().withAlpha (0.28f));
+                          hasProbability ? panel().withAlpha (0.78f) : juce::Colours::transparentBlack);
         editor.setColour (juce::TextEditor::outlineColourId,
-                          hasProbability ? amber().withAlpha (0.34f) : mutedInk().withAlpha (0.10f));
+                          hasProbability ? amber().withAlpha (0.28f) : juce::Colours::transparentBlack);
         editor.setColour (juce::TextEditor::textColourId,
-                          hasProbability ? ink() : mutedInk().withAlpha (0.62f));
-        editor.setTextToShowWhenEmpty ("%", mutedInk().withAlpha (0.26f));
+                          hasProbability ? ink() : mutedInk().withAlpha (0.30f));
+        editor.setTextToShowWhenEmpty ("%", mutedInk().withAlpha (0.18f));
     }
 
     static std::optional<int> parseTransitionProbability (juce::String text)
@@ -650,7 +650,7 @@ private:
         if (laneCount <= 0)
             return;
 
-        const auto dotRadius = selected ? 4.0f : 3.25f;
+        const auto dotRadius = selected ? 3.8f : 3.0f;
         const auto dotOrbitRadius = nodeSize * 0.5f + dotRadius + 2.0f;
 
         for (int lane = 0; lane < laneCount; ++lane)
@@ -667,7 +667,7 @@ private:
                            (dotRadius + 1.5f) * 2.0f,
                            (dotRadius + 1.5f) * 2.0f);
 
-            g.setColour (colour.withAlpha (selected ? 0.96f : 0.72f));
+            g.setColour (colour.withAlpha (selected ? 0.90f : 0.62f));
             g.fillEllipse (dotCentre.x - dotRadius, dotCentre.y - dotRadius, dotRadius * 2.0f, dotRadius * 2.0f);
 
             g.setColour (ink().withAlpha (selected ? 0.42f : 0.22f));
@@ -696,7 +696,7 @@ public:
         topLevelStates[1] = Wf::makeDefaultStates();
 
         titleLabel.setText ("ChucK-ME", juce::dontSendNotification);
-        titleLabel.setFont (juce::FontOptions (24.0f, juce::Font::bold));
+        titleLabel.setFont (juce::FontOptions (22.0f, juce::Font::bold));
         styleLabel (titleLabel);
         addAndMakeVisible (titleLabel);
 
@@ -737,10 +737,10 @@ public:
         globalScriptEditor.setMultiLine (true);
         globalScriptEditor.setReturnKeyStartsNewLine (true);
         globalScriptEditor.setText ("tempo(88); timeSig(4, 4); playState(1, 8);\ntempo(44); playState(2, 4);\nstop();", juce::dontSendNotification);
-        globalScriptEditor.setColour (juce::TextEditor::backgroundColourId, panelSoft());
+        globalScriptEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff111612));
         globalScriptEditor.setColour (juce::TextEditor::textColourId, ink());
-        globalScriptEditor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.24f));
-        globalScriptEditor.setColour (juce::TextEditor::focusedOutlineColourId, amber().withAlpha (0.72f));
+        globalScriptEditor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.12f));
+        globalScriptEditor.setColour (juce::TextEditor::focusedOutlineColourId, amber().withAlpha (0.42f));
         globalScriptEditor.setColour (juce::TextEditor::highlightColourId, amber().withAlpha (0.24f));
         globalScriptEditor.setFont (juce::FontOptions (14.0f));
         addAndMakeVisible (globalScriptEditor);
@@ -777,10 +777,10 @@ public:
         laneCodeEditor.setMultiLine (true);
         laneCodeEditor.setReturnKeyStartsNewLine (true);
         laneCodeEditor.setReadOnly (false);
-        laneCodeEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff101412));
+        laneCodeEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff0b0f0c));
         laneCodeEditor.setColour (juce::TextEditor::textColourId, ink());
-        laneCodeEditor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.22f));
-        laneCodeEditor.setColour (juce::TextEditor::focusedOutlineColourId, mutedInk().withAlpha (0.34f));
+        laneCodeEditor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.12f));
+        laneCodeEditor.setColour (juce::TextEditor::focusedOutlineColourId, mutedInk().withAlpha (0.24f));
         laneCodeEditor.setColour (juce::TextEditor::highlightColourId, blue().withAlpha (0.24f));
         laneCodeEditor.setFont (juce::FontOptions (12.0f));
         laneCodeEditor.onTextChange = [this] { markLaneCodeEdited(); };
@@ -899,14 +899,14 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (juce::Colour (0xff0c100e));
+        g.fillAll (juce::Colour (0xff090c0a));
 
-        auto area = getLocalBounds().reduced (16);
+        auto area = getLocalBounds().reduced (18);
         g.setColour (panel());
-        g.fillRoundedRectangle (area.toFloat(), 8.0f);
+        g.fillRoundedRectangle (area.toFloat(), 6.0f);
 
-        g.setColour (mutedInk().withAlpha (0.18f));
-        g.drawRoundedRectangle (area.toFloat(), 8.0f, 1.0f);
+        g.setColour (mutedInk().withAlpha (0.10f));
+        g.drawRoundedRectangle (area.toFloat(), 6.0f, 1.0f);
 
         auto content = area.reduced (18);
         auto top = content.removeFromTop (48);
@@ -919,15 +919,15 @@ public:
         body.removeFromLeft (18);
         auto rightPane = body.removeFromRight (260);
 
-        g.setColour (juce::Colour (0xff101512).withAlpha (0.42f));
-        g.fillRoundedRectangle (leftPane.toFloat(), 4.0f);
-        g.fillRoundedRectangle (rightPane.toFloat(), 4.0f);
+        g.setColour (juce::Colour (0xff0d110e).withAlpha (0.58f));
+        g.fillRoundedRectangle (leftPane.toFloat(), 3.0f);
+        g.fillRoundedRectangle (rightPane.toFloat(), 3.0f);
 
-        g.setColour (mutedInk().withAlpha (0.075f));
-        g.drawRoundedRectangle (leftPane.toFloat(), 4.0f, 1.0f);
-        g.drawRoundedRectangle (rightPane.toFloat(), 4.0f, 1.0f);
+        g.setColour (mutedInk().withAlpha (0.055f));
+        g.drawRoundedRectangle (leftPane.toFloat(), 3.0f, 1.0f);
+        g.drawRoundedRectangle (rightPane.toFloat(), 3.0f, 1.0f);
 
-        g.setColour (mutedInk().withAlpha (0.18f));
+        g.setColour (mutedInk().withAlpha (0.11f));
         g.drawLine (static_cast<float> (content.getX()),
                     static_cast<float> (top.getBottom()),
                     static_cast<float> (content.getRight()),
@@ -944,7 +944,7 @@ public:
                     static_cast<float> (scriptRow.getBottom()),
                     1.0f);
 
-        g.setColour (mutedInk().withAlpha (0.10f));
+        g.setColour (mutedInk().withAlpha (0.08f));
         g.drawLine (static_cast<float> (transport.getX()),
                     static_cast<float> (transport.getY()),
                     static_cast<float> (transport.getRight()),
@@ -1063,10 +1063,10 @@ private:
     void setupTextEditor (juce::TextEditor& editor, const juce::String& emptyText)
     {
         editor.setTextToShowWhenEmpty (emptyText, mutedInk().withAlpha (0.66f));
-        editor.setColour (juce::TextEditor::backgroundColourId, panelSoft());
+        editor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff151a17));
         editor.setColour (juce::TextEditor::textColourId, ink());
-        editor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.22f));
-        editor.setColour (juce::TextEditor::focusedOutlineColourId, blue().withAlpha (0.72f));
+        editor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.12f));
+        editor.setColour (juce::TextEditor::focusedOutlineColourId, blue().withAlpha (0.36f));
         editor.setColour (juce::TextEditor::highlightColourId, blue().withAlpha (0.24f));
         editor.setFont (juce::FontOptions (13.0f));
         addAndMakeVisible (editor);
