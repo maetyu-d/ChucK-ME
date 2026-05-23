@@ -1021,6 +1021,18 @@ public:
 
         rebuildLaneCentres();
         drawLanes (g, centre, nodeRadius);
+
+        if (running)
+        {
+            const auto angle = juce::MathConstants<float>::twoPi * phase - juce::MathConstants<float>::halfPi;
+            const juce::Point<float> marker { centre.x + std::cos (angle) * ringRadius,
+                                              centre.y + std::sin (angle) * ringRadius };
+
+            g.setColour (juce::Colour (0xff0b0f0c).withAlpha (0.92f));
+            g.fillEllipse (marker.x - 7.0f, marker.y - 7.0f, 14.0f, 14.0f);
+            g.setColour (amber());
+            g.fillEllipse (marker.x - 4.5f, marker.y - 4.5f, 9.0f, 9.0f);
+        }
     }
 
     void mouseDown (const juce::MouseEvent& event) override
@@ -1113,7 +1125,7 @@ private:
                            laneIsSelected ? 1.6f : 1.0f);
 
             if (running)
-                drawLanePlayhead (g, point, dotRadius, lane, i);
+                drawLanePlayhead (g, point, dotRadius, lane);
 
             auto labelBounds = juce::Rectangle<int> (180, 24).withCentre ({ static_cast<int> (point.x),
                                                                            static_cast<int> (point.y + (point.y < centre.y ? -82.0f : 82.0f)) });
@@ -1124,9 +1136,9 @@ private:
         }
     }
 
-    void drawLanePlayhead (juce::Graphics& g, juce::Point<float> laneCentre, float ringRadius, const Wf::LaneSpec& lane, int laneIndex)
+    void drawLanePlayhead (juce::Graphics& g, juce::Point<float> laneCentre, float ringRadius, const Wf::LaneSpec& lane)
     {
-        const auto lanePhase = std::fmod (phase + static_cast<float> (laneIndex) * 0.071f, 1.0f);
+        const auto lanePhase = std::fmod (phase, 1.0f);
         const auto angle = juce::MathConstants<float>::twoPi * lanePhase - juce::MathConstants<float>::halfPi;
         const auto markerRadius = ringRadius + 1.0f;
         const juce::Point<float> marker { laneCentre.x + std::cos (angle) * markerRadius,
