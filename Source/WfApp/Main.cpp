@@ -25,7 +25,7 @@ constexpr int maxStateTracks = 16;
 constexpr int maxTrackLanes = 8;
 constexpr int maxTrackEffectSlots = 3;
 constexpr int maxGraphTransitions = 32;
-constexpr int arrangementLeftPaneWidth = 304;
+constexpr int arrangementLeftPaneWidth = 340;
 constexpr int arrangementRightPaneWidth = 274;
 constexpr int arrangementPaneGap = 16;
 constexpr int trackFocusCodePaneWidth = 390;
@@ -1726,7 +1726,7 @@ public:
         styleLabel (laneCodeHeader, 0.82f);
         addAndMakeVisible (laneCodeHeader);
 
-        trackNameLabel.setText ("name", juce::dontSendNotification);
+        trackNameLabel.setText ("track name", juce::dontSendNotification);
         trackNameLabel.setFont (juce::FontOptions (13.0f, juce::Font::bold));
         styleLabel (trackNameLabel, 0.72f);
         addAndMakeVisible (trackNameLabel);
@@ -1734,7 +1734,7 @@ public:
         setupTextEditor (trackNameEditor, "Track name");
         trackNameEditor.onTextChange = [this] { applyTrackNameEdit(); };
 
-        trackDurationLabel.setText ("duration (Bar.Beat)", juce::dontSendNotification);
+        trackDurationLabel.setText ("track duration (Bar.Beat)", juce::dontSendNotification);
         trackDurationLabel.setFont (juce::FontOptions (13.0f, juce::Font::bold));
         styleLabel (trackDurationLabel, 0.72f);
         addAndMakeVisible (trackDurationLabel);
@@ -1745,7 +1745,12 @@ public:
         setupTextEditor (laneNameEditor, "Lane name");
         laneNameEditor.onTextChange = [this] { applyLaneNameEdit(); };
 
-        laneTempoLabel.setText ("lane bpm", juce::dontSendNotification);
+        laneNameLabel.setText ("lane name", juce::dontSendNotification);
+        laneNameLabel.setFont (juce::FontOptions (13.0f, juce::Font::bold));
+        styleLabel (laneNameLabel, 0.72f);
+        addAndMakeVisible (laneNameLabel);
+
+        laneTempoLabel.setText ("bpm override", juce::dontSendNotification);
         laneTempoLabel.setFont (juce::FontOptions (13.0f, juce::Font::bold));
         styleLabel (laneTempoLabel, 0.72f);
         addAndMakeVisible (laneTempoLabel);
@@ -2112,10 +2117,13 @@ public:
             area.removeFromLeft (trackFocusPaneGap);
             trackFocusCanvas.setBounds (area.reduced (8, 0));
 
-            laneNameEditor.setBounds (codePane.removeFromTop (28).reduced (8, 0));
+            auto laneNameRow = codePane.removeFromTop (30);
+            laneNameLabel.setBounds (laneNameRow.removeFromLeft (92).reduced (8, 2));
+            laneNameRow.removeFromLeft (8);
+            laneNameEditor.setBounds (laneNameRow.reduced (0, 2));
             codePane.removeFromTop (8);
             auto laneTempoRow = codePane.removeFromTop (30);
-            laneTempoLabel.setBounds (laneTempoRow.removeFromLeft (84).reduced (8, 2));
+            laneTempoLabel.setBounds (laneTempoRow.removeFromLeft (104).reduced (8, 2));
             laneTempoRow.removeFromLeft (8);
             laneTempoEditor.setBounds (laneTempoRow.removeFromLeft (82).reduced (0, 2));
             codePane.removeFromTop (6);
@@ -2157,14 +2165,22 @@ public:
         area.removeFromRight (arrangementPaneGap);
 
         auto trackNameRow = codePane.removeFromTop (30);
-        trackNameLabel.setBounds (trackNameRow.removeFromLeft (74).reduced (0, 2));
+        trackNameLabel.setBounds (trackNameRow.removeFromLeft (96).reduced (0, 2));
         trackNameRow.removeFromLeft (8);
         trackNameEditor.setBounds (trackNameRow.reduced (0, 2));
         codePane.removeFromTop (6);
-        laneNameEditor.setBounds (codePane.removeFromTop (28));
+        auto trackEditRow = codePane.removeFromTop (30);
+        trackDurationLabel.setBounds (trackEditRow.removeFromLeft (182).reduced (0, 2));
+        trackEditRow.removeFromLeft (8);
+        trackDurationEditor.setBounds (trackEditRow.removeFromLeft (74).reduced (0, 2));
+        codePane.removeFromTop (14);
+        auto laneNameRow = codePane.removeFromTop (30);
+        laneNameLabel.setBounds (laneNameRow.removeFromLeft (96).reduced (0, 2));
+        laneNameRow.removeFromLeft (8);
+        laneNameEditor.setBounds (laneNameRow.reduced (0, 2));
         codePane.removeFromTop (8);
         auto laneTempoRow = codePane.removeFromTop (30);
-        laneTempoLabel.setBounds (laneTempoRow.removeFromLeft (84).reduced (0, 2));
+        laneTempoLabel.setBounds (laneTempoRow.removeFromLeft (104).reduced (0, 2));
         laneTempoRow.removeFromLeft (8);
         laneTempoEditor.setBounds (laneTempoRow.removeFromLeft (82).reduced (0, 2));
         codePane.removeFromTop (6);
@@ -2172,12 +2188,7 @@ public:
         laneDurationLabel.setBounds (laneDurationRow.removeFromLeft (174).reduced (0, 2));
         laneDurationRow.removeFromLeft (8);
         laneDurationEditor.setBounds (laneDurationRow.removeFromLeft (74).reduced (0, 2));
-        codePane.removeFromTop (8);
-        auto trackEditRow = codePane.removeFromTop (30);
-        trackDurationLabel.setBounds (trackEditRow.removeFromLeft (152).reduced (0, 2));
-        trackEditRow.removeFromLeft (8);
-        trackDurationEditor.setBounds (trackEditRow.removeFromLeft (74).reduced (0, 2));
-        codePane.removeFromTop (6);
+        codePane.removeFromTop (10);
         auto laneEditRow = codePane.removeFromTop (30);
         muteLaneButton.setBounds (laneEditRow.removeFromLeft (72).reduced (6, 2));
         soloLaneButton.setBounds (laneEditRow.removeFromLeft (72).reduced (6, 2));
@@ -2288,6 +2299,7 @@ private:
         trackNameEditor.setVisible (arrangement);
         trackDurationLabel.setVisible (arrangement);
         trackDurationEditor.setVisible (arrangement);
+        laneNameLabel.setVisible (arrangement || track);
         laneNameEditor.setVisible (arrangement || track);
         laneTempoLabel.setVisible (arrangement || track);
         laneTempoEditor.setVisible (arrangement || track);
@@ -3836,6 +3848,7 @@ private:
     juce::Label laneCodeHeader;
     juce::Label trackNameLabel;
     juce::Label trackDurationLabel;
+    juce::Label laneNameLabel;
     juce::Label laneTempoLabel;
     juce::Label laneDurationLabel;
     juce::Label selectedLabel;
