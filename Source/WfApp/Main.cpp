@@ -93,6 +93,15 @@ struct GlobalScriptStep
     std::optional<int> timeSigDenominator;
 };
 
+struct ImportedAudioRegion
+{
+    double startSeconds = 0.0;
+    double sourceStartSeconds = 0.0;
+    double lengthSeconds = 0.0;
+    double fadeInSeconds = 0.0;
+    double fadeOutSeconds = 0.0;
+};
+
 struct ImportedLaneAudioClip
 {
     int stateIndex = 0;
@@ -105,7 +114,64 @@ struct ImportedLaneAudioClip
     double lengthSeconds = 0.0;
     float mixGain = 1.0f;
     float mixPan = 0.0f;
+    std::vector<ImportedAudioRegion> regions;
 };
+
+enum class ArrangementAudioTool
+{
+    pointer,
+    scissors,
+    fade
+};
+
+struct ArrangementAudioSelection
+{
+    int clipIndex = -1;
+    int regionIndex = -1;
+
+    bool isValid() const noexcept
+    {
+        return clipIndex >= 0 && regionIndex >= 0;
+    }
+};
+
+double regionEndSeconds (const ImportedAudioRegion& region)
+{
+    return region.startSeconds + juce::jmax (0.0, region.lengthSeconds);
+}
+
+bool regionContainsTime (const ImportedAudioRegion& region, double timeSeconds)
+{
+    return timeSeconds >= region.startSeconds && timeSeconds < regionEndSeconds (region);
+}
+
+float importedRegionFadeGain (const ImportedAudioRegion& region, double localSeconds)
+{
+    localSeconds = juce::jlimit (0.0, juce::jmax (0.0, region.lengthSeconds), localSeconds);
+    auto gain = 1.0;
+
+    if (region.fadeInSeconds > 0.000001)
+        gain = juce::jmin (gain, localSeconds / region.fadeInSeconds);
+
+    if (region.fadeOutSeconds > 0.000001)
+        gain = juce::jmin (gain, (region.lengthSeconds - localSeconds) / region.fadeOutSeconds);
+
+    return juce::jlimit (0.0f, 1.0f, static_cast<float> (gain));
+}
+
+double sourceSamplePositionForRegionTime (const ImportedAudioRegion& region,
+                                          int64_t timelineSample,
+                                          double timelineSampleRate,
+                                          double sourceSampleRate)
+{
+    if (timelineSampleRate <= 0.0 || sourceSampleRate <= 0.0)
+        return -1.0;
+
+    const auto timelineSampleInRegion = static_cast<double> (timelineSample)
+                                      - region.startSeconds * timelineSampleRate;
+    return region.sourceStartSeconds * sourceSampleRate
+         + timelineSampleInRegion * (sourceSampleRate / timelineSampleRate);
+}
 
 juce::Colour ink() { return juce::Colour (0xfff2f4ef); }
 juce::Colour mutedInk() { return juce::Colour (0xff9aa29c); }
@@ -733,6 +799,7 @@ class WfAudioCallback final : public juce::AudioIODeviceCallback
     {
         int effectGroupIndex = -1;
         std::shared_ptr<const juce::AudioBuffer<float>> audio;
+        std::vector<ImportedAudioRegion> regions;
         double sampleRate = 48000.0;
         std::shared_ptr<std::atomic<float>> gain;
         std::shared_ptr<std::atomic<float>> pan;
@@ -968,6 +1035,12 @@ public:
             if (clip.audioData == nullptr || clip.audioData->getNumSamples() <= 0)
                 continue;
 
+            const auto clipSampleRate = juce::jmax (1.0, clip.audioSampleRate);
+            const auto clipLengthSeconds = static_cast<double> (clip.audioData->getNumSamples()) / clipSampleRate;
+            auto regions = sanitisedImportedRegions (clip.regions, clipLengthSeconds);
+            if (regions.empty())
+                continue;
+
             ImportedPlaybackClip playbackClip;
             playbackClip.effectGroupIndex = getOrCreateImportedTrackEffectGroup (*playbackSet,
                                                                                   clip.stateIndex,
@@ -976,11 +1049,12 @@ public:
                                                                                   sampleRate,
                                                                                   blockSize);
             playbackClip.audio = clip.audioData;
-            playbackClip.sampleRate = juce::jmax (1.0, clip.audioSampleRate);
+            playbackClip.regions = std::move (regions);
+            playbackClip.sampleRate = clipSampleRate;
             playbackClip.gain = std::make_shared<std::atomic<float>> (clip.mixGain);
             playbackClip.pan = std::make_shared<std::atomic<float>> (clip.mixPan);
-            playbackSet->lengthSeconds = juce::jmax (playbackSet->lengthSeconds,
-                                                     static_cast<double> (clip.audioData->getNumSamples()) / playbackClip.sampleRate);
+            for (const auto& region : playbackClip.regions)
+                playbackSet->lengthSeconds = juce::jmax (playbackSet->lengthSeconds, regionEndSeconds (region));
             playbackSet->clips.push_back (std::move (playbackClip));
         }
 
@@ -1125,6 +1199,47 @@ private:
         std::atomic<bool> inUse { false };
     };
 
+    static std::vector<ImportedAudioRegion> sanitisedImportedRegions (const std::vector<ImportedAudioRegion>& regions,
+                                                                      double clipLengthSeconds)
+    {
+        std::vector<ImportedAudioRegion> sanitised;
+        if (clipLengthSeconds <= 0.0)
+            return sanitised;
+
+        const auto sourceLength = juce::jmax (0.0, clipLengthSeconds);
+        if (regions.empty())
+        {
+            sanitised.push_back ({ 0.0, 0.0, sourceLength, 0.0, 0.0 });
+            return sanitised;
+        }
+
+        sanitised.reserve (regions.size());
+        for (auto region : regions)
+        {
+            if (! std::isfinite (region.startSeconds)
+                || ! std::isfinite (region.sourceStartSeconds)
+                || ! std::isfinite (region.lengthSeconds))
+                continue;
+
+            region.startSeconds = juce::jmax (0.0, region.startSeconds);
+            region.sourceStartSeconds = juce::jlimit (0.0, sourceLength, region.sourceStartSeconds);
+            region.lengthSeconds = juce::jlimit (0.0, sourceLength - region.sourceStartSeconds, region.lengthSeconds);
+            if (region.lengthSeconds <= 0.000001)
+                continue;
+
+            region.fadeInSeconds = juce::jlimit (0.0, region.lengthSeconds, std::isfinite (region.fadeInSeconds) ? region.fadeInSeconds : 0.0);
+            region.fadeOutSeconds = juce::jlimit (0.0, region.lengthSeconds - region.fadeInSeconds, std::isfinite (region.fadeOutSeconds) ? region.fadeOutSeconds : 0.0);
+            sanitised.push_back (region);
+        }
+
+        std::sort (sanitised.begin(), sanitised.end(), [] (const auto& a, const auto& b)
+        {
+            return a.startSeconds < b.startSeconds;
+        });
+
+        return sanitised;
+    }
+
     void processImportedAudio (float* const* outputChannelData, int numOutputChannels, int numSamples)
     {
         if (! importedPlaying.load (std::memory_order_acquire))
@@ -1155,6 +1270,9 @@ private:
                 if (group != nullptr && group->buffer.getNumSamples() >= numSamples)
                     group->buffer.clear (0, numSamples);
 
+            const auto blockStartSeconds = static_cast<double> (startSample) / deviceSampleRate;
+            const auto blockEndSeconds = static_cast<double> (startSample + numSamples) / deviceSampleRate;
+
             for (const auto& clip : playbackSet->clips)
             {
                 if (clip.audio == nullptr || clip.audio->getNumSamples() <= 0)
@@ -1166,22 +1284,46 @@ private:
 
                 const auto pan = clip.pan != nullptr ? clip.pan->load (std::memory_order_acquire) : 0.0f;
                 const auto panGains = linearPanGains (gain, pan);
-                const auto sourceScale = clip.sampleRate / deviceSampleRate;
                 auto* group = getImportedTrackEffectGroup (*playbackSet, clip.effectGroupIndex);
                 if (group == nullptr || group->buffer.getNumChannels() < engineOutputChannels || group->buffer.getNumSamples() < numSamples)
                     continue;
 
-                for (int sample = 0; sample < numSamples; ++sample)
+                for (const auto& region : clip.regions)
                 {
-                    const auto sourcePosition = static_cast<double> (startSample + sample) * sourceScale;
-                    if (sourcePosition >= static_cast<double> (clip.audio->getNumSamples()))
-                        break;
+                    const auto regionStart = region.startSeconds;
+                    const auto regionEnd = regionEndSeconds (region);
+                    if (regionEnd <= blockStartSeconds || regionStart >= blockEndSeconds)
+                        continue;
 
-                    const auto left = readInterpolatedSample (*clip.audio, 0, sourcePosition);
-                    const auto right = readInterpolatedSample (*clip.audio, clip.audio->getNumChannels() > 1 ? 1 : 0, sourcePosition);
+                    const auto firstSample = juce::jlimit (0,
+                                                           numSamples,
+                                                           static_cast<int> (std::floor ((regionStart - blockStartSeconds) * deviceSampleRate)));
+                    const auto lastSample = juce::jlimit (0,
+                                                          numSamples,
+                                                          static_cast<int> (std::ceil ((regionEnd - blockStartSeconds) * deviceSampleRate)));
 
-                    group->buffer.addSample (0, sample, left * panGains[0]);
-                    group->buffer.addSample (1, sample, right * panGains[1]);
+                    for (int sample = firstSample; sample < lastSample; ++sample)
+                    {
+                        const auto timelineSample = startSample + sample;
+                        const auto timeSeconds = static_cast<double> (timelineSample) / deviceSampleRate;
+                        if (! regionContainsTime (region, timeSeconds))
+                            continue;
+
+                        const auto localSeconds = timeSeconds - region.startSeconds;
+                        const auto sourcePosition = sourceSamplePositionForRegionTime (region,
+                                                                                       timelineSample,
+                                                                                       deviceSampleRate,
+                                                                                       clip.sampleRate);
+                        if (sourcePosition < 0.0 || sourcePosition >= static_cast<double> (clip.audio->getNumSamples()))
+                            break;
+
+                        const auto regionGain = importedRegionFadeGain (region, localSeconds);
+                        const auto left = readInterpolatedSample (*clip.audio, 0, sourcePosition);
+                        const auto right = readInterpolatedSample (*clip.audio, clip.audio->getNumChannels() > 1 ? 1 : 0, sourcePosition);
+
+                        group->buffer.addSample (0, sample, left * panGains[0] * regionGain);
+                        group->buffer.addSample (1, sample, right * panGains[1] * regionGain);
+                    }
                 }
             }
 
@@ -3059,6 +3201,21 @@ private:
 class ArrangementTimelineCanvas final : public juce::Component
 {
 public:
+    struct RegionHit
+    {
+        int clipIndex = -1;
+        int regionIndex = -1;
+        double timeSeconds = 0.0;
+        bool nearStart = false;
+        bool nearEnd = false;
+    };
+
+    std::function<void (int, int)> onImportedRegionSelected;
+    std::function<void (int, int, double)> onImportedRegionSplit;
+    std::function<void (int, int)> onImportedRegionFadeEditStarted;
+    std::function<void (int, int, double, double)> onImportedRegionFadeChanged;
+    std::function<void()> onImportedRegionFadeEditEnded;
+
     void setProject (const std::array<std::optional<std::vector<Wf::StateSpec>>, maxTopLevelStates>* statesToUse,
                      std::vector<GlobalScriptStep> stepsToUse,
                      int playingStateToUse,
@@ -3067,7 +3224,12 @@ public:
                      double playingStepElapsedBarsToUse,
                      bool runningToUse,
                      const std::vector<ImportedLaneAudioClip>* importedLaneClipsToUse,
-                     bool arrangementPlusToUse)
+                     bool arrangementPlusToUse,
+                     const std::array<float, maxTopLevelStates>* stateTemposToUse,
+                     const std::array<int, maxTopLevelStates>* stateNumeratorsToUse,
+                     const std::array<int, maxTopLevelStates>* stateDenominatorsToUse,
+                     ArrangementAudioSelection selectedImportedRegionToUse,
+                     ArrangementAudioTool audioToolToUse)
     {
         states = statesToUse;
         steps = std::move (stepsToUse);
@@ -3078,6 +3240,11 @@ public:
         running = runningToUse;
         importedLaneClips = importedLaneClipsToUse;
         arrangementPlus = arrangementPlusToUse;
+        stateTempos = stateTemposToUse;
+        stateNumerators = stateNumeratorsToUse;
+        stateDenominators = stateDenominatorsToUse;
+        selectedImportedRegion = selectedImportedRegionToUse;
+        audioTool = audioToolToUse;
         rebuildMetrics();
         repaint();
     }
@@ -3153,6 +3320,56 @@ public:
             g.drawLine (x, 0.0f, x, static_cast<float> (getHeight()), 1.8f);
             g.fillRoundedRectangle (x - 5.0f, 6.0f, 10.0f, 16.0f, 2.0f);
         }
+    }
+
+    void mouseDown (const juce::MouseEvent& event) override
+    {
+        if (! arrangementPlus)
+            return;
+
+        if (const auto hit = findImportedRegionAt (event.position); hit.has_value())
+        {
+            if (onImportedRegionSelected != nullptr)
+                onImportedRegionSelected (hit->clipIndex, hit->regionIndex);
+
+            if (audioTool == ArrangementAudioTool::scissors)
+            {
+                if (onImportedRegionSplit != nullptr)
+                    onImportedRegionSplit (hit->clipIndex, hit->regionIndex, hit->timeSeconds);
+
+                return;
+            }
+
+            if (audioTool == ArrangementAudioTool::fade || hit->nearStart || hit->nearEnd)
+            {
+                activeFadeDrag = *hit;
+                activeFadeDragEditingOut = hit->nearEnd || (! hit->nearStart && regionDragPrefersFadeOut (*hit));
+                if (onImportedRegionFadeEditStarted != nullptr)
+                    onImportedRegionFadeEditStarted (hit->clipIndex, hit->regionIndex);
+
+                updateActiveFadeDrag (event.position);
+            }
+
+            return;
+        }
+
+        activeFadeDrag.reset();
+        if (onImportedRegionSelected != nullptr)
+            onImportedRegionSelected (-1, -1);
+    }
+
+    void mouseDrag (const juce::MouseEvent& event) override
+    {
+        if (activeFadeDrag.has_value())
+            updateActiveFadeDrag (event.position);
+    }
+
+    void mouseUp (const juce::MouseEvent&) override
+    {
+        if (activeFadeDrag.has_value() && onImportedRegionFadeEditEnded != nullptr)
+            onImportedRegionFadeEditEnded();
+
+        activeFadeDrag.reset();
     }
 
 private:
@@ -3290,13 +3507,22 @@ private:
                                                         static_cast<float> (laneRowHeight - 4));
                 const auto laneColour = laneColourForIndex (laneIndex);
                 const auto active = ! lane.muted;
-                const auto* importedClip = findImportedClip (step.stateIndex, trackIndex, laneIndex);
+                const auto importedClipIndex = findImportedClipIndex (step.stateIndex, trackIndex, laneIndex);
+                const auto* importedClip = importedClipIndex >= 0 && importedLaneClips != nullptr
+                    ? &importedLaneClips->at (static_cast<size_t> (importedClipIndex))
+                    : nullptr;
 
                 g.setColour (laneColour.withAlpha (active ? (importedClip != nullptr ? 0.28f : 0.20f) : 0.06f));
                 g.fillRoundedRectangle (laneArea, 2.0f);
 
                 if (importedClip != nullptr)
-                    drawImportedAudioClip (g, laneArea, laneColour, *importedClip, stepStartBars, step.bars, totalBars);
+                    drawImportedAudioClipRegions (g,
+                                                  laneArea,
+                                                  laneColour,
+                                                  *importedClip,
+                                                  importedClipIndex,
+                                                  stepStartBars,
+                                                  step.bars);
                 else
                 {
                     g.setColour (laneColour.withAlpha (active ? 0.64f : 0.18f));
@@ -3312,30 +3538,226 @@ private:
 
     const ImportedLaneAudioClip* findImportedClip (int stateIndex, int trackIndex, int laneIndex) const
     {
-        if (! arrangementPlus || importedLaneClips == nullptr)
+        const auto index = findImportedClipIndex (stateIndex, trackIndex, laneIndex);
+        if (index < 0 || importedLaneClips == nullptr)
             return nullptr;
 
-        const auto match = std::find_if (importedLaneClips->begin(), importedLaneClips->end(), [=] (const ImportedLaneAudioClip& clip)
-        {
-            return clip.stateIndex == stateIndex
-                && clip.trackIndex == trackIndex
-                && clip.laneIndex == laneIndex
-                && clip.file.existsAsFile();
-        });
-
-        return match == importedLaneClips->end() ? nullptr : &*match;
+        return &importedLaneClips->at (static_cast<size_t> (index));
     }
 
-    static void drawImportedAudioClip (juce::Graphics& g,
+    int findImportedClipIndex (int stateIndex, int trackIndex, int laneIndex) const
+    {
+        if (! arrangementPlus || importedLaneClips == nullptr)
+            return -1;
+
+        for (int i = 0; i < static_cast<int> (importedLaneClips->size()); ++i)
+        {
+            const auto& clip = importedLaneClips->at (static_cast<size_t> (i));
+            if (clip.stateIndex == stateIndex
+                && clip.trackIndex == trackIndex
+                && clip.laneIndex == laneIndex
+                && clip.file.existsAsFile())
+                return i;
+        }
+
+        return -1;
+    }
+
+    void drawImportedAudioClipRegions (juce::Graphics& g,
                                        juce::Rectangle<float> laneArea,
                                        juce::Colour laneColour,
                                        const ImportedLaneAudioClip& clip,
+                                       int clipIndex,
                                        double stepStartBars,
-                                       double stepBars,
-                                       double arrangementBars)
+                                       double stepBars) const
+    {
+        auto drewAnyRegion = false;
+        for (int regionIndex = 0; regionIndex < static_cast<int> (clip.regions.size()); ++regionIndex)
+        {
+            const auto& region = clip.regions[static_cast<size_t> (regionIndex)];
+            if (region.lengthSeconds <= 0.0)
+                continue;
+
+            const auto regionStartBars = barAtSeconds (region.startSeconds);
+            const auto regionEndBars = barAtSeconds (regionEndSeconds (region));
+            const auto regionBounds = regionBoundsForStep (laneArea,
+                                                           stepStartBars,
+                                                           stepBars,
+                                                           regionStartBars,
+                                                           regionEndBars);
+            if (regionBounds.getWidth() <= 0.5f)
+                continue;
+
+            drewAnyRegion = true;
+            const auto selected = selectedImportedRegion.clipIndex == clipIndex
+                               && selectedImportedRegion.regionIndex == regionIndex;
+            const auto visibleStartSeconds = secondsAtBar (stepStartBars + ((regionBounds.getX() - laneArea.getX()) / juce::jmax (1.0f, laneArea.getWidth())) * stepBars);
+            const auto visibleEndSeconds = secondsAtBar (stepStartBars + ((regionBounds.getRight() - laneArea.getX()) / juce::jmax (1.0f, laneArea.getWidth())) * stepBars);
+            drawImportedAudioRegion (g,
+                                     regionBounds,
+                                     laneColour,
+                                     clip,
+                                     region,
+                                     visibleStartSeconds,
+                                     visibleEndSeconds,
+                                     selected);
+        }
+
+        if (! drewAnyRegion)
+        {
+            g.setColour (laneColour.withAlpha (0.16f));
+            g.drawRoundedRectangle (laneArea.reduced (0.5f), 2.0f, 0.8f);
+            g.setColour (mutedInk().withAlpha (0.44f));
+            g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
+            g.drawFittedText ("no audio regions", laneArea.toNearestInt().reduced (6, 0), juce::Justification::centredLeft, 1);
+        }
+    }
+
+    juce::Rectangle<float> regionBoundsForStep (juce::Rectangle<float> laneArea,
+                                                double stepStartBars,
+                                                double stepBars,
+                                                double regionStartBars,
+                                                double regionEndBars) const
+    {
+        const auto stepEndBars = stepStartBars + stepBars;
+        const auto drawStartBars = juce::jmax (stepStartBars, regionStartBars);
+        const auto drawEndBars = juce::jmin (stepEndBars, regionEndBars);
+        if (drawEndBars <= drawStartBars || stepBars <= 0.0)
+            return {};
+
+        const auto x = laneArea.getX() + static_cast<float> ((drawStartBars - stepStartBars) / stepBars) * laneArea.getWidth();
+        const auto right = laneArea.getX() + static_cast<float> ((drawEndBars - stepStartBars) / stepBars) * laneArea.getWidth();
+        return { x, laneArea.getY(), juce::jmax (0.0f, right - x), laneArea.getHeight() };
+    }
+
+    std::optional<RegionHit> findImportedRegionAt (juce::Point<float> position) const
+    {
+        if (! arrangementPlus || importedLaneClips == nullptr || states == nullptr || steps.empty())
+            return {};
+
+        double stepStartBars = 0.0;
+        for (const auto& step : steps)
+        {
+            const auto* tracks = getTracks (step.stateIndex);
+            if (tracks == nullptr)
+            {
+                stepStartBars += juce::jmax (0.0, step.bars);
+                continue;
+            }
+
+            const auto stepX = static_cast<float> (leftHeaderWidth) + static_cast<float> (stepStartBars * getBarWidth());
+            const auto stepW = static_cast<float> (juce::jmax (0.25, step.bars) * getBarWidth());
+            const auto trackHeaderHeight = getTrackHeaderHeight();
+            const auto laneRowHeight = getLaneRowHeight();
+            const auto trackGap = getTrackGap();
+
+            for (int trackIndex = 0; trackIndex < static_cast<int> (tracks->size()); ++trackIndex)
+            {
+                const auto& track = tracks->at (static_cast<size_t> (trackIndex));
+                const auto trackY = headerHeight + trackIndex * (trackHeaderHeight + maxLanesInAnyTrack * laneRowHeight + trackGap);
+
+                for (int laneIndex = 0; laneIndex < static_cast<int> (track.lanes.size()); ++laneIndex)
+                {
+                    auto laneArea = juce::Rectangle<float> (stepX + 3.0f,
+                                                            static_cast<float> (trackY + trackHeaderHeight + laneIndex * laneRowHeight + 2),
+                                                            stepW - 6.0f,
+                                                            static_cast<float> (laneRowHeight - 4));
+                    if (! laneArea.expanded (0.0f, 2.0f).contains (position))
+                        continue;
+
+                    const auto clipIndex = findImportedClipIndex (step.stateIndex, trackIndex, laneIndex);
+                    if (clipIndex < 0)
+                        continue;
+
+                    const auto& clip = importedLaneClips->at (static_cast<size_t> (clipIndex));
+                    for (int regionIndex = 0; regionIndex < static_cast<int> (clip.regions.size()); ++regionIndex)
+                    {
+                        const auto& region = clip.regions[static_cast<size_t> (regionIndex)];
+                        const auto regionBounds = regionBoundsForStep (laneArea,
+                                                                       stepStartBars,
+                                                                       step.bars,
+                                                                       barAtSeconds (region.startSeconds),
+                                                                       barAtSeconds (regionEndSeconds (region)));
+                        if (! regionBounds.expanded (2.0f, 3.0f).contains (position))
+                            continue;
+
+                        const auto bar = stepStartBars
+                                       + (static_cast<double> (position.x - laneArea.getX()) / juce::jmax (1.0, static_cast<double> (laneArea.getWidth())))
+                                       * step.bars;
+                        RegionHit hit;
+                        hit.clipIndex = clipIndex;
+                        hit.regionIndex = regionIndex;
+                        hit.timeSeconds = juce::jlimit (region.startSeconds, regionEndSeconds (region), secondsAtBar (bar));
+                        hit.nearStart = std::abs (position.x - regionBounds.getX()) <= fadeHandleHitWidth;
+                        hit.nearEnd = std::abs (position.x - regionBounds.getRight()) <= fadeHandleHitWidth;
+                        return hit;
+                    }
+                }
+            }
+
+            stepStartBars += juce::jmax (0.0, step.bars);
+        }
+
+        return {};
+    }
+
+    void updateActiveFadeDrag (juce::Point<float> position)
+    {
+        if (! activeFadeDrag.has_value()
+            || importedLaneClips == nullptr
+            || activeFadeDrag->clipIndex < 0
+            || activeFadeDrag->clipIndex >= static_cast<int> (importedLaneClips->size()))
+            return;
+
+        const auto& clip = importedLaneClips->at (static_cast<size_t> (activeFadeDrag->clipIndex));
+        if (activeFadeDrag->regionIndex < 0 || activeFadeDrag->regionIndex >= static_cast<int> (clip.regions.size()))
+            return;
+
+        const auto& region = clip.regions[static_cast<size_t> (activeFadeDrag->regionIndex)];
+        const auto timeSeconds = juce::jlimit (region.startSeconds,
+                                               regionEndSeconds (region),
+                                               secondsAtX (position.x));
+        auto fadeIn = region.fadeInSeconds;
+        auto fadeOut = region.fadeOutSeconds;
+
+        if (activeFadeDragEditingOut)
+            fadeOut = regionEndSeconds (region) - timeSeconds;
+        else
+            fadeIn = timeSeconds - region.startSeconds;
+
+        if (onImportedRegionFadeChanged != nullptr)
+            onImportedRegionFadeChanged (activeFadeDrag->clipIndex,
+                                         activeFadeDrag->regionIndex,
+                                         fadeIn,
+                                         fadeOut);
+    }
+
+    bool regionDragPrefersFadeOut (const RegionHit& hit) const
+    {
+        if (importedLaneClips == nullptr
+            || hit.clipIndex < 0
+            || hit.clipIndex >= static_cast<int> (importedLaneClips->size()))
+            return false;
+
+        const auto& clip = importedLaneClips->at (static_cast<size_t> (hit.clipIndex));
+        if (hit.regionIndex < 0 || hit.regionIndex >= static_cast<int> (clip.regions.size()))
+            return false;
+
+        const auto& region = clip.regions[static_cast<size_t> (hit.regionIndex)];
+        return hit.timeSeconds >= region.startSeconds + region.lengthSeconds * 0.5;
+    }
+
+    void drawImportedAudioRegion (juce::Graphics& g,
+                                  juce::Rectangle<float> laneArea,
+                                  juce::Colour laneColour,
+                                  const ImportedLaneAudioClip& clip,
+                                  const ImportedAudioRegion& region,
+                                  double visibleStartSeconds,
+                                  double visibleEndSeconds,
+                                  bool selected) const
     {
         laneArea = laneArea.reduced (0.5f);
-        g.setColour (laneColour.withAlpha (0.82f));
+        g.setColour (laneColour.withAlpha (selected ? 0.96f : 0.82f));
         g.drawRoundedRectangle (laneArea, 2.0f, 1.1f);
 
         auto waveArea = laneArea.reduced (5.0f, 4.0f);
@@ -3346,16 +3768,16 @@ private:
         if (! clip.waveformPeaks.empty())
         {
             const auto columns = juce::jmax (1, static_cast<int> (waveArea.getWidth()));
-            const auto startNorm = arrangementBars > 0.0 ? juce::jlimit (0.0, 1.0, stepStartBars / arrangementBars) : 0.0;
-            const auto endNorm = arrangementBars > 0.0 ? juce::jlimit (startNorm, 1.0, (stepStartBars + stepBars) / arrangementBars) : 1.0;
-            g.setColour (laneColour.withAlpha (0.86f));
+            g.setColour (laneColour.withAlpha (selected ? 0.96f : 0.86f));
             for (int column = 0; column < columns; column += 2)
             {
                 const auto columnNorm = static_cast<double> (column) / juce::jmax (1.0, static_cast<double> (columns - 1));
+                const auto timeSeconds = visibleStartSeconds + (visibleEndSeconds - visibleStartSeconds) * columnNorm;
+                const auto sourceSeconds = region.sourceStartSeconds + (timeSeconds - region.startSeconds);
+                const auto sourceNorm = clip.lengthSeconds > 0.0 ? juce::jlimit (0.0, 1.0, sourceSeconds / clip.lengthSeconds) : 0.0;
                 const auto peakIndex = juce::jlimit (0,
                                                      static_cast<int> (clip.waveformPeaks.size()) - 1,
-                                                     static_cast<int> ((startNorm + (endNorm - startNorm) * columnNorm)
-                                                                       * static_cast<double> (clip.waveformPeaks.size())));
+                                                     static_cast<int> (sourceNorm * static_cast<double> (clip.waveformPeaks.size())));
                 const auto peak = juce::jlimit (0.0f, 1.0f, clip.waveformPeaks[static_cast<size_t> (peakIndex)]);
                 const auto height = juce::jmax (1.0f, peak * waveArea.getHeight() * 0.50f);
                 const auto x = waveArea.getX() + static_cast<float> (column);
@@ -3373,12 +3795,135 @@ private:
             }
         }
 
+        drawFadeOverlay (g, laneArea, laneColour, region, selected);
+
         auto labelArea = laneArea.withWidth (juce::jmin (laneArea.getWidth(), 320.0f)).reduced (4.0f, 2.0f);
         g.setColour (juce::Colour (0xff080c09).withAlpha (0.72f));
         g.fillRoundedRectangle (labelArea, 2.0f);
         g.setColour (ink().withAlpha (0.88f));
         g.setFont (juce::FontOptions (9.2f, juce::Font::bold));
         g.drawFittedText (clip.file.getFileName(), labelArea.toNearestInt().reduced (5, 0), juce::Justification::centredLeft, 1);
+    }
+
+    static void drawFadeOverlay (juce::Graphics& g,
+                                 juce::Rectangle<float> laneArea,
+                                 juce::Colour laneColour,
+                                 const ImportedAudioRegion& region,
+                                 bool selected)
+    {
+        if (region.lengthSeconds <= 0.0)
+            return;
+
+        const auto fadeAlpha = selected ? 0.30f : 0.18f;
+        if (region.fadeInSeconds > 0.000001)
+        {
+            const auto fadeWidth = laneArea.getWidth() * static_cast<float> (juce::jlimit (0.0, 1.0, region.fadeInSeconds / region.lengthSeconds));
+            juce::Path fade;
+            fade.startNewSubPath (laneArea.getX(), laneArea.getBottom());
+            fade.lineTo (laneArea.getX(), laneArea.getY());
+            fade.lineTo (laneArea.getX() + fadeWidth, laneArea.getY());
+            fade.lineTo (laneArea.getX(), laneArea.getBottom());
+            fade.closeSubPath();
+            g.setColour (laneColour.withAlpha (fadeAlpha));
+            g.fillPath (fade);
+            g.setColour (ink().withAlpha (selected ? 0.56f : 0.34f));
+            g.drawLine (laneArea.getX(), laneArea.getBottom(), laneArea.getX() + fadeWidth, laneArea.getY(), selected ? 1.2f : 0.8f);
+        }
+
+        if (region.fadeOutSeconds > 0.000001)
+        {
+            const auto fadeWidth = laneArea.getWidth() * static_cast<float> (juce::jlimit (0.0, 1.0, region.fadeOutSeconds / region.lengthSeconds));
+            juce::Path fade;
+            fade.startNewSubPath (laneArea.getRight(), laneArea.getBottom());
+            fade.lineTo (laneArea.getRight(), laneArea.getY());
+            fade.lineTo (laneArea.getRight() - fadeWidth, laneArea.getY());
+            fade.lineTo (laneArea.getRight(), laneArea.getBottom());
+            fade.closeSubPath();
+            g.setColour (laneColour.withAlpha (fadeAlpha));
+            g.fillPath (fade);
+            g.setColour (ink().withAlpha (selected ? 0.56f : 0.34f));
+            g.drawLine (laneArea.getRight() - fadeWidth, laneArea.getY(), laneArea.getRight(), laneArea.getBottom(), selected ? 1.2f : 0.8f);
+        }
+
+        g.setColour ((selected ? ink() : mutedInk()).withAlpha (selected ? 0.62f : 0.26f));
+        g.fillRoundedRectangle (laneArea.getX() + 2.0f, laneArea.getY() + 2.0f, 4.0f, 4.0f, 2.0f);
+        g.fillRoundedRectangle (laneArea.getRight() - 6.0f, laneArea.getY() + 2.0f, 4.0f, 4.0f, 2.0f);
+    }
+
+    double secondsAtX (float x) const
+    {
+        const auto bar = (static_cast<double> (x) - static_cast<double> (leftHeaderWidth)) / getBarWidth();
+        return secondsAtBar (bar);
+    }
+
+    double secondsAtBar (double barPosition) const
+    {
+        auto bars = 0.0;
+        auto seconds = 0.0;
+
+        for (const auto& step : steps)
+        {
+            const auto stepBars = juce::jmax (0.0, step.bars);
+            const auto stepSeconds = stepDurationSeconds (step);
+            if (barPosition <= bars + stepBars)
+            {
+                const auto fraction = stepBars > 0.0 ? juce::jlimit (0.0, 1.0, (barPosition - bars) / stepBars) : 0.0;
+                return seconds + stepSeconds * fraction;
+            }
+
+            bars += stepBars;
+            seconds += stepSeconds;
+        }
+
+        return seconds;
+    }
+
+    double barAtSeconds (double targetSeconds) const
+    {
+        auto bars = 0.0;
+        auto seconds = 0.0;
+
+        for (const auto& step : steps)
+        {
+            const auto stepBars = juce::jmax (0.0, step.bars);
+            const auto stepSeconds = stepDurationSeconds (step);
+            if (targetSeconds <= seconds + stepSeconds)
+            {
+                const auto fraction = stepSeconds > 0.0 ? juce::jlimit (0.0, 1.0, (targetSeconds - seconds) / stepSeconds) : 0.0;
+                return bars + stepBars * fraction;
+            }
+
+            bars += stepBars;
+            seconds += stepSeconds;
+        }
+
+        return bars;
+    }
+
+    double stepDurationSeconds (const GlobalScriptStep& step) const
+    {
+        const auto tempo = stepTempoBpm (step);
+        const auto quarterNotesPerBar = stepQuarterNotesPerBar (step);
+        return juce::jmax (0.0, step.bars) * quarterNotesPerBar * 60.0 / juce::jmax (1.0, tempo);
+    }
+
+    double stepTempoBpm (const GlobalScriptStep& step) const
+    {
+        if (step.tempoBpm.has_value())
+            return *step.tempoBpm;
+
+        if (stateTempos == nullptr)
+            return 88.0;
+
+        return stateTempos->at (static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, step.stateIndex)));
+    }
+
+    double stepQuarterNotesPerBar (const GlobalScriptStep& step) const
+    {
+        const auto index = static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, step.stateIndex));
+        const auto numerator = static_cast<double> (step.timeSigNumerator.value_or (stateNumerators != nullptr ? stateNumerators->at (index) : 4));
+        const auto denominator = static_cast<double> (juce::jmax (1, step.timeSigDenominator.value_or (stateDenominators != nullptr ? stateDenominators->at (index) : 4)));
+        return numerator * 4.0 / denominator;
     }
 
     static juce::Colour laneColourForIndex (int laneIndex)
@@ -3418,6 +3963,11 @@ private:
     const std::array<std::optional<std::vector<Wf::StateSpec>>, maxTopLevelStates>* states = nullptr;
     std::vector<GlobalScriptStep> steps;
     const std::vector<ImportedLaneAudioClip>* importedLaneClips = nullptr;
+    const std::array<float, maxTopLevelStates>* stateTempos = nullptr;
+    const std::array<int, maxTopLevelStates>* stateNumerators = nullptr;
+    const std::array<int, maxTopLevelStates>* stateDenominators = nullptr;
+    ArrangementAudioSelection selectedImportedRegion;
+    std::optional<RegionHit> activeFadeDrag;
     double totalBars = 0.0;
     int maxTracks = 1;
     int maxLanesInAnyTrack = 1;
@@ -3427,8 +3977,11 @@ private:
     double playingStepElapsedBars = 0.0;
     bool running = false;
     bool arrangementPlus = false;
+    bool activeFadeDragEditingOut = false;
+    ArrangementAudioTool audioTool = ArrangementAudioTool::pointer;
     double horizontalZoom = 1.0;
     double verticalZoom = 1.0;
+    static constexpr float fadeHandleHitWidth = 10.0f;
 };
 
 class MainComponent final : public juce::Component,
@@ -3804,6 +4357,26 @@ public:
         arrangementTimelineViewport.setViewedComponent (&arrangementTimelineCanvas, false);
         arrangementTimelineViewport.setScrollBarsShown (true, true);
         arrangementTimelineViewport.setScrollBarThickness (8);
+        arrangementTimelineCanvas.onImportedRegionSelected = [this] (int clipIndex, int regionIndex)
+        {
+            selectImportedAudioRegion (clipIndex, regionIndex);
+        };
+        arrangementTimelineCanvas.onImportedRegionSplit = [this] (int clipIndex, int regionIndex, double splitSeconds)
+        {
+            splitImportedAudioRegion (clipIndex, regionIndex, splitSeconds);
+        };
+        arrangementTimelineCanvas.onImportedRegionFadeEditStarted = [this] (int clipIndex, int regionIndex)
+        {
+            beginImportedRegionFadeEdit (clipIndex, regionIndex);
+        };
+        arrangementTimelineCanvas.onImportedRegionFadeChanged = [this] (int clipIndex, int regionIndex, double fadeInSeconds, double fadeOutSeconds)
+        {
+            setImportedAudioRegionFades (clipIndex, regionIndex, fadeInSeconds, fadeOutSeconds);
+        };
+        arrangementTimelineCanvas.onImportedRegionFadeEditEnded = [this]
+        {
+            importedFadeDragUndoStarted = false;
+        };
         addAndMakeVisible (arrangementTimelineViewport);
 
         laneListViewport.setViewedComponent (&laneListContent, false);
@@ -3817,6 +4390,10 @@ public:
         setupButton (timelineViewButton, "Arrangement", green(), [this] { setMainView (MainView::timeline); });
         setupButton (mixerViewButton, "Mixer", amber(), [this] { setMainView (MainView::mixer); });
         setupButton (removeRenderedAudioButton, "Remove audio", coral(), [this] { removeRenderedAudioAndReturnToCodePlayback(); });
+        setupButton (arrangementPointerToolButton, "Pointer", blue(), [this] { setArrangementAudioTool (ArrangementAudioTool::pointer); });
+        setupButton (arrangementScissorsToolButton, "Scissors", coral(), [this] { setArrangementAudioTool (ArrangementAudioTool::scissors); });
+        setupButton (arrangementFadeToolButton, "Fade", amber(), [this] { setArrangementAudioTool (ArrangementAudioTool::fade); });
+        setupButton (deleteImportedRegionButton, "Delete", coral(), [this] { deleteSelectedImportedAudioRegion(); });
 
         arrangementHorizontalZoomLabel.setText ("H zoom", juce::dontSendNotification);
         styleLabel (arrangementHorizontalZoomLabel, 0.72f);
@@ -3987,6 +4564,12 @@ public:
         if ((keyCode == juce::KeyPress::backspaceKey || keyCode == juce::KeyPress::deleteKey)
             && ! isInlineTextEditorFocused())
         {
+            if (mainView == MainView::timeline && arrangementPlusMode && selectedImportedRegion.isValid())
+            {
+                deleteSelectedImportedAudioRegion();
+                return true;
+            }
+
             deleteViewedTopLevelState();
             return true;
         }
@@ -4174,6 +4757,14 @@ public:
             auto toolbar = area.removeFromTop (38);
             if (arrangementPlusMode)
             {
+                auto toolArea = toolbar.removeFromLeft (330);
+                arrangementPointerToolButton.setBounds (toolArea.removeFromLeft (78).reduced (0, 2));
+                toolArea.removeFromLeft (6);
+                arrangementScissorsToolButton.setBounds (toolArea.removeFromLeft (86).reduced (0, 2));
+                toolArea.removeFromLeft (6);
+                arrangementFadeToolButton.setBounds (toolArea.removeFromLeft (66).reduced (0, 2));
+                toolArea.removeFromLeft (12);
+                deleteImportedRegionButton.setBounds (toolArea.removeFromLeft (76).reduced (0, 2));
                 removeRenderedAudioButton.setBounds (toolbar.removeFromRight (122).reduced (0, 2));
             }
             toolbar.removeFromRight (18);
@@ -4458,6 +5049,10 @@ private:
         timelineViewButton.setToggleState (mainView == MainView::timeline, juce::dontSendNotification);
         mixerViewButton.setButtonText (arrangementPlusMode ? "Mixer+" : "Mixer");
         mixerViewButton.setToggleState (mainView == MainView::mixer, juce::dontSendNotification);
+        arrangementPointerToolButton.setToggleState (arrangementAudioTool == ArrangementAudioTool::pointer, juce::dontSendNotification);
+        arrangementScissorsToolButton.setToggleState (arrangementAudioTool == ArrangementAudioTool::scissors, juce::dontSendNotification);
+        arrangementFadeToolButton.setToggleState (arrangementAudioTool == ArrangementAudioTool::fade, juce::dontSendNotification);
+        deleteImportedRegionButton.setEnabled (importedRegionExists (selectedImportedRegion));
         syncTransportButtons();
     }
 
@@ -4528,6 +5123,10 @@ private:
         stateCodeHeader.setVisible (code);
         arrangementTimelineViewport.setVisible (timeline);
         removeRenderedAudioButton.setVisible (timeline && arrangementPlusMode);
+        arrangementPointerToolButton.setVisible (timeline && arrangementPlusMode);
+        arrangementScissorsToolButton.setVisible (timeline && arrangementPlusMode);
+        arrangementFadeToolButton.setVisible (timeline && arrangementPlusMode);
+        deleteImportedRegionButton.setVisible (timeline && arrangementPlusMode);
         arrangementHorizontalZoomLabel.setVisible (timeline);
         arrangementHorizontalZoomSlider.setVisible (timeline);
         arrangementVerticalZoomLabel.setVisible (timeline);
@@ -4579,7 +5178,12 @@ private:
                                               scriptRunning ? scriptStepElapsedBars : 0.0,
                                               running,
                                               &importedLaneAudioClips,
-                                              arrangementPlusMode);
+                                              arrangementPlusMode,
+                                              &topLevelTemposBpm,
+                                              &topLevelTimeSigNumerators,
+                                              &topLevelTimeSigDenominators,
+                                              selectedImportedRegion,
+                                              arrangementAudioTool);
         arrangementTimelineCanvas.setZoom (arrangementHorizontalZoom, arrangementVerticalZoom);
         resizeArrangementTimelineCanvas();
     }
@@ -4779,6 +5383,32 @@ private:
         return {};
     }
 
+    static juce::var importedRegionToVar (const ImportedAudioRegion& region)
+    {
+        auto* object = new juce::DynamicObject();
+        setJsonProperty (*object, "startSeconds", region.startSeconds);
+        setJsonProperty (*object, "sourceStartSeconds", region.sourceStartSeconds);
+        setJsonProperty (*object, "lengthSeconds", region.lengthSeconds);
+        setJsonProperty (*object, "fadeInSeconds", region.fadeInSeconds);
+        setJsonProperty (*object, "fadeOutSeconds", region.fadeOutSeconds);
+        return juce::var (object);
+    }
+
+    static std::optional<ImportedAudioRegion> importedRegionFromVar (const juce::var& value)
+    {
+        auto* object = value.getDynamicObject();
+        if (object == nullptr)
+            return {};
+
+        ImportedAudioRegion region;
+        region.startSeconds = doubleFromJson (*object, "startSeconds", 0.0);
+        region.sourceStartSeconds = doubleFromJson (*object, "sourceStartSeconds", 0.0);
+        region.lengthSeconds = doubleFromJson (*object, "lengthSeconds", 0.0);
+        region.fadeInSeconds = doubleFromJson (*object, "fadeInSeconds", 0.0);
+        region.fadeOutSeconds = doubleFromJson (*object, "fadeOutSeconds", 0.0);
+        return region;
+    }
+
     static juce::var effectSlotToVar (const Wf::TrackEffectSlotSpec& slot)
     {
         auto* object = new juce::DynamicObject();
@@ -4938,7 +5568,7 @@ private:
     {
         auto* object = new juce::DynamicObject();
         setJsonProperty (*object, "format", "ChucK-ME Project");
-        setJsonProperty (*object, "version", 1);
+        setJsonProperty (*object, "version", 2);
         setJsonProperty (*object, "stateCode", globalScriptEditor.getText());
         setJsonProperty (*object, "masterVolume", gainSlider.getValue());
         setJsonProperty (*object, "viewedState", viewedTopLevelState);
@@ -4978,6 +5608,10 @@ private:
             setJsonProperty (*clipObject, "file", clip.file.getFullPathName());
             setJsonProperty (*clipObject, "mixGain", static_cast<double> (clip.mixGain));
             setJsonProperty (*clipObject, "mixPan", static_cast<double> (clip.mixPan));
+            juce::Array<juce::var> regions;
+            for (const auto& region : clip.regions)
+                regions.add (importedRegionToVar (region));
+            setJsonProperty (*clipObject, "regions", regions);
             importedAudio.add (juce::var (clipObject));
         }
         setJsonProperty (*object, "importedAudio", importedAudio);
@@ -4996,6 +5630,9 @@ private:
         scriptRunning = false;
         audioCallback.clearImportedAudioPlayback();
         importedLaneAudioClips.clear();
+        selectedImportedRegion = {};
+        arrangementAudioTool = ArrangementAudioTool::pointer;
+        importedFadeDragUndoStarted = false;
         arrangementPlusMode = false;
         missingImportedAudioOnLastLoad = 0;
 
@@ -5094,6 +5731,13 @@ private:
                 clip.file = juce::File (stringFromJson (*clipObject, "file"));
                 clip.mixGain = juce::jlimit (0.0f, 1.5f, static_cast<float> (doubleFromJson (*clipObject, "mixGain", 1.0)));
                 clip.mixPan = juce::jlimit (-1.0f, 1.0f, static_cast<float> (doubleFromJson (*clipObject, "mixPan", 0.0)));
+                if (auto* regions = getJsonProperty (*clipObject, "regions").getArray())
+                {
+                    clip.regions.reserve (static_cast<size_t> (regions->size()));
+                    for (const auto& regionValue : *regions)
+                        if (auto region = importedRegionFromVar (regionValue))
+                            clip.regions.push_back (*region);
+                }
 
                 if (isTopLevelStatePopulated (clip.stateIndex))
                 {
@@ -5137,6 +5781,9 @@ private:
         audioCallback.useChucKPlayback();
         importedLaneAudioClips.clear();
         arrangementPlusMode = false;
+        selectedImportedRegion = {};
+        arrangementAudioTool = ArrangementAudioTool::pointer;
+        importedFadeDragUndoStarted = false;
 
         for (auto& slot : topLevelStates)
             slot.reset();
@@ -5984,8 +6631,11 @@ private:
                 populateImportedClipWaveform (clip);
 
             if (clip.audioData != nullptr)
-                totalSeconds = juce::jmax (totalSeconds,
-                                           static_cast<double> (clip.audioData->getNumSamples()) / juce::jmax (1.0, clip.audioSampleRate));
+            {
+                sanitiseImportedClipRegions (clip);
+                for (const auto& region : clip.regions)
+                    totalSeconds = juce::jmax (totalSeconds, regionEndSeconds (region));
+            }
         }
 
         if (totalSeconds <= 0.0)
@@ -6048,18 +6698,44 @@ private:
                     continue;
 
                 const auto panGains = linearPanGains (clip.mixGain, clip.mixPan);
-                const auto sourceScale = juce::jmax (1.0, clip.audioSampleRate) / renderSampleRate;
+                const auto blockStartSeconds = static_cast<double> (renderedSamples) / renderSampleRate;
+                const auto blockEndSeconds = static_cast<double> (renderedSamples + blockSamples) / renderSampleRate;
 
-                for (int sample = 0; sample < blockSamples; ++sample)
+                for (const auto& region : clip.regions)
                 {
-                    const auto sourcePosition = static_cast<double> (renderedSamples + sample) * sourceScale;
-                    if (sourcePosition >= static_cast<double> (clip.audioData->getNumSamples()))
-                        break;
+                    const auto regionStart = region.startSeconds;
+                    const auto regionEnd = regionEndSeconds (region);
+                    if (regionEnd <= blockStartSeconds || regionStart >= blockEndSeconds)
+                        continue;
 
-                    const auto left = readInterpolatedSample (*clip.audioData, 0, sourcePosition);
-                    const auto right = readInterpolatedSample (*clip.audioData, clip.audioData->getNumChannels() > 1 ? 1 : 0, sourcePosition);
-                    trackMix->buffer.addSample (0, sample, left * panGains[0]);
-                    trackMix->buffer.addSample (1, sample, right * panGains[1]);
+                    const auto firstSample = juce::jlimit (0,
+                                                           blockSamples,
+                                                           static_cast<int> (std::floor ((regionStart - blockStartSeconds) * renderSampleRate)));
+                    const auto lastSample = juce::jlimit (0,
+                                                          blockSamples,
+                                                          static_cast<int> (std::ceil ((regionEnd - blockStartSeconds) * renderSampleRate)));
+
+                    for (int sample = firstSample; sample < lastSample; ++sample)
+                    {
+                        const auto timelineSample = renderedSamples + sample;
+                        const auto timeSeconds = static_cast<double> (timelineSample) / renderSampleRate;
+                        if (! regionContainsTime (region, timeSeconds))
+                            continue;
+
+                        const auto localSeconds = timeSeconds - region.startSeconds;
+                        const auto sourcePosition = sourceSamplePositionForRegionTime (region,
+                                                                                       timelineSample,
+                                                                                       renderSampleRate,
+                                                                                       juce::jmax (1.0, clip.audioSampleRate));
+                        if (sourcePosition < 0.0 || sourcePosition >= static_cast<double> (clip.audioData->getNumSamples()))
+                            break;
+
+                        const auto regionGain = importedRegionFadeGain (region, localSeconds);
+                        const auto left = readInterpolatedSample (*clip.audioData, 0, sourcePosition);
+                        const auto right = readInterpolatedSample (*clip.audioData, clip.audioData->getNumChannels() > 1 ? 1 : 0, sourcePosition);
+                        trackMix->buffer.addSample (0, sample, left * panGains[0] * regionGain);
+                        trackMix->buffer.addSample (1, sample, right * panGains[1] * regionGain);
+                    }
                 }
             }
 
@@ -6203,6 +6879,7 @@ private:
         clip.audioData = audio;
         clip.audioSampleRate = juce::jmax (1.0, reader->sampleRate);
         clip.lengthSeconds = static_cast<double> (samplesToLoad) / clip.audioSampleRate;
+        sanitiseImportedClipRegions (clip);
 
         constexpr int previewBins = 512;
         clip.waveformPeaks.assign (previewBins, 0.0f);
@@ -6256,6 +6933,10 @@ private:
         audioCallback.clearImportedAudioPlayback();
         importedLaneAudioClips = std::move (renderedClips);
         arrangementPlusMode = true;
+        selectedImportedRegion = importedLaneAudioClips.empty() || importedLaneAudioClips.front().regions.empty()
+            ? ArrangementAudioSelection {}
+            : ArrangementAudioSelection { 0, 0 };
+        arrangementAudioTool = ArrangementAudioTool::pointer;
         if (! audioCallback.loadImportedAudioClips (importedLaneAudioClips, &topLevelStates))
         {
             importedLaneAudioClips.clear();
@@ -6280,6 +6961,9 @@ private:
         pushUndoSnapshot ("remove rendered audio");
         importedLaneAudioClips.clear();
         arrangementPlusMode = false;
+        selectedImportedRegion = {};
+        arrangementAudioTool = ArrangementAudioTool::pointer;
+        importedFadeDragUndoStarted = false;
         scriptRunning = false;
         running = false;
         audioCallback.clearImportedAudioPlayback();
@@ -6563,12 +7247,7 @@ private:
             const auto barDurationSeconds = quarterNotesPerBar * 60.0 / juce::jmax (1.0f, tempoBpm);
             const auto totalStepSamples = static_cast<int64_t> (std::ceil (step.bars * barDurationSeconds * renderSampleRate));
             auto renderedStepSamples = static_cast<int64_t> (0);
-            auto trackIndex = stemTarget.has_value()
-                && step.stateIndex == stemTarget->stateIndex
-                && stemTarget->trackIndex >= 0
-                && stemTarget->trackIndex < static_cast<int> (tracks.size())
-                    ? stemTarget->trackIndex
-                    : 0;
+            auto trackIndex = 0;
             auto renderTrackElapsedBars = 0.0;
             auto renderNextBarTransitionCheck = 1.0;
             auto orbitPhaseForRender = 0.0f;
@@ -6614,9 +7293,6 @@ private:
                     orbitPhaseForRender = static_cast<float> (std::fmod (renderTrackElapsedBars, 1.0));
                 }
 
-                if (stemTarget.has_value())
-                    shouldAdvance = false;
-
                 if (shouldAdvance && ! tracks.empty())
                 {
                     trackIndex = (trackIndex + 1) % static_cast<int> (tracks.size());
@@ -6647,14 +7323,10 @@ private:
         writer.reset();
         if (renderedPeak <= 0.000001f || renderedEnergy <= 0.0000001)
         {
+            destination.deleteFile();
             if (! stemTarget.has_value())
-            {
-                destination.deleteFile();
                 statusLabel.setText ("render failed: silent output, check volume/mutes", juce::dontSendNotification);
-                return RenderResult::silent;
-            }
-
-            return RenderResult::success;
+            return RenderResult::silent;
         }
 
         if (! stemTarget.has_value())
@@ -6748,6 +7420,192 @@ private:
             const auto& clip = importedLaneAudioClips[static_cast<size_t> (clipIndex)];
             audioCallback.setImportedClipMix (clipIndex, clip.mixGain, clip.mixPan);
         }
+    }
+
+    static void sanitiseImportedClipRegions (ImportedLaneAudioClip& clip)
+    {
+        if (clip.lengthSeconds <= 0.0 && clip.audioData != nullptr && clip.audioData->getNumSamples() > 0)
+            clip.lengthSeconds = static_cast<double> (clip.audioData->getNumSamples()) / juce::jmax (1.0, clip.audioSampleRate);
+
+        if (clip.lengthSeconds <= 0.0)
+        {
+            clip.regions.clear();
+            return;
+        }
+
+        if (clip.regions.empty())
+            clip.regions.push_back ({ 0.0, 0.0, clip.lengthSeconds, 0.0, 0.0 });
+
+        std::vector<ImportedAudioRegion> regions;
+        regions.reserve (clip.regions.size());
+        for (auto region : clip.regions)
+        {
+            if (! std::isfinite (region.startSeconds)
+                || ! std::isfinite (region.sourceStartSeconds)
+                || ! std::isfinite (region.lengthSeconds))
+                continue;
+
+            region.startSeconds = juce::jmax (0.0, region.startSeconds);
+            region.sourceStartSeconds = juce::jlimit (0.0, clip.lengthSeconds, region.sourceStartSeconds);
+            region.lengthSeconds = juce::jlimit (0.0, clip.lengthSeconds - region.sourceStartSeconds, region.lengthSeconds);
+            if (region.lengthSeconds <= 0.000001)
+                continue;
+
+            region.fadeInSeconds = juce::jlimit (0.0, region.lengthSeconds, std::isfinite (region.fadeInSeconds) ? region.fadeInSeconds : 0.0);
+            region.fadeOutSeconds = juce::jlimit (0.0, region.lengthSeconds - region.fadeInSeconds, std::isfinite (region.fadeOutSeconds) ? region.fadeOutSeconds : 0.0);
+            regions.push_back (region);
+        }
+
+        std::sort (regions.begin(), regions.end(), [] (const auto& a, const auto& b)
+        {
+            return a.startSeconds < b.startSeconds;
+        });
+        clip.regions = std::move (regions);
+    }
+
+    bool importedRegionExists (ArrangementAudioSelection selection) const
+    {
+        return selection.clipIndex >= 0
+            && selection.clipIndex < static_cast<int> (importedLaneAudioClips.size())
+            && selection.regionIndex >= 0
+            && selection.regionIndex < static_cast<int> (importedLaneAudioClips[static_cast<size_t> (selection.clipIndex)].regions.size());
+    }
+
+    void setArrangementAudioTool (ArrangementAudioTool tool)
+    {
+        arrangementAudioTool = tool;
+        syncViewButtons();
+        syncArrangementTimelineView();
+    }
+
+    void selectImportedAudioRegion (int clipIndex, int regionIndex)
+    {
+        selectedImportedRegion = { clipIndex, regionIndex };
+        if (! importedRegionExists (selectedImportedRegion))
+            selectedImportedRegion = {};
+
+        syncViewButtons();
+        syncArrangementTimelineView();
+    }
+
+    void splitImportedAudioRegion (int clipIndex, int regionIndex, double splitSeconds)
+    {
+        if (! arrangementPlusMode)
+            return;
+
+        ArrangementAudioSelection selection { clipIndex, regionIndex };
+        if (! importedRegionExists (selection))
+            return;
+
+        auto& clip = importedLaneAudioClips[static_cast<size_t> (clipIndex)];
+        auto& region = clip.regions[static_cast<size_t> (regionIndex)];
+        if (region.lengthSeconds <= minImportedRegionLengthSeconds * 2.0)
+            return;
+
+        splitSeconds = juce::jlimit (region.startSeconds + minImportedRegionLengthSeconds,
+                                     regionEndSeconds (region) - minImportedRegionLengthSeconds,
+                                     splitSeconds);
+
+        if (splitSeconds <= region.startSeconds || splitSeconds >= regionEndSeconds (region))
+            return;
+
+        pushUndoSnapshot ("split audio region");
+        const auto leftLength = splitSeconds - region.startSeconds;
+        const auto rightLength = regionEndSeconds (region) - splitSeconds;
+
+        ImportedAudioRegion right;
+        right.startSeconds = splitSeconds;
+        right.sourceStartSeconds = region.sourceStartSeconds + leftLength;
+        right.lengthSeconds = rightLength;
+        right.fadeInSeconds = 0.0;
+        right.fadeOutSeconds = region.fadeOutSeconds;
+
+        region.lengthSeconds = leftLength;
+        region.fadeOutSeconds = 0.0;
+
+        clip.regions.insert (clip.regions.begin() + regionIndex + 1, right);
+        sanitiseImportedClipRegions (clip);
+        selectedImportedRegion = { clipIndex, juce::jlimit (0, static_cast<int> (clip.regions.size()) - 1, regionIndex + 1) };
+        refreshAfterImportedAudioEdit ("split audio");
+    }
+
+    void beginImportedRegionFadeEdit (int clipIndex, int regionIndex)
+    {
+        ArrangementAudioSelection selection { clipIndex, regionIndex };
+        if (! importedRegionExists (selection))
+            return;
+
+        selectedImportedRegion = selection;
+        if (! importedFadeDragUndoStarted)
+        {
+            pushUndoSnapshot ("fade audio region");
+            importedFadeDragUndoStarted = true;
+        }
+    }
+
+    void setImportedAudioRegionFades (int clipIndex, int regionIndex, double fadeInSeconds, double fadeOutSeconds)
+    {
+        ArrangementAudioSelection selection { clipIndex, regionIndex };
+        if (! importedRegionExists (selection))
+            return;
+
+        auto& clip = importedLaneAudioClips[static_cast<size_t> (clipIndex)];
+        auto& region = clip.regions[static_cast<size_t> (regionIndex)];
+        fadeInSeconds = juce::jlimit (0.0, region.lengthSeconds, fadeInSeconds);
+        fadeOutSeconds = juce::jlimit (0.0, region.lengthSeconds - fadeInSeconds, fadeOutSeconds);
+
+        if (std::abs (region.fadeInSeconds - fadeInSeconds) < 0.0001
+            && std::abs (region.fadeOutSeconds - fadeOutSeconds) < 0.0001)
+            return;
+
+        region.fadeInSeconds = fadeInSeconds;
+        region.fadeOutSeconds = fadeOutSeconds;
+        selectedImportedRegion = selection;
+        refreshAfterImportedAudioEdit ("fade audio");
+    }
+
+    void deleteSelectedImportedAudioRegion()
+    {
+        if (! importedRegionExists (selectedImportedRegion))
+            return;
+
+        pushUndoSnapshot ("delete audio region");
+        auto& clip = importedLaneAudioClips[static_cast<size_t> (selectedImportedRegion.clipIndex)];
+        clip.regions.erase (clip.regions.begin() + selectedImportedRegion.regionIndex);
+        if (clip.regions.empty())
+            importedLaneAudioClips.erase (importedLaneAudioClips.begin() + selectedImportedRegion.clipIndex);
+        else
+            sanitiseImportedClipRegions (clip);
+        selectedImportedRegion = {};
+        refreshAfterImportedAudioEdit ("deleted audio region");
+    }
+
+    void refreshAfterImportedAudioEdit (const juce::String& message)
+    {
+        if (importedLaneAudioClips.empty())
+        {
+            arrangementPlusMode = false;
+            running = false;
+            scriptRunning = false;
+            selectedImportedRegion = {};
+            audioCallback.clearImportedAudioPlayback();
+        }
+        else
+        {
+            arrangementPlusMode = true;
+        }
+
+        if (arrangementPlusMode)
+        {
+            static_cast<void> (audioCallback.loadImportedAudioClips (importedLaneAudioClips, &topLevelStates, false));
+            syncImportedPlaybackMix();
+        }
+
+        markProjectDirty();
+        syncArrangementTimelineView();
+        syncMixerView();
+        syncViewButtons();
+        statusLabel.setText (message, juce::dontSendNotification);
     }
 
     Wf::StateSpec* getTrack (int stateIndex, int trackIndex)
@@ -8475,6 +9333,10 @@ private:
     juce::TextButton timelineViewButton;
     juce::TextButton mixerViewButton;
     juce::TextButton removeRenderedAudioButton;
+    juce::TextButton arrangementPointerToolButton;
+    juce::TextButton arrangementScissorsToolButton;
+    juce::TextButton arrangementFadeToolButton;
+    juce::TextButton deleteImportedRegionButton;
     juce::TextButton muteLaneButton;
     juce::TextButton soloLaneButton;
     juce::TextButton duplicateLaneButton;
@@ -8521,6 +9383,8 @@ private:
     bool scriptRunning = false;
     bool scriptShouldStopAtEnd = false;
     bool arrangementPlusMode = false;
+    ArrangementAudioTool arrangementAudioTool = ArrangementAudioTool::pointer;
+    ArrangementAudioSelection selectedImportedRegion;
     double arrangementHorizontalZoom = 1.0;
     double arrangementVerticalZoom = 1.0;
     bool suppressStateControlCallbacks = false;
@@ -8528,6 +9392,7 @@ private:
     bool suppressLaneCodeCallbacks = false;
     bool suppressProjectDirty = false;
     bool suppressProjectUndo = false;
+    bool importedFadeDragUndoStarted = false;
     bool laneCodeDirty = false;
     bool projectDirty = false;
     MainView mainView = MainView::arrangement;
@@ -8542,6 +9407,7 @@ private:
     double trackElapsedBars = 0.0;
     double nextBarTransitionCheck = 1.0;
     bool running = false;
+    static constexpr double minImportedRegionLengthSeconds = 0.025;
     double lastTimerMs = 0.0;
 };
 

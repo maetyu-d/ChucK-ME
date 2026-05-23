@@ -1,12 +1,12 @@
 {
   "format": "ChucK-ME Project",
-  "version": 1,
+  "version": 2,
   "stateCode": "tempo(88); timeSig(4, 4); playState(1, 8);\ntempo(44); playState(2, 4);\nstop();",
   "masterVolume": 0.18,
   "viewedState": 0,
   "selectedTrack": 0,
   "selectedLane": 0,
-  "arrangementPlusMode": false,
+  "arrangementPlusMode": true,
   "arrangementHorizontalZoom": 1.0,
   "arrangementVerticalZoom": 1.0,
   "states": [
@@ -1045,5 +1045,771 @@
       "timeSigDenominator": 4
     }
   ],
-  "importedAudio": []
+  "importedAudio": [
+    {
+      "stateIndex": 0,
+      "trackIndex": 0,
+      "laneIndex": 0,
+      "file": "/Users/user/Desktop/test8/S1_T1_L1_Pocket_City_808_street.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 0,
+      "laneIndex": 1,
+      "file": "/Users/user/Desktop/test8/S1_T1_L2_Pocket_City_Pocket_bass.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 0,
+      "laneIndex": 2,
+      "file": "/Users/user/Desktop/test8/S1_T1_L3_Pocket_City_Signal_arp.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 0,
+      "laneIndex": 3,
+      "file": "/Users/user/Desktop/test8/S1_T1_L4_Pocket_City_Glass_chorus.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 0,
+      "laneIndex": 4,
+      "file": "/Users/user/Desktop/test8/S1_T1_L5_Pocket_City_Static_halo.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 1,
+      "laneIndex": 0,
+      "file": "/Users/user/Desktop/test8/S1_T2_L1_Chrome_Avenue_808_avenue.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 1,
+      "laneIndex": 1,
+      "file": "/Users/user/Desktop/test8/S1_T2_L2_Chrome_Avenue_Rubber_motor.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 1,
+      "laneIndex": 2,
+      "file": "/Users/user/Desktop/test8/S1_T2_L3_Chrome_Avenue_Window_arp.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 1,
+      "laneIndex": 3,
+      "file": "/Users/user/Desktop/test8/S1_T2_L4_Chrome_Avenue_Warm_display.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 1,
+      "laneIndex": 4,
+      "file": "/Users/user/Desktop/test8/S1_T2_L5_Chrome_Avenue_Thin_skyline.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 2,
+      "laneIndex": 0,
+      "file": "/Users/user/Desktop/test8/S1_T3_L1_Battery_Love_808_relay.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 2,
+      "laneIndex": 1,
+      "file": "/Users/user/Desktop/test8/S1_T3_L2_Battery_Love_Battery_bass.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 2,
+      "laneIndex": 2,
+      "file": "/Users/user/Desktop/test8/S1_T3_L3_Battery_Love_Simple_arp.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 2,
+      "laneIndex": 3,
+      "file": "/Users/user/Desktop/test8/S1_T3_L4_Battery_Love_Major_lights.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 2,
+      "laneIndex": 4,
+      "file": "/Users/user/Desktop/test8/S1_T3_L5_Battery_Love_Soft_carrier.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 3,
+      "laneIndex": 0,
+      "file": "/Users/user/Desktop/test8/S1_T4_L1_Pocket_Choir_808_choir.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 3,
+      "laneIndex": 1,
+      "file": "/Users/user/Desktop/test8/S1_T4_L2_Pocket_Choir_Round_bass.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 3,
+      "laneIndex": 2,
+      "file": "/Users/user/Desktop/test8/S1_T4_L3_Pocket_Choir_Choir_arp.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 3,
+      "laneIndex": 3,
+      "file": "/Users/user/Desktop/test8/S1_T4_L4_Pocket_Choir_Soft_buttons.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 3,
+      "laneIndex": 4,
+      "file": "/Users/user/Desktop/test8/S1_T4_L5_Pocket_Choir_Air_tape.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 4,
+      "laneIndex": 0,
+      "file": "/Users/user/Desktop/test8/S1_T5_L1_Neon_Postcard_808_postcard.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 4,
+      "laneIndex": 1,
+      "file": "/Users/user/Desktop/test8/S1_T5_L2_Neon_Postcard_Postcard_bass.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 4,
+      "laneIndex": 2,
+      "file": "/Users/user/Desktop/test8/S1_T5_L3_Neon_Postcard_Neon_arp.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 4,
+      "laneIndex": 3,
+      "file": "/Users/user/Desktop/test8/S1_T5_L4_Neon_Postcard_Blue_chord.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 0,
+      "trackIndex": 4,
+      "laneIndex": 4,
+      "file": "/Users/user/Desktop/test8/S1_T5_L5_Neon_Postcard_Tape_star.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 1,
+      "trackIndex": 0,
+      "laneIndex": 0,
+      "file": "/Users/user/Desktop/test8/S2_T1_L1_Pocket_City_808_street.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 1,
+      "trackIndex": 0,
+      "laneIndex": 1,
+      "file": "/Users/user/Desktop/test8/S2_T1_L2_Pocket_City_Pocket_bass.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 1,
+      "trackIndex": 0,
+      "laneIndex": 2,
+      "file": "/Users/user/Desktop/test8/S2_T1_L3_Pocket_City_Signal_arp.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 1,
+      "trackIndex": 0,
+      "laneIndex": 3,
+      "file": "/Users/user/Desktop/test8/S2_T1_L4_Pocket_City_Glass_chorus.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 1,
+      "trackIndex": 0,
+      "laneIndex": 4,
+      "file": "/Users/user/Desktop/test8/S2_T1_L5_Pocket_City_Static_halo.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 1,
+      "trackIndex": 1,
+      "laneIndex": 0,
+      "file": "/Users/user/Desktop/test8/S2_T2_L1_Chrome_Avenue_808_avenue.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 1,
+      "trackIndex": 1,
+      "laneIndex": 1,
+      "file": "/Users/user/Desktop/test8/S2_T2_L2_Chrome_Avenue_Rubber_motor.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 1,
+      "trackIndex": 1,
+      "laneIndex": 2,
+      "file": "/Users/user/Desktop/test8/S2_T2_L3_Chrome_Avenue_Window_arp.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 1,
+      "trackIndex": 1,
+      "laneIndex": 3,
+      "file": "/Users/user/Desktop/test8/S2_T2_L4_Chrome_Avenue_Warm_display.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 1,
+      "trackIndex": 1,
+      "laneIndex": 4,
+      "file": "/Users/user/Desktop/test8/S2_T2_L5_Chrome_Avenue_Thin_skyline.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 1,
+      "trackIndex": 2,
+      "laneIndex": 0,
+      "file": "/Users/user/Desktop/test8/S2_T3_L1_Battery_Love_808_relay.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 1,
+      "trackIndex": 2,
+      "laneIndex": 1,
+      "file": "/Users/user/Desktop/test8/S2_T3_L2_Battery_Love_Battery_bass.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 1,
+      "trackIndex": 2,
+      "laneIndex": 2,
+      "file": "/Users/user/Desktop/test8/S2_T3_L3_Battery_Love_Simple_arp.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 1,
+      "trackIndex": 2,
+      "laneIndex": 3,
+      "file": "/Users/user/Desktop/test8/S2_T3_L4_Battery_Love_Major_lights.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 1,
+      "trackIndex": 2,
+      "laneIndex": 4,
+      "file": "/Users/user/Desktop/test8/S2_T3_L5_Battery_Love_Soft_carrier.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 1,
+      "trackIndex": 3,
+      "laneIndex": 0,
+      "file": "/Users/user/Desktop/test8/S2_T4_L1_Pocket_Choir_808_choir.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 1,
+      "trackIndex": 3,
+      "laneIndex": 1,
+      "file": "/Users/user/Desktop/test8/S2_T4_L2_Pocket_Choir_Round_bass.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 1,
+      "trackIndex": 3,
+      "laneIndex": 2,
+      "file": "/Users/user/Desktop/test8/S2_T4_L3_Pocket_Choir_Choir_arp.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 1,
+      "trackIndex": 3,
+      "laneIndex": 3,
+      "file": "/Users/user/Desktop/test8/S2_T4_L4_Pocket_Choir_Soft_buttons.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "stateIndex": 1,
+      "trackIndex": 3,
+      "laneIndex": 4,
+      "file": "/Users/user/Desktop/test8/S2_T4_L5_Pocket_Choir_Air_tape.wav",
+      "mixGain": 1.0,
+      "mixPan": 0.0,
+      "regions": [
+        {
+          "startSeconds": 0.0,
+          "sourceStartSeconds": 0.0,
+          "lengthSeconds": 44.336374999999997,
+          "fadeInSeconds": 0.0,
+          "fadeOutSeconds": 0.0
+        }
+      ]
+    }
+  ]
 }
