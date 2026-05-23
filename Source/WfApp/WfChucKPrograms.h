@@ -11,6 +11,12 @@
 
 namespace Wf
 {
+struct TrackDurationSpec
+{
+    int bars = 0;
+    int beats = 0;
+};
+
 struct LaneSpec
 {
     LaneSpec() = default;
@@ -37,16 +43,12 @@ struct LaneSpec
     float pan = 0.0f;
     int pulseTicks = 96;
     int openTicks = 18;
+    std::optional<float> tempoBpm;
+    std::optional<TrackDurationSpec> duration;
     bool muted = false;
     bool solo = false;
     std::optional<juce::String> customDeclarationCode;
     std::optional<juce::String> customControlCode;
-};
-
-struct TrackDurationSpec
-{
-    int bars = 0;
-    int beats = 0;
 };
 
 struct TrackEffectSlotSpec
@@ -65,6 +67,7 @@ struct StateSpec
     std::vector<LaneSpec> lanes {};
     std::optional<TrackDurationSpec> duration;
     std::optional<int> transitionProbabilityPercent;
+    int clockBeatsPerBar = 4;
     std::array<TrackEffectSlotSpec, 3> effectSlots {};
 };
 
@@ -221,7 +224,7 @@ inline void appendLaneControl (juce::String& program, const LaneSpec& lane, int 
     const auto suffix = juce::String (index);
     const auto pulseTicks = chuckInt (lane.pulseTicks);
     const auto openTicks = chuckInt (lane.openTicks);
-    const auto volume = chuckFloat (lane.volume);
+    const auto volume = juce::String ("(") + chuckFloat (lane.volume) + " * laneActive" + suffix + ")";
 
     program << "    tick % " << pulseTicks << " => int laneStep" << suffix << ";\n";
     program << "    " << chuckFloat (juce::jlimit (-1.0f, 1.0f, lane.pan)) << " => lanePan" << suffix << ".pan;\n";
@@ -356,8 +359,10 @@ inline juce::String buildStateProgram (const StateSpec& state)
         appendLaneDeclarationForProgram (program, effectiveLane (state.lanes[static_cast<size_t> (i)]), i);
 
     program << "0 => int tick;\n";
+    program << "0 => int didTick;\n";
     program << "1 => int firstFrame;\n";
     program << "0.0 => float stepPhase;\n";
+    program << juce::String (std::max (1, state.clockBeatsPerBar)) << ".0 => float laneBeatsPerBar;\n";
 
     for (const auto name : { "laneLevel", "laneFreq", "laneTarget", "kickLevel", "kickClick", "snareLevel", "snareSnap", "snareClap", "hatLevel" })
     {
@@ -368,9 +373,21 @@ inline juce::String buildStateProgram (const StateSpec& state)
     }
 
     program << "0.0 => float smoothedMaster;\n\n";
+
+    for (int i = 0; i < static_cast<int> (state.lanes.size()); ++i)
+    {
+        const auto suffix = juce::String (i);
+        program << "0 => int laneTickClock" << suffix << ";\n";
+        program << "1 => int laneFirstFrame" << suffix << ";\n";
+        program << "0.0 => float laneStepPhaseClock" << suffix << ";\n";
+        program << "0.0 => float laneElapsedBars" << suffix << ";\n";
+        program << "1.0 => float laneActive" << suffix << ";\n";
+    }
+
+    program << "\n";
     program << "while (true)\n";
     program << "{\n";
-    program << "    0 => int didTick;\n";
+    program << "    0 => didTick;\n";
     program << "    Math.max(0.0, Math.min(hostMasterGain, 0.8)) => float masterLevel;\n";
     program << "    Math.max(0.2, Math.min(hostTempoHz, 6.0)) => float tempo;\n";
     program << "    Math.max(0.0, Math.min(hostIntensity, 1.0)) => float intensity;\n";
@@ -392,7 +409,48 @@ inline juce::String buildStateProgram (const StateSpec& state)
     program << "    }\n\n";
 
     for (int i = 0; i < static_cast<int> (state.lanes.size()); ++i)
-        appendLaneControlForProgram (program, effectiveLane (state.lanes[static_cast<size_t> (i)]), i);
+    {
+        const auto& lane = state.lanes[static_cast<size_t> (i)];
+        const auto suffix = juce::String (i);
+        const auto laneTempoHz = lane.tempoBpm.has_value()
+            ? juce::jlimit (0.2f, 6.0f, *lane.tempoBpm / 60.0f)
+            : -1.0f;
+
+        program << "    0 => int laneDidTickClock" << suffix << ";\n";
+        program << "    " << (laneTempoHz > 0.0f ? chuckFloat (laneTempoHz) : juce::String ("tempo")) << " => float laneTempo" << suffix << ";\n";
+        program << "    laneStepPhaseClock" << suffix << " + (laneTempo" << suffix << " * 0.020) => laneStepPhaseClock" << suffix << ";\n";
+        program << "    laneElapsedBars" << suffix << " + ((laneTempo" << suffix << " * 0.020) / laneBeatsPerBar) => laneElapsedBars" << suffix << ";\n";
+        program << "    if (laneStepPhaseClock" << suffix << " >= 1.0)\n";
+        program << "    {\n";
+        program << "        laneTickClock" << suffix << " + 1 => laneTickClock" << suffix << ";\n";
+        program << "        laneStepPhaseClock" << suffix << " - 1.0 => laneStepPhaseClock" << suffix << ";\n";
+        program << "        1 => laneDidTickClock" << suffix << ";\n";
+        program << "    }\n";
+        program << "    if (laneFirstFrame" << suffix << " == 1)\n";
+        program << "    {\n";
+        program << "        1 => laneDidTickClock" << suffix << ";\n";
+        program << "        0 => laneFirstFrame" << suffix << ";\n";
+        program << "    }\n";
+
+        if (lane.duration.has_value())
+        {
+            const auto durationBars = static_cast<float> (lane.duration->bars)
+                                    + static_cast<float> (lane.duration->beats) / static_cast<float> (std::max (1, state.clockBeatsPerBar));
+            program << "    if (laneElapsedBars" << suffix << " < " << chuckFloat (std::max (0.001f, durationBars)) << ")\n";
+            program << "        1.0 => laneActive" << suffix << ";\n";
+            program << "    else\n";
+            program << "        0.0 => laneActive" << suffix << ";\n";
+        }
+        else
+        {
+            program << "    1.0 => laneActive" << suffix << ";\n";
+        }
+
+        program << "    laneTickClock" << suffix << " => tick;\n";
+        program << "    laneDidTickClock" << suffix << " => didTick;\n";
+        program << "    laneStepPhaseClock" << suffix << " => stepPhase;\n\n";
+        appendLaneControlForProgram (program, effectiveLane (lane), i);
+    }
 
     program << "    5::ms => now;\n";
     program << "}\n";

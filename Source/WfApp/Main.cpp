@@ -961,11 +961,19 @@ public:
 
     std::function<void (int)> onLaneSelected;
 
-    void setTrack (const Wf::StateSpec* trackToUse, int selectedLaneToUse, int beatsPerBarToUse, float phaseToUse, bool runningToUse)
+    void setTrack (const Wf::StateSpec* trackToUse,
+                   int selectedLaneToUse,
+                   int beatsPerBarToUse,
+                   float defaultTempoBpmToUse,
+                   double trackElapsedBarsToUse,
+                   float phaseToUse,
+                   bool runningToUse)
     {
         track = trackToUse;
         selectedLane = selectedLaneToUse;
         beatsPerBar = juce::jlimit (1, 16, beatsPerBarToUse);
+        defaultTempoBpm = juce::jlimit (30.0f, 220.0f, defaultTempoBpmToUse);
+        trackElapsedBars = juce::jmax (0.0, trackElapsedBarsToUse);
         phase = phaseToUse;
         running = runningToUse;
         rebuildLaneCentres();
@@ -1163,7 +1171,18 @@ private:
 
     void drawLanePlayhead (juce::Graphics& g, juce::Point<float> laneCentre, float ringRadius, const Wf::LaneSpec& lane)
     {
-        const auto lanePhase = std::fmod (phase, 1.0f);
+        const auto laneTempoBpm = lane.tempoBpm.value_or (defaultTempoBpm);
+        const auto laneElapsedBars = trackElapsedBars * (static_cast<double> (laneTempoBpm) / static_cast<double> (defaultTempoBpm));
+
+        if (lane.duration.has_value())
+        {
+            const auto durationBars = static_cast<double> (lane.duration->bars)
+                                    + static_cast<double> (lane.duration->beats) / static_cast<double> (beatsPerBar);
+            if (durationBars > 0.0 && laneElapsedBars >= durationBars)
+                return;
+        }
+
+        const auto lanePhase = static_cast<float> (std::fmod (laneElapsedBars, 1.0));
         const auto angle = juce::MathConstants<float>::twoPi * lanePhase - juce::MathConstants<float>::halfPi;
         const auto markerRadius = ringRadius + 1.0f;
         const juce::Point<float> marker { laneCentre.x + std::cos (angle) * markerRadius,
@@ -1180,6 +1199,8 @@ private:
     std::vector<juce::Point<float>> laneCentres;
     int selectedLane = 0;
     int beatsPerBar = 4;
+    float defaultTempoBpm = 88.0f;
+    double trackElapsedBars = 0.0;
     float phase = 0.0f;
     bool running = false;
 };
@@ -1724,6 +1745,23 @@ public:
         setupTextEditor (laneNameEditor, "Lane name");
         laneNameEditor.onTextChange = [this] { applyLaneNameEdit(); };
 
+        laneTempoLabel.setText ("lane bpm", juce::dontSendNotification);
+        laneTempoLabel.setFont (juce::FontOptions (13.0f, juce::Font::bold));
+        styleLabel (laneTempoLabel, 0.72f);
+        addAndMakeVisible (laneTempoLabel);
+
+        setupTextEditor (laneTempoEditor, "track");
+        laneTempoEditor.setInputRestrictions (6, "0123456789.");
+        laneTempoEditor.onTextChange = [this] { applyLaneTempoEdit(); };
+
+        laneDurationLabel.setText ("lane duration (Bar.Beat)", juce::dontSendNotification);
+        laneDurationLabel.setFont (juce::FontOptions (13.0f, juce::Font::bold));
+        styleLabel (laneDurationLabel, 0.72f);
+        addAndMakeVisible (laneDurationLabel);
+
+        setupTextEditor (laneDurationEditor, "track");
+        laneDurationEditor.onTextChange = [this] { applyLaneDurationEdit(); };
+
         setupButton (muteLaneButton, "Mute", coral(), [this] { toggleSelectedLaneMute(); });
         setupButton (soloLaneButton, "Solo", amber(), [this] { toggleSelectedLaneSolo(); });
         setupButton (duplicateLaneButton, "Duplicate", blue(), [this] { duplicateSelectedLane(); });
@@ -2064,6 +2102,16 @@ public:
             area.removeFromLeft (trackFocusPaneGap);
             trackFocusCanvas.setBounds (area.reduced (8, 0));
 
+            auto laneTempoRow = codePane.removeFromTop (30);
+            laneTempoLabel.setBounds (laneTempoRow.removeFromLeft (84).reduced (8, 2));
+            laneTempoRow.removeFromLeft (8);
+            laneTempoEditor.setBounds (laneTempoRow.removeFromLeft (82).reduced (0, 2));
+            codePane.removeFromTop (6);
+            auto laneDurationRow = codePane.removeFromTop (30);
+            laneDurationLabel.setBounds (laneDurationRow.removeFromLeft (174).reduced (8, 2));
+            laneDurationRow.removeFromLeft (8);
+            laneDurationEditor.setBounds (laneDurationRow.removeFromLeft (74).reduced (0, 2));
+            codePane.removeFromTop (8);
             auto laneCodeHeaderRow = codePane.removeFromTop (32);
             laneCodeRunButton.setBounds (laneCodeHeaderRow.removeFromRight (68).reduced (0, 3));
             laneCodeHeader.setBounds (laneCodeHeaderRow.reduced (8, 2));
@@ -2102,6 +2150,16 @@ public:
         trackNameEditor.setBounds (trackNameRow.reduced (0, 2));
         codePane.removeFromTop (6);
         laneNameEditor.setBounds (codePane.removeFromTop (28));
+        codePane.removeFromTop (8);
+        auto laneTempoRow = codePane.removeFromTop (30);
+        laneTempoLabel.setBounds (laneTempoRow.removeFromLeft (84).reduced (0, 2));
+        laneTempoRow.removeFromLeft (8);
+        laneTempoEditor.setBounds (laneTempoRow.removeFromLeft (82).reduced (0, 2));
+        codePane.removeFromTop (6);
+        auto laneDurationRow = codePane.removeFromTop (30);
+        laneDurationLabel.setBounds (laneDurationRow.removeFromLeft (174).reduced (0, 2));
+        laneDurationRow.removeFromLeft (8);
+        laneDurationEditor.setBounds (laneDurationRow.removeFromLeft (74).reduced (0, 2));
         codePane.removeFromTop (8);
         auto trackEditRow = codePane.removeFromTop (30);
         trackDurationLabel.setBounds (trackEditRow.removeFromLeft (152).reduced (0, 2));
@@ -2219,6 +2277,10 @@ private:
         trackDurationLabel.setVisible (arrangement);
         trackDurationEditor.setVisible (arrangement);
         laneNameEditor.setVisible (arrangement);
+        laneTempoLabel.setVisible (arrangement || track);
+        laneTempoEditor.setVisible (arrangement || track);
+        laneDurationLabel.setVisible (arrangement || track);
+        laneDurationEditor.setVisible (arrangement || track);
         muteLaneButton.setVisible (arrangement);
         soloLaneButton.setVisible (arrangement);
         duplicateLaneButton.setVisible (arrangement);
@@ -2273,7 +2335,7 @@ private:
         if (viewedTracks == nullptr || viewedTracks->empty())
         {
             focusedTrackIndex = 0;
-            trackFocusCanvas.setTrack (nullptr, 0, 4, 0.0f, false);
+            trackFocusCanvas.setTrack (nullptr, 0, 4, 88.0f, 0.0, 0.0f, false);
             return;
         }
 
@@ -2289,6 +2351,9 @@ private:
         trackFocusCanvas.setTrack (&track,
                                    selectedLaneForFocus,
                                    topLevelTimeSigNumerators[static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, viewedTopLevelState))],
+                                   viewedTopLevelState == performingTopLevelState ? getPerformingTempoBpm()
+                                                                                  : topLevelTemposBpm[static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, viewedTopLevelState))],
+                                   focusedTrackIsPlaying ? trackElapsedBars : 0.0,
                                    focusedTrackIsPlaying ? orbitPhase : 0.0f,
                                    focusedTrackIsPlaying);
     }
@@ -2624,6 +2689,8 @@ private:
             || trackNameEditor.hasKeyboardFocus (true)
             || trackDurationEditor.hasKeyboardFocus (true)
             || laneNameEditor.hasKeyboardFocus (true)
+            || laneTempoEditor.hasKeyboardFocus (true)
+            || laneDurationEditor.hasKeyboardFocus (true)
             || stateTrackCountEditor.hasKeyboardFocus (true)
             || orbitCanvas.isEditingTransitionProbability();
     }
@@ -2993,6 +3060,8 @@ private:
         trackNameEditor.setEnabled (hasTrack);
         trackDurationEditor.setEnabled (hasTrack && ! probabilityControlsDuration);
         laneNameEditor.setEnabled (hasLane);
+        laneTempoEditor.setEnabled (hasLane);
+        laneDurationEditor.setEnabled (hasLane);
         muteLaneButton.setEnabled (hasLane);
         soloLaneButton.setEnabled (hasLane);
         duplicateLaneButton.setEnabled (hasLane && track != nullptr && static_cast<int> (track->lanes.size()) < maxTrackLanes);
@@ -3011,6 +3080,20 @@ private:
 
         if (! laneNameEditor.hasKeyboardFocus (true))
             laneNameEditor.setText (hasLane ? lane->name : juce::String(), juce::dontSendNotification);
+
+        if (! laneTempoEditor.hasKeyboardFocus (true))
+            laneTempoEditor.setText (hasLane && lane->tempoBpm.has_value()
+                                         ? juce::String (*lane->tempoBpm, 1)
+                                         : juce::String(),
+                                     juce::dontSendNotification);
+
+        if (! laneDurationEditor.hasKeyboardFocus (true))
+        {
+            if (hasLane && lane->duration.has_value())
+                laneDurationEditor.setText (formatTrackDuration (*lane->duration), juce::dontSendNotification);
+            else
+                laneDurationEditor.setText ({}, juce::dontSendNotification);
+        }
 
         if (hasLane)
         {
@@ -3093,6 +3176,40 @@ private:
         }
     }
 
+    void applyLaneTempoEdit()
+    {
+        if (suppressEditCallbacks)
+            return;
+
+        if (auto* lane = getSelectedViewedLane())
+        {
+            const auto text = laneTempoEditor.getText().trim();
+            if (text.isEmpty())
+                lane->tempoBpm.reset();
+            else
+                lane->tempoBpm = juce::jlimit (30.0f, 220.0f, static_cast<float> (text.getDoubleValue()));
+
+            refreshAfterStructureEdit (true);
+        }
+    }
+
+    void applyLaneDurationEdit()
+    {
+        if (suppressEditCallbacks)
+            return;
+
+        if (auto* lane = getSelectedViewedLane())
+        {
+            const auto parsed = parseTrackDuration (laneDurationEditor.getText());
+            if (parsed.has_value())
+                lane->duration = *parsed;
+            else
+                lane->duration.reset();
+
+            refreshAfterStructureEdit (true);
+        }
+    }
+
     void toggleSelectedLaneMute()
     {
         if (auto* lane = getSelectedViewedLane())
@@ -3163,6 +3280,8 @@ private:
              << "  volume: " << Wf::chuckFloat (lane.volume)
              << "  pulseTicks: " << lane.pulseTicks
              << "  openTicks: " << lane.openTicks << "\n\n";
+        code << "// bpm: " << (lane.tempoBpm.has_value() ? juce::String (*lane.tempoBpm, 1) : juce::String ("track"))
+             << "  duration: " << (lane.duration.has_value() ? formatTrackDuration (*lane.duration) : juce::String ("track")) << "\n\n";
         code << laneDeclarationMarker << "\n";
         if (lane.customDeclarationCode.has_value())
             code << *lane.customDeclarationCode << "\n";
@@ -3170,7 +3289,7 @@ private:
             Wf::appendLaneDeclaration (code, lane, laneIndex);
 
         code << laneControlMarker << "\n";
-        code << "// expects host variables: tick, stepPhase, intensity, bright, orbit\n";
+        code << "// expects host variables: tick, didTick, stepPhase, laneActive" << laneIndex << ", intensity, bright, orbit\n";
         if (lane.customControlCode.has_value())
             code << *lane.customControlCode << "\n";
         else
@@ -3663,7 +3782,9 @@ private:
             return;
 
         performingTrackIndex = juce::jlimit (0, static_cast<int> (performingTracks->size()) - 1, performingTrackIndex);
-        static_cast<void> (audioCallback.loadStateWithControls ((*performingTracks)[static_cast<size_t> (performingTrackIndex)],
+        auto audioTrack = (*performingTracks)[static_cast<size_t> (performingTrackIndex)];
+        audioTrack.clockBeatsPerBar = static_cast<int> (getPerformingBeatsPerBar());
+        static_cast<void> (audioCallback.loadStateWithControls (audioTrack,
                                                                 getCurrentMasterGain(),
                                                                 getCurrentTempoHz(),
                                                                 defaultIntensity,
@@ -3702,6 +3823,8 @@ private:
     juce::Label laneCodeHeader;
     juce::Label trackNameLabel;
     juce::Label trackDurationLabel;
+    juce::Label laneTempoLabel;
+    juce::Label laneDurationLabel;
     juce::Label selectedLabel;
     juce::Label laneHeader;
     std::array<juce::TextButton, maxTrackLanes> laneButtons;
@@ -3732,6 +3855,8 @@ private:
     juce::TextEditor trackNameEditor;
     juce::TextEditor trackDurationEditor;
     juce::TextEditor laneNameEditor;
+    juce::TextEditor laneTempoEditor;
+    juce::TextEditor laneDurationEditor;
     juce::TextEditor stateTrackCountEditor;
     std::array<float, maxTopLevelStates> topLevelTemposBpm
     {
