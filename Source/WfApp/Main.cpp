@@ -1113,10 +1113,14 @@ private:
                            (dotRadius + 2.5f) * 2.0f,
                            (dotRadius + 2.5f) * 2.0f);
 
-            g.setColour (colour.withAlpha (laneIsSelected ? 0.98f : 0.70f));
-            g.fillEllipse (point.x - dotRadius, point.y - dotRadius, dotRadius * 2.0f, dotRadius * 2.0f);
-            g.setColour ((laneIsSelected ? ink() : mutedInk()).withAlpha (laneIsSelected ? 0.52f : 0.24f));
-            g.drawEllipse (point.x - dotRadius, point.y - dotRadius, dotRadius * 2.0f, dotRadius * 2.0f, laneIsSelected ? 1.4f : 1.0f);
+            g.setColour (colour.withAlpha (laneIsSelected ? 0.96f : 0.68f));
+            g.drawEllipse (point.x - dotRadius, point.y - dotRadius, dotRadius * 2.0f, dotRadius * 2.0f, laneIsSelected ? 6.0f : 4.2f);
+            g.setColour (colour.withAlpha (laneIsSelected ? 0.22f : 0.10f));
+            g.drawEllipse (point.x - dotRadius + 8.0f,
+                           point.y - dotRadius + 8.0f,
+                           (dotRadius - 8.0f) * 2.0f,
+                           (dotRadius - 8.0f) * 2.0f,
+                           laneIsSelected ? 1.6f : 1.0f);
 
             auto labelBounds = juce::Rectangle<int> (180, 24).withCentre ({ static_cast<int> (point.x),
                                                                            static_cast<int> (point.y + (point.y < centre.y ? -82.0f : 82.0f)) });
