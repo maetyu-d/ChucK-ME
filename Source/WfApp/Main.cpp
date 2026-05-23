@@ -39,6 +39,15 @@ constexpr float defaultBrightness = 0.48f;
 constexpr auto laneDeclarationMarker = "// wf::declaration";
 constexpr auto laneControlMarker = "// wf::control";
 
+struct GlobalScriptStep
+{
+    int stateIndex = 0;
+    double bars = 1.0;
+    std::optional<float> tempoBpm;
+    std::optional<int> timeSigNumerator;
+    std::optional<int> timeSigDenominator;
+};
+
 juce::Colour ink() { return juce::Colour (0xfff2f4ef); }
 juce::Colour mutedInk() { return juce::Colour (0xff9aa29c); }
 juce::Colour panel() { return juce::Colour (0xff0f1310); }
@@ -1970,6 +1979,263 @@ private:
     bool running = false;
 };
 
+class ArrangementTimelineCanvas final : public juce::Component
+{
+public:
+    void setProject (const std::array<std::optional<std::vector<Wf::StateSpec>>, maxTopLevelStates>* statesToUse,
+                     std::vector<GlobalScriptStep> stepsToUse,
+                     int playingStateToUse,
+                     int playingTrackToUse,
+                     size_t playingStepToUse,
+                     double playingStepElapsedBarsToUse,
+                     bool runningToUse)
+    {
+        states = statesToUse;
+        steps = std::move (stepsToUse);
+        playingState = playingStateToUse;
+        playingTrack = playingTrackToUse;
+        playingStep = playingStepToUse;
+        playingStepElapsedBars = playingStepElapsedBarsToUse;
+        running = runningToUse;
+        rebuildMetrics();
+        repaint();
+    }
+
+    int getPreferredWidth() const
+    {
+        return juce::jmax (760, leftHeaderWidth + 60 + static_cast<int> (totalBars * barWidth));
+    }
+
+    int getPreferredHeight() const
+    {
+        return juce::jmax (360, headerHeight + maxTracks * (trackHeaderHeight + maxLanesInAnyTrack * laneRowHeight + trackGap) + 34);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        g.fillAll (juce::Colour (0xff0b0f0c));
+
+        if (states == nullptr)
+            return;
+
+        const auto bounds = getLocalBounds();
+        const auto timelineX = leftHeaderWidth;
+        const auto timelineRight = getWidth() - 24;
+        const auto contentTop = headerHeight;
+
+        g.setColour (panel().withAlpha (0.72f));
+        g.fillRect (bounds.withWidth (leftHeaderWidth));
+
+        g.setColour (mutedInk().withAlpha (0.10f));
+        g.drawVerticalLine (timelineX, 0.0f, static_cast<float> (getHeight()));
+        g.drawHorizontalLine (headerHeight - 1, 0.0f, static_cast<float> (getWidth()));
+
+        if (steps.empty())
+        {
+            g.setColour (mutedInk().withAlpha (0.58f));
+            g.setFont (juce::FontOptions (15.0f, juce::Font::bold));
+            g.drawFittedText ("No playable state sequence", getLocalBounds().reduced (24), juce::Justification::centred, 1);
+            return;
+        }
+
+        drawRuler (g, timelineX, timelineRight);
+        drawTrackLabels (g, contentTop);
+
+        double barOffset = 0.0;
+        for (int stepIndex = 0; stepIndex < static_cast<int> (steps.size()); ++stepIndex)
+        {
+            const auto& step = steps[static_cast<size_t> (stepIndex)];
+            const auto stepX = static_cast<float> (timelineX) + static_cast<float> (barOffset * barWidth);
+            const auto stepW = static_cast<float> (juce::jmax (0.25, step.bars) * barWidth);
+            drawStep (g, step, stepIndex, { stepX, 0.0f, stepW, static_cast<float> (getHeight()) });
+            barOffset += juce::jmax (0.0, step.bars);
+        }
+
+        if (running && playingStep < steps.size())
+        {
+            double playheadBars = 0.0;
+            for (size_t i = 0; i < playingStep; ++i)
+                playheadBars += juce::jmax (0.0, steps[i].bars);
+
+            playheadBars += juce::jlimit (0.0, juce::jmax (0.0, steps[playingStep].bars), playingStepElapsedBars);
+            const auto x = static_cast<float> (timelineX) + static_cast<float> (playheadBars * barWidth);
+            g.setColour (green().withAlpha (0.90f));
+            g.drawLine (x, 0.0f, x, static_cast<float> (getHeight()), 1.8f);
+            g.fillRoundedRectangle (x - 5.0f, 6.0f, 10.0f, 16.0f, 2.0f);
+        }
+    }
+
+private:
+    void rebuildMetrics()
+    {
+        totalBars = 0.0;
+        maxTracks = 1;
+        maxLanesInAnyTrack = 1;
+
+        for (const auto& step : steps)
+        {
+            totalBars += juce::jmax (0.0, step.bars);
+            const auto* tracks = getTracks (step.stateIndex);
+            if (tracks == nullptr)
+                continue;
+
+            maxTracks = juce::jmax (maxTracks, static_cast<int> (tracks->size()));
+            for (const auto& track : *tracks)
+                maxLanesInAnyTrack = juce::jmax (maxLanesInAnyTrack, static_cast<int> (track.lanes.size()));
+        }
+    }
+
+    const std::vector<Wf::StateSpec>* getTracks (int stateIndex) const
+    {
+        if (states == nullptr || stateIndex < 0 || stateIndex >= maxTopLevelStates)
+            return nullptr;
+
+        const auto& slot = states->at (static_cast<size_t> (stateIndex));
+        if (! slot.has_value())
+            return nullptr;
+
+        return &*slot;
+    }
+
+    void drawRuler (juce::Graphics& g, int timelineX, int timelineRight)
+    {
+        const auto visibleBars = static_cast<int> (std::ceil (totalBars));
+        g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+
+        for (int bar = 0; bar <= visibleBars; ++bar)
+        {
+            const auto x = static_cast<float> (static_cast<double> (timelineX) + static_cast<double> (bar) * barWidth);
+            if (x > static_cast<float> (timelineRight))
+                break;
+
+            g.setColour (mutedInk().withAlpha (bar == 0 ? 0.22f : 0.10f));
+            g.drawLine (x, 0.0f, x, static_cast<float> (getHeight()), bar == 0 ? 1.2f : 0.8f);
+
+            if (bar > 0)
+            {
+                g.setColour (mutedInk().withAlpha (0.70f));
+                g.drawFittedText (juce::String (bar), juce::Rectangle<int> (static_cast<int> (x) + 5, 8, 44, 16), juce::Justification::centredLeft, 1);
+            }
+        }
+    }
+
+    void drawTrackLabels (juce::Graphics& g, int contentTop)
+    {
+        auto y = contentTop;
+        for (int trackIndex = 0; trackIndex < maxTracks; ++trackIndex)
+        {
+            const auto trackHeight = trackHeaderHeight + maxLanesInAnyTrack * laneRowHeight;
+            auto trackArea = juce::Rectangle<int> (0, y, leftHeaderWidth, trackHeight);
+
+            g.setColour (mutedInk().withAlpha (0.055f));
+            g.drawHorizontalLine (trackArea.getY(), 0.0f, static_cast<float> (getWidth()));
+
+            g.setColour (ink().withAlpha (0.82f));
+            g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+            g.drawFittedText ("TRACK " + juce::String (trackIndex + 1),
+                              trackArea.removeFromTop (trackHeaderHeight).reduced (14, 2),
+                              juce::Justification::centredLeft,
+                              1);
+
+            g.setColour (mutedInk().withAlpha (0.48f));
+            g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
+            for (int laneIndex = 0; laneIndex < maxLanesInAnyTrack; ++laneIndex)
+                g.drawFittedText ("lane " + juce::String (laneIndex + 1),
+                                  juce::Rectangle<int> (22, y + trackHeaderHeight + laneIndex * laneRowHeight, leftHeaderWidth - 34, laneRowHeight),
+                                  juce::Justification::centredLeft,
+                                  1);
+
+            y += trackHeight + trackGap;
+        }
+    }
+
+    void drawStep (juce::Graphics& g, const GlobalScriptStep& step, int stepIndex, juce::Rectangle<float> bounds)
+    {
+        const auto* tracks = getTracks (step.stateIndex);
+        if (tracks == nullptr)
+            return;
+
+        const auto accent = stepIndex % 3 == 0 ? green() : (stepIndex % 3 == 1 ? blue() : amber());
+        const auto playingStepNow = running && static_cast<size_t> (stepIndex) == playingStep;
+
+        auto header = bounds.withY (0.0f).withHeight (static_cast<float> (headerHeight - 1)).reduced (2.0f, 4.0f);
+        g.setColour (accent.withAlpha (playingStepNow ? 0.24f : 0.14f));
+        g.fillRoundedRectangle (header, 3.0f);
+        g.setColour (accent.withAlpha (playingStepNow ? 0.68f : 0.34f));
+        g.drawRoundedRectangle (header, 3.0f, playingStepNow ? 1.3f : 0.9f);
+
+        g.setColour (ink().withAlpha (0.90f));
+        g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+        g.drawFittedText ("State " + juce::String (step.stateIndex + 1) + "  " + juce::String (step.bars, 1) + " bars",
+                          header.toNearestInt().reduced (8, 0),
+                          juce::Justification::centredLeft,
+                          1);
+
+        for (int trackIndex = 0; trackIndex < static_cast<int> (tracks->size()); ++trackIndex)
+        {
+            const auto& track = (*tracks)[static_cast<size_t> (trackIndex)];
+            const auto trackY = headerHeight + trackIndex * (trackHeaderHeight + maxLanesInAnyTrack * laneRowHeight + trackGap);
+            auto trackNameArea = juce::Rectangle<float> (bounds.getX(), static_cast<float> (trackY), bounds.getWidth(), static_cast<float> (trackHeaderHeight)).reduced (2.0f, 2.0f);
+
+            g.setColour ((playingStepNow && trackIndex == playingTrack && step.stateIndex == playingState ? green() : mutedInk()).withAlpha (0.12f));
+            g.fillRoundedRectangle (trackNameArea, 2.0f);
+            g.setColour (ink().withAlpha (0.78f));
+            g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+            g.drawFittedText (trackDisplayName (track.name), trackNameArea.toNearestInt().reduced (6, 0), juce::Justification::centredLeft, 1);
+
+            for (int laneIndex = 0; laneIndex < static_cast<int> (track.lanes.size()); ++laneIndex)
+            {
+                const auto& lane = track.lanes[static_cast<size_t> (laneIndex)];
+                auto laneArea = juce::Rectangle<float> (bounds.getX() + 3.0f,
+                                                        static_cast<float> (trackY + trackHeaderHeight + laneIndex * laneRowHeight + 2),
+                                                        bounds.getWidth() - 6.0f,
+                                                        static_cast<float> (laneRowHeight - 4));
+                const auto laneColour = laneColourForIndex (laneIndex);
+                const auto active = ! lane.muted;
+
+                g.setColour (laneColour.withAlpha (active ? 0.20f : 0.06f));
+                g.fillRoundedRectangle (laneArea, 2.0f);
+                g.setColour (laneColour.withAlpha (active ? 0.64f : 0.18f));
+                g.drawRoundedRectangle (laneArea, 2.0f, 0.8f);
+
+                g.setColour ((active ? ink() : mutedInk()).withAlpha (active ? 0.86f : 0.34f));
+                g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
+                g.drawFittedText (lane.name, laneArea.toNearestInt().reduced (6, 0), juce::Justification::centredLeft, 1);
+            }
+        }
+    }
+
+    static juce::Colour laneColourForIndex (int laneIndex)
+    {
+        switch (laneIndex % 5)
+        {
+            case 0: return green();
+            case 1: return amber();
+            case 2: return blue();
+            case 3: return coral();
+            default: return mutedInk();
+        }
+    }
+
+    static constexpr int leftHeaderWidth = 170;
+    static constexpr int headerHeight = 42;
+    static constexpr int trackHeaderHeight = 22;
+    static constexpr int laneRowHeight = 18;
+    static constexpr int trackGap = 8;
+    static constexpr double barWidth = 68.0;
+
+    const std::array<std::optional<std::vector<Wf::StateSpec>>, maxTopLevelStates>* states = nullptr;
+    std::vector<GlobalScriptStep> steps;
+    double totalBars = 0.0;
+    int maxTracks = 1;
+    int maxLanesInAnyTrack = 1;
+    int playingState = 0;
+    int playingTrack = 0;
+    size_t playingStep = 0;
+    double playingStepElapsedBars = 0.0;
+    bool running = false;
+};
+
 class MainComponent final : public juce::Component,
                             private juce::Timer
 {
@@ -1979,6 +2245,7 @@ class MainComponent final : public juce::Component,
         arrangement,
         track,
         code,
+        timeline,
         mixer
     };
 
@@ -2040,6 +2307,11 @@ public:
         globalScriptEditor.setColour (juce::TextEditor::focusedOutlineColourId, amber().withAlpha (0.34f));
         globalScriptEditor.setColour (juce::TextEditor::highlightColourId, amber().withAlpha (0.24f));
         globalScriptEditor.setFont (juce::FontOptions (13.0f));
+        globalScriptEditor.onTextChange = [this]
+        {
+            if (mainView == MainView::timeline)
+                syncArrangementTimelineView();
+        };
         addAndMakeVisible (globalScriptEditor);
 
         laneCodeHeader.setText ("lane code", juce::dontSendNotification);
@@ -2257,6 +2529,11 @@ public:
             showEffectSlotMenu (stateIndex, trackIndex, slotIndex);
         };
         addAndMakeVisible (mixerViewport);
+        arrangementTimelineViewport.setViewedComponent (&arrangementTimelineCanvas, false);
+        arrangementTimelineViewport.setScrollBarsShown (true, true);
+        arrangementTimelineViewport.setScrollBarThickness (8);
+        addAndMakeVisible (arrangementTimelineViewport);
+
         laneListViewport.setViewedComponent (&laneListContent, false);
         laneListViewport.setScrollBarsShown (true, false);
         laneListViewport.setScrollBarThickness (6);
@@ -2265,6 +2542,7 @@ public:
         setupButton (overallButton, "Overall", blue(), [this] { setMainView (MainView::overall); });
         setupButton (arrangementButton, "MAIN", green(), [this] { setMainView (MainView::arrangement); });
         setupButton (codeViewButton, "Code", blue(), [this] { setMainView (MainView::code); });
+        setupButton (timelineViewButton, "Arrangement", green(), [this] { setMainView (MainView::timeline); });
         setupButton (mixerViewButton, "Mixer", amber(), [this] { setMainView (MainView::mixer); });
 
         addAndMakeVisible (laneHeader);
@@ -2415,7 +2693,7 @@ public:
             g.drawRoundedRectangle (trackPane.toFloat(), 3.0f, 1.0f);
             g.drawRoundedRectangle (codePane.toFloat(), 3.0f, 1.0f);
         }
-        else if (mainView == MainView::mixer || mainView == MainView::overall)
+        else if (mainView == MainView::mixer || mainView == MainView::overall || mainView == MainView::timeline)
         {
             content.removeFromTop (12);
             g.setColour (juce::Colour (0xff0b0f0c).withAlpha (0.42f));
@@ -2452,6 +2730,7 @@ public:
         overallButton.setBounds (viewButtons.removeFromLeft (108).reduced (0, 2));
         arrangementButton.setBounds (viewButtons.removeFromLeft (118).reduced (0, 2));
         codeViewButton.setBounds (viewButtons.removeFromLeft (78).reduced (6, 2));
+        timelineViewButton.setBounds (viewButtons.removeFromLeft (126).reduced (6, 2));
         mixerViewButton.setBounds (viewButtons.removeFromLeft (84).reduced (6, 2));
 
         if (mainView == MainView::overall)
@@ -2484,6 +2763,14 @@ public:
             area.removeFromTop (12);
             mixerViewport.setBounds (area.reduced (8, 0));
             resizeMixerCanvas();
+            return;
+        }
+
+        if (mainView == MainView::timeline)
+        {
+            area.removeFromTop (12);
+            arrangementTimelineViewport.setBounds (area.reduced (8, 0));
+            resizeArrangementTimelineCanvas();
             return;
         }
 
@@ -2685,6 +2972,7 @@ private:
         mainView = nextView;
         syncOverallView();
         syncMixerView();
+        syncArrangementTimelineView();
         syncViewVisibility();
         syncViewButtons();
         resized();
@@ -2696,6 +2984,7 @@ private:
         overallButton.setToggleState (mainView == MainView::overall, juce::dontSendNotification);
         arrangementButton.setToggleState (mainView == MainView::arrangement, juce::dontSendNotification);
         codeViewButton.setToggleState (mainView == MainView::code, juce::dontSendNotification);
+        timelineViewButton.setToggleState (mainView == MainView::timeline, juce::dontSendNotification);
         mixerViewButton.setToggleState (mainView == MainView::mixer, juce::dontSendNotification);
     }
 
@@ -2705,6 +2994,7 @@ private:
         const auto arrangement = mainView == MainView::arrangement;
         const auto track = mainView == MainView::track;
         const auto code = mainView == MainView::code;
+        const auto timeline = mainView == MainView::timeline;
         const auto mixer = mainView == MainView::mixer;
 
         for (auto& button : stateButtons)
@@ -2762,11 +3052,13 @@ private:
         laneCodeEditor.setVisible (track || code);
         laneCodeRunButton.setVisible (track || code);
         stateCodeHeader.setVisible (code);
+        arrangementTimelineViewport.setVisible (timeline);
         mixerViewport.setVisible (mixer);
 
         overallButton.setVisible (true);
         arrangementButton.setVisible (true);
         codeViewButton.setVisible (true);
+        timelineViewButton.setVisible (true);
         mixerViewButton.setVisible (true);
     }
 
@@ -2788,6 +3080,23 @@ private:
     void syncOverallView()
     {
         overallCanvas.setProject (&topLevelStates, viewedTopLevelState, performingTopLevelState, running);
+    }
+
+    void syncArrangementTimelineView()
+    {
+        auto steps = parseGlobalScript();
+
+        if (steps.empty() && isTopLevelStatePopulated (viewedTopLevelState))
+            steps.push_back ({ viewedTopLevelState, 4.0, {}, {}, {} });
+
+        arrangementTimelineCanvas.setProject (&topLevelStates,
+                                              std::move (steps),
+                                              performingTopLevelState,
+                                              performingTrackIndex,
+                                              scriptRunning ? scriptStepIndex : 0,
+                                              scriptRunning ? scriptStepElapsedBars : 0.0,
+                                              running);
+        resizeArrangementTimelineCanvas();
     }
 
     void syncTrackFocusCanvas (const std::vector<Wf::StateSpec>* viewedTracks)
@@ -2823,6 +3132,13 @@ private:
         const auto width = juce::jmax (mixerViewport.getWidth(), mixerCanvas.getPreferredWidth());
         const auto height = juce::jmax (1, mixerViewport.getHeight());
         mixerCanvas.setSize (width, height);
+    }
+
+    void resizeArrangementTimelineCanvas()
+    {
+        const auto width = juce::jmax (arrangementTimelineViewport.getWidth(), arrangementTimelineCanvas.getPreferredWidth());
+        const auto height = juce::jmax (arrangementTimelineViewport.getHeight(), arrangementTimelineCanvas.getPreferredHeight());
+        arrangementTimelineCanvas.setSize (width, height);
     }
 
     void scrollMixerToPlayingChannels()
@@ -3156,19 +3472,10 @@ private:
             || orbitCanvas.isEditingTransitionProbability();
     }
 
-    struct GlobalScriptStep
-    {
-        int stateIndex = 0;
-        double bars = 1.0;
-        std::optional<float> tempoBpm;
-        std::optional<int> timeSigNumerator;
-        std::optional<int> timeSigDenominator;
-    };
-
     std::vector<GlobalScriptStep> parseGlobalScript() const
     {
         std::vector<GlobalScriptStep> parsed;
-        const auto text = globalScriptEditor.getText().toStdString();
+        const auto text = stripGlobalScriptComments (globalScriptEditor.getText().toStdString());
         const std::regex tokenRegex (
             R"((?:playState\s*\(\s*(1[0-6]|[1-9])\s*,\s*(\d+(?:\.\d+)?)\s*(?:,\s*(?:tempo\s*=\s*)?(\d+(?:\.\d+)?))?\s*(?:,\s*(?:(?:timeSig|meter)\s*=\s*)?(\d{1,2})\s*(?:/|,)\s*(2|4|8|16))?\s*\))|(?:state\s*\(\s*(1[0-6]|[1-9])\s*\))|(?:(\d+(?:\.\d+)?)\s*::\s*bar)|(?:(?:tempo|bpm)\s*\(\s*(\d+(?:\.\d+)?)\s*\))|(?:(?:timeSig|meter)\s*\(\s*(\d{1,2})\s*,\s*(2|4|8|16)\s*\)))",
             std::regex_constants::icase);
@@ -3244,6 +3551,39 @@ private:
         return parsed;
     }
 
+    static std::string stripGlobalScriptComments (const std::string& text)
+    {
+        std::string stripped;
+        stripped.reserve (text.size());
+
+        size_t lineStart = 0;
+        while (lineStart < text.size())
+        {
+            const auto lineEnd = text.find_first_of ("\r\n", lineStart);
+            const auto contentEnd = lineEnd == std::string::npos ? text.size() : lineEnd;
+            const auto commentStart = text.find ("//", lineStart);
+            const auto copyEnd = commentStart != std::string::npos && commentStart < contentEnd
+                ? commentStart
+                : contentEnd;
+
+            stripped.append (text, lineStart, copyEnd - lineStart);
+
+            if (lineEnd == std::string::npos)
+                break;
+
+            stripped += text[lineEnd];
+            lineStart = lineEnd + 1;
+
+            if (text[lineEnd] == '\r' && lineStart < text.size() && text[lineStart] == '\n')
+            {
+                stripped += text[lineStart];
+                ++lineStart;
+            }
+        }
+
+        return stripped;
+    }
+
     static float sanitizeScriptTempo (float tempoBpm)
     {
         return juce::jlimit (30.0f, 220.0f, tempoBpm);
@@ -3275,7 +3615,7 @@ private:
         globalScriptSteps = parseGlobalScript();
         scriptStepIndex = 0;
         scriptStepElapsedBars = 0.0;
-        scriptShouldStopAtEnd = globalScriptEditor.getText().containsIgnoreCase ("stop");
+        scriptShouldStopAtEnd = juce::String (stripGlobalScriptComments (globalScriptEditor.getText().toStdString())).containsIgnoreCase ("stop");
         running = true;
         syncTransportButtons();
 
@@ -3446,6 +3786,7 @@ private:
             syncOverallView();
             syncTrackFocusCanvas (nullptr);
             syncMixerView();
+            syncArrangementTimelineView();
             syncViewVisibility();
             syncViewButtons();
             return;
@@ -3502,6 +3843,7 @@ private:
         syncOverallView();
         syncTrackFocusCanvas (viewedTracks);
         syncMixerView();
+        syncArrangementTimelineView();
         syncViewVisibility();
         syncViewButtons();
     }
@@ -4159,6 +4501,7 @@ private:
             orbitCanvas.setState (viewedTracks, selectedState, orbitPhase, running);
             syncOverallView();
             syncTrackFocusCanvas (viewedTracks);
+            syncArrangementTimelineView();
         }
     }
 
@@ -4440,6 +4783,8 @@ private:
     TrackFocusDivider trackFocusDivider;
     MixerCanvas mixerCanvas;
     juce::Viewport mixerViewport;
+    ArrangementTimelineCanvas arrangementTimelineCanvas;
+    juce::Viewport arrangementTimelineViewport;
     std::array<juce::TextButton, maxTopLevelStates> stateButtons;
     juce::TextButton runScriptButton;
     juce::TextButton newStateButton;
@@ -4448,6 +4793,7 @@ private:
     juce::TextButton overallButton;
     juce::TextButton arrangementButton;
     juce::TextButton codeViewButton;
+    juce::TextButton timelineViewButton;
     juce::TextButton mixerViewButton;
     juce::TextButton muteLaneButton;
     juce::TextButton soloLaneButton;
