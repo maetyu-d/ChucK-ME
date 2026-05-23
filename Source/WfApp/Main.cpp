@@ -21,6 +21,7 @@ constexpr int fallbackBlockSize = 4096;
 constexpr int engineOutputChannels = 2;
 constexpr int maxTopLevelStates = 16;
 constexpr int maxTrackLanes = 8;
+constexpr int maxGraphTransitions = 32;
 constexpr float defaultPlaybackRate = 1.0f;
 constexpr float defaultIntensity = 0.58f;
 constexpr float defaultBrightness = 0.48f;
@@ -379,7 +380,34 @@ private:
 class OrbitCanvas final : public juce::Component
 {
 public:
+    OrbitCanvas()
+    {
+        for (int i = 0; i < maxGraphTransitions; ++i)
+        {
+            auto& editor = transitionProbabilityEditors[static_cast<size_t> (i)];
+            editor.setInputRestrictions (4, "0123456789%");
+            editor.setTextToShowWhenEmpty ("%", mutedInk().withAlpha (0.36f));
+            editor.setJustification (juce::Justification::centred);
+            editor.setColour (juce::TextEditor::backgroundColourId, panel().withAlpha (0.86f));
+            editor.setColour (juce::TextEditor::textColourId, ink());
+            editor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.22f));
+            editor.setColour (juce::TextEditor::focusedOutlineColourId, amber().withAlpha (0.68f));
+            editor.setColour (juce::TextEditor::highlightColourId, amber().withAlpha (0.24f));
+            editor.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+            editor.onTextChange = [this, i]
+            {
+                if (suppressTransitionCallbacks || onTransitionProbabilityChanged == nullptr)
+                    return;
+
+                onTransitionProbabilityChanged (i, parseTransitionProbability (transitionProbabilityEditors[static_cast<size_t> (i)].getText()));
+            };
+            addAndMakeVisible (editor);
+            editor.setVisible (false);
+        }
+    }
+
     std::function<void (int)> onStateSelected;
+    std::function<void (int, std::optional<int>)> onTransitionProbabilityChanged;
 
     void setState (const std::vector<Wf::StateSpec>* statesToUse, int selectedIndexToUse, float phaseToUse, bool runningToUse)
     {
@@ -387,11 +415,19 @@ public:
         selectedIndex = selectedIndexToUse;
         phase = phaseToUse;
         running = runningToUse;
+        rebuildNodeCentres();
+        syncTransitionEditors();
 
         if (states == nullptr || states->empty())
             nodeCentres.clear();
 
         repaint();
+    }
+
+    void resized() override
+    {
+        rebuildNodeCentres();
+        updateTransitionEditorBounds();
     }
 
     void paint (juce::Graphics& g) override
@@ -412,16 +448,7 @@ public:
             return;
 
         const auto count = static_cast<int> (states->size());
-        nodeCentres.clear();
-        nodeCentres.reserve (static_cast<size_t> (count));
-
-        for (int i = 0; i < count; ++i)
-        {
-            const auto angle = juce::MathConstants<float>::twoPi * (static_cast<float> (i) / static_cast<float> (count)) - juce::MathConstants<float>::halfPi;
-            const juce::Point<float> point { centre.x + std::cos (angle) * radius,
-                                             centre.y + std::sin (angle) * radius };
-            nodeCentres.push_back (point);
-        }
+        rebuildNodeCentres();
 
         for (int i = 0; i < count; ++i)
         {
@@ -490,6 +517,93 @@ public:
     }
 
 private:
+    void rebuildNodeCentres()
+    {
+        nodeCentres.clear();
+
+        if (states == nullptr || states->empty())
+            return;
+
+        auto area = getLocalBounds().toFloat().reduced (24.0f);
+        const auto radius = juce::jmin (area.getWidth(), area.getHeight()) * 0.36f;
+        const auto centre = area.getCentre();
+        const auto count = static_cast<int> (states->size());
+
+        nodeCentres.reserve (static_cast<size_t> (count));
+
+        for (int i = 0; i < count; ++i)
+        {
+            const auto angle = juce::MathConstants<float>::twoPi * (static_cast<float> (i) / static_cast<float> (count)) - juce::MathConstants<float>::halfPi;
+            nodeCentres.push_back ({ centre.x + std::cos (angle) * radius,
+                                     centre.y + std::sin (angle) * radius });
+        }
+    }
+
+    void syncTransitionEditors()
+    {
+        juce::ScopedValueSetter<bool> guard (suppressTransitionCallbacks, true);
+        const auto count = states == nullptr ? 0 : juce::jmin (static_cast<int> (states->size()), maxGraphTransitions);
+
+        for (int i = 0; i < maxGraphTransitions; ++i)
+        {
+            auto& editor = transitionProbabilityEditors[static_cast<size_t> (i)];
+            const auto active = i < count && count > 1;
+            editor.setVisible (active);
+            editor.setEnabled (active);
+
+            if (active && ! editor.hasKeyboardFocus (true))
+                editor.setText (formatTransitionProbability ((*states)[static_cast<size_t> (i)].transitionProbabilityPercent),
+                                juce::dontSendNotification);
+        }
+
+        updateTransitionEditorBounds();
+    }
+
+    void updateTransitionEditorBounds()
+    {
+        const auto count = states == nullptr ? 0 : juce::jmin (static_cast<int> (states->size()), maxGraphTransitions);
+
+        for (int i = 0; i < maxGraphTransitions; ++i)
+        {
+            auto& editor = transitionProbabilityEditors[static_cast<size_t> (i)];
+            if (i >= count || count <= 1 || i >= static_cast<int> (nodeCentres.size()))
+            {
+                editor.setVisible (false);
+                continue;
+            }
+
+            const auto next = (i + 1) % count;
+            if (next >= static_cast<int> (nodeCentres.size()))
+            {
+                editor.setVisible (false);
+                continue;
+            }
+
+            const auto from = nodeCentres[static_cast<size_t> (i)];
+            const auto to = nodeCentres[static_cast<size_t> (next)];
+            const auto midpoint = (from + to) * 0.5f;
+            editor.setBounds (juce::Rectangle<int> (48, 22).withCentre ({ static_cast<int> (std::round (midpoint.x)),
+                                                                          static_cast<int> (std::round (midpoint.y)) }));
+        }
+    }
+
+    static std::optional<int> parseTransitionProbability (juce::String text)
+    {
+        text = text.retainCharacters ("0123456789").trim();
+        if (text.isEmpty())
+            return {};
+
+        return juce::jlimit (0, 100, text.getIntValue());
+    }
+
+    static juce::String formatTransitionProbability (std::optional<int> probability)
+    {
+        if (! probability.has_value())
+            return {};
+
+        return juce::String (*probability) + "%";
+    }
+
     static juce::Colour laneDotColour (int index)
     {
         static const std::array<juce::Colour, 5> colours
@@ -536,9 +650,11 @@ private:
 
     const std::vector<Wf::StateSpec>* states = nullptr;
     std::vector<juce::Point<float>> nodeCentres;
+    std::array<juce::TextEditor, maxGraphTransitions> transitionProbabilityEditors;
     int selectedIndex = 0;
     float phase = 0.0f;
     bool running = false;
+    bool suppressTransitionCallbacks = false;
 };
 
 class MainComponent final : public juce::Component,
@@ -697,6 +813,10 @@ public:
         };
 
         orbitCanvas.onStateSelected = [this] (int index) { selectState (index); };
+        orbitCanvas.onTransitionProbabilityChanged = [this] (int index, std::optional<int> probability)
+        {
+            setTransitionProbability (index, probability);
+        };
         addAndMakeVisible (orbitCanvas);
 
         setupButton (playButton, running ? "Stop" : "Play", green(), [this] { toggleMainTransport(); });
@@ -917,6 +1037,7 @@ private:
             ? 0
             : juce::jlimit (0, getPerformingTrackCount() - 1, performingTrackIndex);
         trackElapsedBars = 0.0;
+        nextBarTransitionCheck = 1.0;
         orbitPhase = 0.0f;
 
         if (viewedTopLevelState == performingTopLevelState)
@@ -1141,6 +1262,7 @@ private:
         {
             performingTrackIndex = selectedState;
             trackElapsedBars = 0.0;
+            nextBarTransitionCheck = 1.0;
             loadSelectedContentForCurrentState();
         }
 
@@ -1155,6 +1277,20 @@ private:
 
         std::uniform_int_distribution<int> distribution (0, static_cast<int> (viewedTracks->size()) - 1);
         selectState (distribution (random));
+    }
+
+    void setTransitionProbability (int trackIndex, std::optional<int> probability)
+    {
+        auto* viewedTracks = getViewedTracks();
+        if (viewedTracks == nullptr || trackIndex < 0 || trackIndex >= static_cast<int> (viewedTracks->size()))
+            return;
+
+        (*viewedTracks)[static_cast<size_t> (trackIndex)].transitionProbabilityPercent = probability;
+
+        if (viewedTopLevelState == performingTopLevelState && trackIndex == performingTrackIndex)
+            nextBarTransitionCheck = std::floor (trackElapsedBars) + 1.0;
+
+        refreshLabels();
     }
 
     void selectLane (int index)
@@ -1285,9 +1421,10 @@ private:
 
         const auto hasTrack = track != nullptr;
         const auto hasLane = lane != nullptr;
+        const auto probabilityControlsDuration = hasTrack && track->transitionProbabilityPercent.has_value();
 
         trackNameEditor.setEnabled (hasTrack);
-        trackDurationEditor.setEnabled (hasTrack);
+        trackDurationEditor.setEnabled (hasTrack && ! probabilityControlsDuration);
         laneNameEditor.setEnabled (hasLane);
         muteLaneButton.setEnabled (hasLane);
         soloLaneButton.setEnabled (hasLane);
@@ -1339,6 +1476,9 @@ private:
 
         if (auto* track = getSelectedViewedTrack())
         {
+            if (track->transitionProbabilityPercent.has_value())
+                return;
+
             const auto parsed = parseTrackDuration (trackDurationEditor.getText());
             if (parsed.has_value())
                 track->duration = *parsed;
@@ -1612,7 +1752,27 @@ private:
 
             if (running)
             {
-                if (const auto durationBars = getPerformingTrackDurationBars())
+                if (const auto probabilityPercent = getPerformingTrackTransitionProbabilityPercent())
+                {
+                    auto didTransition = false;
+
+                    while (running && ! didTransition && trackElapsedBars >= nextBarTransitionCheck)
+                    {
+                        if (shouldTakeProbabilisticTransition (*probabilityPercent))
+                        {
+                            advancePerformingTrack();
+                            didTransition = true;
+                        }
+                        else
+                        {
+                            nextBarTransitionCheck += 1.0;
+                        }
+                    }
+
+                    if (running && ! didTransition)
+                        orbitPhase = static_cast<float> (std::fmod (trackElapsedBars, 1.0));
+                }
+                else if (const auto durationBars = getPerformingTrackDurationBars())
                 {
                     orbitPhase = static_cast<float> (juce::jlimit (0.0, 1.0, trackElapsedBars / *durationBars));
 
@@ -1641,6 +1801,7 @@ private:
 
         performingTrackIndex = (performingTrackIndex + 1) % static_cast<int> (performingTracks->size());
         trackElapsedBars = 0.0;
+        nextBarTransitionCheck = 1.0;
         orbitPhase = 0.0f;
 
         if (viewedTopLevelState == performingTopLevelState)
@@ -1731,6 +1892,28 @@ private:
             return {};
 
         return juce::jmax (0.25, totalBars);
+    }
+
+    std::optional<int> getPerformingTrackTransitionProbabilityPercent() const
+    {
+        const auto* performingTracks = getPerformingTracks();
+        if (performingTracks == nullptr || performingTracks->empty())
+            return {};
+
+        const auto index = static_cast<size_t> (juce::jlimit (0, static_cast<int> (performingTracks->size()) - 1, performingTrackIndex));
+        return (*performingTracks)[index].transitionProbabilityPercent;
+    }
+
+    bool shouldTakeProbabilisticTransition (int probabilityPercent)
+    {
+        if (probabilityPercent <= 0)
+            return false;
+
+        if (probabilityPercent >= 100)
+            return true;
+
+        std::uniform_int_distribution<int> distribution (1, 100);
+        return distribution (random) <= probabilityPercent;
     }
 
     void applyGlobalScriptStep (const GlobalScriptStep& step)
@@ -1929,6 +2112,7 @@ private:
     int laneCodeLaneIndex = -1;
     float orbitPhase = 0.0f;
     double trackElapsedBars = 0.0;
+    double nextBarTransitionCheck = 1.0;
     bool running = true;
     double lastTimerMs = 0.0;
 };
