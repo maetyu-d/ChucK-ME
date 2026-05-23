@@ -20,6 +20,7 @@ constexpr int maxHostChannels = 16;
 constexpr int fallbackBlockSize = 4096;
 constexpr int engineOutputChannels = 2;
 constexpr int maxTopLevelStates = 16;
+constexpr int maxStateTracks = 16;
 constexpr int maxTrackLanes = 8;
 constexpr int maxGraphTransitions = 32;
 constexpr float defaultPlaybackRate = 1.0f;
@@ -818,6 +819,15 @@ public:
         styleLabel (stateTimeSigLabel, 0.76f);
         addAndMakeVisible (stateTimeSigLabel);
 
+        stateTrackCountLabel.setText ("Tracks", juce::dontSendNotification);
+        styleLabel (stateTrackCountLabel, 0.76f);
+        addAndMakeVisible (stateTrackCountLabel);
+
+        setupTextEditor (stateTrackCountEditor, "0");
+        stateTrackCountEditor.setInputRestrictions (2, "0123456789");
+        stateTrackCountEditor.setSelectAllWhenFocused (true);
+        stateTrackCountEditor.onTextChange = [this] { applyStateTrackCountEdit(); };
+
         for (int numerator = 1; numerator <= 16; ++numerator)
             timeSigNumeratorBox.addItem (juce::String (numerator), numerator);
 
@@ -1023,6 +1033,11 @@ public:
         timeSigRow.removeFromLeft (8);
         timeSigDenominatorBox.setBounds (timeSigRow.removeFromLeft (78));
         right.removeFromTop (8);
+        auto trackCountRow = right.removeFromTop (30);
+        stateTrackCountLabel.setBounds (trackCountRow.removeFromLeft (72).reduced (0, 2));
+        trackCountRow.removeFromLeft (8);
+        stateTrackCountEditor.setBounds (trackCountRow.removeFromLeft (62).reduced (0, 2));
+        right.removeFromTop (8);
         auto stateActionRow = right.removeFromTop (34);
         newStateButton.setBounds (stateActionRow.removeFromLeft (66).reduced (0, 3));
         duplicateStateButton.setBounds (stateActionRow.removeFromLeft (112).reduced (6, 3));
@@ -1218,6 +1233,7 @@ private:
             || trackNameEditor.hasKeyboardFocus (true)
             || trackDurationEditor.hasKeyboardFocus (true)
             || laneNameEditor.hasKeyboardFocus (true)
+            || stateTrackCountEditor.hasKeyboardFocus (true)
             || orbitCanvas.isEditingTransitionProbability();
     }
 
@@ -1849,6 +1865,80 @@ private:
             loadSelectedContentForCurrentState();
     }
 
+    void applyStateTrackCountEdit()
+    {
+        if (suppressStateControlCallbacks)
+            return;
+
+        auto* viewedTracks = getViewedTracks();
+        if (viewedTracks == nullptr)
+            return;
+
+        const auto digits = stateTrackCountEditor.getText().retainCharacters ("0123456789").trim();
+        if (digits.isEmpty())
+            return;
+
+        const auto requestedCount = digits.getIntValue();
+        const auto clampedCount = juce::jlimit (1, maxStateTracks, requestedCount);
+
+        if (clampedCount != requestedCount)
+            stateTrackCountEditor.setText (juce::String (clampedCount), juce::dontSendNotification);
+
+        resizeViewedStateTracks (clampedCount);
+    }
+
+    void resizeViewedStateTracks (int requestedCount)
+    {
+        auto* viewedTracks = getViewedTracks();
+        if (viewedTracks == nullptr)
+            return;
+
+        const auto targetCount = juce::jlimit (1, maxStateTracks, requestedCount);
+        const auto previousCount = static_cast<int> (viewedTracks->size());
+        if (targetCount == previousCount)
+            return;
+
+        if (targetCount > previousCount)
+        {
+            const auto defaults = Wf::makeDefaultStates();
+
+            for (int trackIndex = previousCount; trackIndex < targetCount; ++trackIndex)
+            {
+                auto track = defaults.empty()
+                    ? Wf::StateSpec { "Track " + juce::String (trackIndex + 1), 88.0, {}, Wf::TrackDurationSpec { 1, 0 }, {} }
+                    : defaults[static_cast<size_t> (trackIndex % static_cast<int> (defaults.size()))];
+
+                track.name = "Track " + juce::String (trackIndex + 1);
+                track.duration = Wf::TrackDurationSpec { 1, 0 };
+                track.transitionProbabilityPercent.reset();
+                viewedTracks->push_back (std::move (track));
+            }
+        }
+        else
+        {
+            viewedTracks->resize (static_cast<size_t> (targetCount));
+        }
+
+        selectedState = juce::jlimit (0, targetCount - 1, selectedState);
+
+        const auto editingPerformingState = viewedTopLevelState == performingTopLevelState;
+        const auto previousPerformingTrack = performingTrackIndex;
+
+        if (editingPerformingState)
+            performingTrackIndex = juce::jlimit (0, targetCount - 1, performingTrackIndex);
+
+        if (editingPerformingState && performingTrackIndex != previousPerformingTrack)
+        {
+            selectedState = performingTrackIndex;
+            trackElapsedBars = 0.0;
+            nextBarTransitionCheck = 1.0;
+            orbitPhase = 0.0f;
+            loadSelectedContentForCurrentState();
+        }
+
+        refreshLabels();
+    }
+
     void syncViewedStateControls()
     {
         juce::ScopedValueSetter<bool> guard (suppressStateControlCallbacks, true);
@@ -1857,10 +1947,17 @@ private:
         const auto numerator = topLevelTimeSigNumerators[index];
         const auto denominator = topLevelTimeSigDenominators[index];
         const auto populated = isTopLevelStatePopulated (viewedTopLevelState);
+        const auto* viewedTracks = getViewedTracks();
+        const auto trackCount = viewedTracks == nullptr ? 0 : static_cast<int> (viewedTracks->size());
 
         stateSettingsLabel.setText ("State " + juce::String (viewedTopLevelState + 1) + (populated ? " settings" : " empty"), juce::dontSendNotification);
         stateTempoLabel.setText ("Tempo  " + juce::String (tempoBpm, 1) + " bpm", juce::dontSendNotification);
         stateTimeSigLabel.setText ("Time signature  " + juce::String (numerator) + "/" + juce::String (denominator), juce::dontSendNotification);
+        stateTrackCountEditor.setEnabled (populated);
+        stateTrackCountLabel.setAlpha (populated ? 1.0f : 0.34f);
+        if (! stateTrackCountEditor.hasKeyboardFocus (true))
+            stateTrackCountEditor.setText (populated ? juce::String (trackCount) : juce::String(), juce::dontSendNotification);
+
         stateTempoSlider.setValue (tempoBpm, juce::dontSendNotification);
         timeSigNumeratorBox.setSelectedId (numerator, juce::dontSendNotification);
         timeSigDenominatorBox.setSelectedId (denominator, juce::dontSendNotification);
@@ -2170,6 +2267,7 @@ private:
     juce::Label stateSettingsLabel;
     juce::Label stateTempoLabel;
     juce::Label stateTimeSigLabel;
+    juce::Label stateTrackCountLabel;
     juce::Label laneCodeHeader;
     juce::Label trackNameLabel;
     juce::Label trackDurationLabel;
@@ -2201,6 +2299,7 @@ private:
     juce::TextEditor trackNameEditor;
     juce::TextEditor trackDurationEditor;
     juce::TextEditor laneNameEditor;
+    juce::TextEditor stateTrackCountEditor;
     std::array<float, maxTopLevelStates> topLevelTemposBpm
     {
         88.0f, 44.0f, 88.0f, 88.0f,
