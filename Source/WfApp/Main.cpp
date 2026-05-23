@@ -1721,12 +1721,21 @@ public:
     void resized() override
     {
         auto area = getLocalBounds().reduced (34);
+        const auto stateGridRight = stateButtonRowRightEdge (area);
         auto header = area.removeFromTop (44);
         titleLabel.setBounds (header.removeFromLeft (260));
-        runScriptButton.setBounds (header.removeFromRight (88).reduced (8, 7));
-        auto volumeArea = header.removeFromRight (270);
+        const auto playButtonWidth = 72;
+        const auto headerGap = 16;
+        const auto playBounds = juce::Rectangle<int> (playButtonWidth, header.getHeight() - 14)
+                                    .withPosition (stateGridRight - playButtonWidth, header.getY() + 7);
+        runScriptButton.setBounds (playBounds);
+
+        const auto volumeBounds = juce::Rectangle<int> (270, header.getHeight())
+                                      .withPosition (playBounds.getX() - headerGap - 270, header.getY());
+        auto volumeArea = volumeBounds;
         volumeLabel.setBounds (volumeArea.removeFromLeft (66).reduced (0, 11));
         gainSlider.setBounds (volumeArea.reduced (0, 7));
+        header.setRight (volumeBounds.getX() - headerGap);
         statusLabel.setBounds (header);
 
         auto navigation = area.removeFromBottom (48);
@@ -1839,6 +1848,14 @@ public:
     }
 
 private:
+    static int stateButtonRowRightEdge (juce::Rectangle<int> area)
+    {
+        area.removeFromLeft (10);
+        const auto buttonGap = 6;
+        const auto buttonWidth = juce::jmax (52, (area.getWidth() - buttonGap * 7) / 8);
+        return area.getX() + buttonWidth * 8 + buttonGap * 7;
+    }
+
     void setupButton (juce::TextButton& button, const juce::String& text, juce::Colour colour, std::function<void()> action)
     {
         button.setButtonText (text);
