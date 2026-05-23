@@ -961,10 +961,11 @@ public:
 
     std::function<void (int)> onLaneSelected;
 
-    void setTrack (const Wf::StateSpec* trackToUse, int selectedLaneToUse, float phaseToUse, bool runningToUse)
+    void setTrack (const Wf::StateSpec* trackToUse, int selectedLaneToUse, int beatsPerBarToUse, float phaseToUse, bool runningToUse)
     {
         track = trackToUse;
         selectedLane = selectedLaneToUse;
+        beatsPerBar = juce::jlimit (1, 16, beatsPerBarToUse);
         phase = phaseToUse;
         running = runningToUse;
         rebuildLaneCentres();
@@ -1116,13 +1117,15 @@ private:
                            (dotRadius + 2.5f) * 2.0f);
 
             g.setColour (colour.withAlpha (laneIsSelected ? 0.96f : 0.68f));
-            g.drawEllipse (point.x - dotRadius, point.y - dotRadius, dotRadius * 2.0f, dotRadius * 2.0f, laneIsSelected ? 6.0f : 4.2f);
+            g.drawEllipse (point.x - dotRadius, point.y - dotRadius, dotRadius * 2.0f, dotRadius * 2.0f, laneIsSelected ? 3.0f : 2.1f);
             g.setColour (colour.withAlpha (laneIsSelected ? 0.22f : 0.10f));
             g.drawEllipse (point.x - dotRadius + 8.0f,
                            point.y - dotRadius + 8.0f,
                            (dotRadius - 8.0f) * 2.0f,
                            (dotRadius - 8.0f) * 2.0f,
-                           laneIsSelected ? 1.6f : 1.0f);
+                           laneIsSelected ? 0.8f : 0.5f);
+
+            drawLaneTimingMarks (g, point, dotRadius, colour, laneIsSelected);
 
             if (running)
                 drawLanePlayhead (g, point, dotRadius, lane);
@@ -1133,6 +1136,28 @@ private:
             g.setColour ((laneIsSelected ? ink() : mutedInk()).withAlpha (labelAlpha));
             g.setFont (juce::FontOptions (laneIsSelected ? 13.5f : 12.0f, juce::Font::bold));
             g.drawFittedText (lane.name, labelBounds, juce::Justification::centred, 1);
+        }
+    }
+
+    void drawLaneTimingMarks (juce::Graphics& g, juce::Point<float> laneCentre, float ringRadius, juce::Colour colour, bool laneIsSelected) const
+    {
+        const auto count = juce::jmax (1, beatsPerBar);
+
+        for (int beat = 0; beat < count; ++beat)
+        {
+            const auto isBarStart = beat == 0;
+            const auto angle = juce::MathConstants<float>::twoPi * (static_cast<float> (beat) / static_cast<float> (count))
+                             - juce::MathConstants<float>::halfPi;
+            const auto innerRadius = ringRadius - (isBarStart ? 9.0f : 5.5f);
+            const auto outerRadius = ringRadius + (isBarStart ? 9.0f : 5.5f);
+            const juce::Point<float> start { laneCentre.x + std::cos (angle) * innerRadius,
+                                             laneCentre.y + std::sin (angle) * innerRadius };
+            const juce::Point<float> end { laneCentre.x + std::cos (angle) * outerRadius,
+                                           laneCentre.y + std::sin (angle) * outerRadius };
+
+            g.setColour ((isBarStart ? ink() : colour).withAlpha (isBarStart ? (laneIsSelected ? 0.42f : 0.28f)
+                                                                             : (laneIsSelected ? 0.28f : 0.16f)));
+            g.drawLine (juce::Line<float> (start, end), isBarStart ? 1.4f : 0.9f);
         }
     }
 
@@ -1154,6 +1179,7 @@ private:
     const Wf::StateSpec* track = nullptr;
     std::vector<juce::Point<float>> laneCentres;
     int selectedLane = 0;
+    int beatsPerBar = 4;
     float phase = 0.0f;
     bool running = false;
 };
@@ -2247,7 +2273,7 @@ private:
         if (viewedTracks == nullptr || viewedTracks->empty())
         {
             focusedTrackIndex = 0;
-            trackFocusCanvas.setTrack (nullptr, 0, 0.0f, false);
+            trackFocusCanvas.setTrack (nullptr, 0, 4, 0.0f, false);
             return;
         }
 
@@ -2262,6 +2288,7 @@ private:
 
         trackFocusCanvas.setTrack (&track,
                                    selectedLaneForFocus,
+                                   topLevelTimeSigNumerators[static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, viewedTopLevelState))],
                                    focusedTrackIsPlaying ? orbitPhase : 0.0f,
                                    focusedTrackIsPlaying);
     }
