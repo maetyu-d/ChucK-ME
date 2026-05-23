@@ -1,0 +1,1049 @@
+{
+  "format": "ChucK-ME Project",
+  "version": 1,
+  "stateCode": "tempo(88); timeSig(4, 4); playState(1, 8);\ntempo(44); playState(2, 4);\nstop();",
+  "masterVolume": 0.18,
+  "viewedState": 0,
+  "selectedTrack": 0,
+  "selectedLane": 0,
+  "arrangementPlusMode": false,
+  "arrangementHorizontalZoom": 1.0,
+  "arrangementVerticalZoom": 1.0,
+  "states": [
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4,
+      "tracks": [
+        {
+          "name": "Pocket City",
+          "tempoBpm": 88.0,
+          "clockBeatsPerBar": 4,
+          "clockQuarterNotesPerBar": 4.0,
+          "duration": {
+            "bars": 1,
+            "beats": 0
+          },
+          "lanes": [
+            {
+              "name": "808 street",
+              "role": "drum",
+              "baseHz": 45.0,
+              "volume": 0.579999983310699,
+              "pan": 0.0,
+              "pulseTicks": 16,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Pocket bass",
+              "role": "bass",
+              "baseHz": 65.410003662109375,
+              "volume": 0.340000003576279,
+              "pan": 0.0,
+              "pulseTicks": 2,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Signal arp",
+              "role": "arp",
+              "baseHz": 261.6300048828125,
+              "volume": 0.239999994635582,
+              "pan": 0.0,
+              "pulseTicks": 1,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Glass chorus",
+              "role": "chord",
+              "baseHz": 130.80999755859375,
+              "volume": 0.200000002980232,
+              "pan": 0.0,
+              "pulseTicks": 8,
+              "openTicks": 5,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Static halo",
+              "role": "air",
+              "baseHz": 1046.5,
+              "volume": 0.070000000298023,
+              "pan": 0.0,
+              "pulseTicks": 12,
+              "openTicks": 6,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        },
+        {
+          "name": "Chrome Avenue",
+          "tempoBpm": 92.0,
+          "clockBeatsPerBar": 4,
+          "clockQuarterNotesPerBar": 4.0,
+          "duration": {
+            "bars": 1,
+            "beats": 0
+          },
+          "lanes": [
+            {
+              "name": "808 avenue",
+              "role": "drum",
+              "baseHz": 46.5,
+              "volume": 0.600000023841858,
+              "pan": 0.0,
+              "pulseTicks": 16,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Rubber motor",
+              "role": "bass",
+              "baseHz": 73.419998168945312,
+              "volume": 0.349999994039536,
+              "pan": 0.0,
+              "pulseTicks": 2,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Window arp",
+              "role": "arp",
+              "baseHz": 293.660003662109375,
+              "volume": 0.25,
+              "pan": 0.0,
+              "pulseTicks": 1,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Warm display",
+              "role": "chord",
+              "baseHz": 146.830001831054688,
+              "volume": 0.209999993443489,
+              "pan": 0.0,
+              "pulseTicks": 8,
+              "openTicks": 5,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Thin skyline",
+              "role": "air",
+              "baseHz": 1174.6600341796875,
+              "volume": 0.070000000298023,
+              "pan": 0.0,
+              "pulseTicks": 12,
+              "openTicks": 6,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        },
+        {
+          "name": "Battery Love",
+          "tempoBpm": 96.0,
+          "clockBeatsPerBar": 4,
+          "clockQuarterNotesPerBar": 4.0,
+          "duration": {
+            "bars": 1,
+            "beats": 0
+          },
+          "lanes": [
+            {
+              "name": "808 relay",
+              "role": "drum",
+              "baseHz": 43.799999237060547,
+              "volume": 0.620000004768372,
+              "pan": 0.0,
+              "pulseTicks": 16,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Battery bass",
+              "role": "bass",
+              "baseHz": 82.410003662109375,
+              "volume": 0.360000014305115,
+              "pan": 0.0,
+              "pulseTicks": 2,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Simple arp",
+              "role": "arp",
+              "baseHz": 329.6300048828125,
+              "volume": 0.270000010728836,
+              "pan": 0.0,
+              "pulseTicks": 1,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Major lights",
+              "role": "chord",
+              "baseHz": 164.80999755859375,
+              "volume": 0.219999998807907,
+              "pan": 0.0,
+              "pulseTicks": 8,
+              "openTicks": 5,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Soft carrier",
+              "role": "air",
+              "baseHz": 1318.510009765625,
+              "volume": 0.070000000298023,
+              "pan": 0.0,
+              "pulseTicks": 12,
+              "openTicks": 6,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        },
+        {
+          "name": "Pocket Choir",
+          "tempoBpm": 84.0,
+          "clockBeatsPerBar": 4,
+          "clockQuarterNotesPerBar": 4.0,
+          "duration": {
+            "bars": 1,
+            "beats": 0
+          },
+          "lanes": [
+            {
+              "name": "808 choir",
+              "role": "drum",
+              "baseHz": 44.200000762939453,
+              "volume": 0.560000002384186,
+              "pan": 0.0,
+              "pulseTicks": 16,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Round bass",
+              "role": "bass",
+              "baseHz": 61.740001678466797,
+              "volume": 0.319999992847443,
+              "pan": 0.0,
+              "pulseTicks": 2,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Choir arp",
+              "role": "arp",
+              "baseHz": 246.94000244140625,
+              "volume": 0.239999994635582,
+              "pan": 0.0,
+              "pulseTicks": 1,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Soft buttons",
+              "role": "chord",
+              "baseHz": 123.470001220703125,
+              "volume": 0.219999998807907,
+              "pan": 0.0,
+              "pulseTicks": 8,
+              "openTicks": 5,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Air tape",
+              "role": "air",
+              "baseHz": 987.77001953125,
+              "volume": 0.070000000298023,
+              "pan": 0.0,
+              "pulseTicks": 12,
+              "openTicks": 6,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        },
+        {
+          "name": "Neon Postcard",
+          "tempoBpm": 90.0,
+          "clockBeatsPerBar": 4,
+          "clockQuarterNotesPerBar": 4.0,
+          "duration": {
+            "bars": 1,
+            "beats": 0
+          },
+          "lanes": [
+            {
+              "name": "808 postcard",
+              "role": "drum",
+              "baseHz": 45.599998474121094,
+              "volume": 0.589999973773956,
+              "pan": 0.0,
+              "pulseTicks": 16,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Postcard bass",
+              "role": "bass",
+              "baseHz": 69.300003051757812,
+              "volume": 0.340000003576279,
+              "pan": 0.0,
+              "pulseTicks": 2,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Neon arp",
+              "role": "arp",
+              "baseHz": 277.17999267578125,
+              "volume": 0.259999990463257,
+              "pan": 0.0,
+              "pulseTicks": 1,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Blue chord",
+              "role": "chord",
+              "baseHz": 138.589996337890625,
+              "volume": 0.209999993443489,
+              "pan": 0.0,
+              "pulseTicks": 8,
+              "openTicks": 5,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Tape star",
+              "role": "air",
+              "baseHz": 1108.72998046875,
+              "volume": 0.070000000298023,
+              "pan": 0.0,
+              "pulseTicks": 12,
+              "openTicks": 6,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tempoBpm": 44.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4,
+      "tracks": [
+        {
+          "name": "Pocket City",
+          "tempoBpm": 88.0,
+          "clockBeatsPerBar": 4,
+          "clockQuarterNotesPerBar": 4.0,
+          "duration": {
+            "bars": 1,
+            "beats": 0
+          },
+          "lanes": [
+            {
+              "name": "808 street",
+              "role": "drum",
+              "baseHz": 45.0,
+              "volume": 0.579999983310699,
+              "pan": 0.0,
+              "pulseTicks": 16,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Pocket bass",
+              "role": "bass",
+              "baseHz": 65.410003662109375,
+              "volume": 0.340000003576279,
+              "pan": 0.0,
+              "pulseTicks": 2,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Signal arp",
+              "role": "arp",
+              "baseHz": 261.6300048828125,
+              "volume": 0.239999994635582,
+              "pan": 0.0,
+              "pulseTicks": 1,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Glass chorus",
+              "role": "chord",
+              "baseHz": 130.80999755859375,
+              "volume": 0.200000002980232,
+              "pan": 0.0,
+              "pulseTicks": 8,
+              "openTicks": 5,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Static halo",
+              "role": "air",
+              "baseHz": 1046.5,
+              "volume": 0.070000000298023,
+              "pan": 0.0,
+              "pulseTicks": 12,
+              "openTicks": 6,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        },
+        {
+          "name": "Chrome Avenue",
+          "tempoBpm": 92.0,
+          "clockBeatsPerBar": 4,
+          "clockQuarterNotesPerBar": 4.0,
+          "duration": {
+            "bars": 1,
+            "beats": 0
+          },
+          "lanes": [
+            {
+              "name": "808 avenue",
+              "role": "drum",
+              "baseHz": 46.5,
+              "volume": 0.600000023841858,
+              "pan": 0.0,
+              "pulseTicks": 16,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Rubber motor",
+              "role": "bass",
+              "baseHz": 73.419998168945312,
+              "volume": 0.349999994039536,
+              "pan": 0.0,
+              "pulseTicks": 2,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Window arp",
+              "role": "arp",
+              "baseHz": 293.660003662109375,
+              "volume": 0.25,
+              "pan": 0.0,
+              "pulseTicks": 1,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Warm display",
+              "role": "chord",
+              "baseHz": 146.830001831054688,
+              "volume": 0.209999993443489,
+              "pan": 0.0,
+              "pulseTicks": 8,
+              "openTicks": 5,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Thin skyline",
+              "role": "air",
+              "baseHz": 1174.6600341796875,
+              "volume": 0.070000000298023,
+              "pan": 0.0,
+              "pulseTicks": 12,
+              "openTicks": 6,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        },
+        {
+          "name": "Battery Love",
+          "tempoBpm": 96.0,
+          "clockBeatsPerBar": 4,
+          "clockQuarterNotesPerBar": 4.0,
+          "duration": {
+            "bars": 1,
+            "beats": 0
+          },
+          "lanes": [
+            {
+              "name": "808 relay",
+              "role": "drum",
+              "baseHz": 43.799999237060547,
+              "volume": 0.620000004768372,
+              "pan": 0.0,
+              "pulseTicks": 16,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Battery bass",
+              "role": "bass",
+              "baseHz": 82.410003662109375,
+              "volume": 0.360000014305115,
+              "pan": 0.0,
+              "pulseTicks": 2,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Simple arp",
+              "role": "arp",
+              "baseHz": 329.6300048828125,
+              "volume": 0.270000010728836,
+              "pan": 0.0,
+              "pulseTicks": 1,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Major lights",
+              "role": "chord",
+              "baseHz": 164.80999755859375,
+              "volume": 0.219999998807907,
+              "pan": 0.0,
+              "pulseTicks": 8,
+              "openTicks": 5,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Soft carrier",
+              "role": "air",
+              "baseHz": 1318.510009765625,
+              "volume": 0.070000000298023,
+              "pan": 0.0,
+              "pulseTicks": 12,
+              "openTicks": 6,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        },
+        {
+          "name": "Pocket Choir",
+          "tempoBpm": 84.0,
+          "clockBeatsPerBar": 4,
+          "clockQuarterNotesPerBar": 4.0,
+          "duration": {
+            "bars": 1,
+            "beats": 0
+          },
+          "lanes": [
+            {
+              "name": "808 choir",
+              "role": "drum",
+              "baseHz": 44.200000762939453,
+              "volume": 0.560000002384186,
+              "pan": 0.0,
+              "pulseTicks": 16,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Round bass",
+              "role": "bass",
+              "baseHz": 61.740001678466797,
+              "volume": 0.319999992847443,
+              "pan": 0.0,
+              "pulseTicks": 2,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Choir arp",
+              "role": "arp",
+              "baseHz": 246.94000244140625,
+              "volume": 0.239999994635582,
+              "pan": 0.0,
+              "pulseTicks": 1,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Soft buttons",
+              "role": "chord",
+              "baseHz": 123.470001220703125,
+              "volume": 0.219999998807907,
+              "pan": 0.0,
+              "pulseTicks": 8,
+              "openTicks": 5,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Air tape",
+              "role": "air",
+              "baseHz": 987.77001953125,
+              "volume": 0.070000000298023,
+              "pan": 0.0,
+              "pulseTicks": 12,
+              "openTicks": 6,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        },
+        {
+          "name": "Neon Postcard",
+          "tempoBpm": 90.0,
+          "clockBeatsPerBar": 4,
+          "clockQuarterNotesPerBar": 4.0,
+          "duration": {
+            "bars": 1,
+            "beats": 0
+          },
+          "lanes": [
+            {
+              "name": "808 postcard",
+              "role": "drum",
+              "baseHz": 45.599998474121094,
+              "volume": 0.589999973773956,
+              "pan": 0.0,
+              "pulseTicks": 16,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Postcard bass",
+              "role": "bass",
+              "baseHz": 69.300003051757812,
+              "volume": 0.340000003576279,
+              "pan": 0.0,
+              "pulseTicks": 2,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Neon arp",
+              "role": "arp",
+              "baseHz": 277.17999267578125,
+              "volume": 0.259999990463257,
+              "pan": 0.0,
+              "pulseTicks": 1,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Blue chord",
+              "role": "chord",
+              "baseHz": 138.589996337890625,
+              "volume": 0.209999993443489,
+              "pan": 0.0,
+              "pulseTicks": 8,
+              "openTicks": 5,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "Tape star",
+              "role": "air",
+              "baseHz": 1108.72998046875,
+              "volume": 0.070000000298023,
+              "pan": 0.0,
+              "pulseTicks": 12,
+              "openTicks": 6,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    }
+  ],
+  "importedAudio": []
+}
