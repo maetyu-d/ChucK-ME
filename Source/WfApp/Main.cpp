@@ -1250,8 +1250,8 @@ public:
         else if (mainView == MainView::code)
         {
             content.removeFromTop (12);
-            auto stateCodePane = content.removeFromLeft ((content.getWidth() - 16) / 3);
-            content.removeFromLeft (16);
+            auto stateCodePane = content.removeFromTop ((content.getHeight() - 16) / 3);
+            content.removeFromTop (16);
             auto laneCodePane = content;
 
             g.setColour (juce::Colour (0xff0d110e).withAlpha (0.58f));
@@ -1293,8 +1293,8 @@ public:
         if (mainView == MainView::code)
         {
             area.removeFromTop (12);
-            auto stateCodePane = area.removeFromLeft ((area.getWidth() - 16) / 3);
-            area.removeFromLeft (16);
+            auto stateCodePane = area.removeFromTop ((area.getHeight() - 16) / 3);
+            area.removeFromTop (16);
             auto laneCodePane = area;
 
             auto stateCodeHeaderRow = stateCodePane.removeFromTop (32);
