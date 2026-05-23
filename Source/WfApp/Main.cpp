@@ -115,6 +115,51 @@ juce::Colour green() { return juce::Colour (0xff8adf9a); }
 juce::Colour amber() { return juce::Colour (0xffd6b15f); }
 juce::Colour coral() { return juce::Colour (0xffd27a70); }
 juce::Colour blue() { return juce::Colour (0xff8ab6dc); }
+juce::Colour cyan() { return juce::Colour (0xff70d6cf); }
+juce::Colour lime() { return juce::Colour (0xffb4d06c); }
+juce::Colour rose() { return juce::Colour (0xffe08aa0); }
+juce::Colour violet() { return juce::Colour (0xffad9be8); }
+
+juce::Colour accentColourForIndex (int index)
+{
+    static const std::array<juce::Colour, 8> colours
+    {
+        green(),
+        blue(),
+        amber(),
+        coral(),
+        cyan(),
+        lime(),
+        rose(),
+        violet()
+    };
+
+    const auto wrapped = ((index % static_cast<int> (colours.size())) + static_cast<int> (colours.size())) % static_cast<int> (colours.size());
+    return colours[static_cast<size_t> (wrapped)];
+}
+
+juce::Colour laneAccentForIndex (int index)
+{
+    return accentColourForIndex (index);
+}
+
+juce::Colour stateAccentForIndex (int index)
+{
+    static const std::array<juce::Colour, 8> colours
+    {
+        green(),
+        blue(),
+        cyan(),
+        amber(),
+        coral(),
+        lime(),
+        violet(),
+        rose()
+    };
+
+    const auto wrapped = ((index % static_cast<int> (colours.size())) + static_cast<int> (colours.size())) % static_cast<int> (colours.size());
+    return colours[static_cast<size_t> (wrapped)];
+}
 
 std::array<float, 2> linearPanGains (float gain, float pan)
 {
@@ -154,9 +199,9 @@ void clearOutputs (float* const* outputChannelData, int numOutputChannels, int n
 
 void styleButton (juce::TextButton& button, juce::Colour colour)
 {
-    button.setColour (juce::TextButton::buttonColourId, panelSoft().withAlpha (0.48f));
-    button.setColour (juce::TextButton::buttonOnColourId, colour.withAlpha (0.22f));
-    button.setColour (juce::TextButton::textColourOffId, ink().withAlpha (0.78f));
+    button.setColour (juce::TextButton::buttonColourId, colour.withAlpha (0.055f));
+    button.setColour (juce::TextButton::buttonOnColourId, colour.withAlpha (0.26f));
+    button.setColour (juce::TextButton::textColourOffId, ink().withAlpha (0.74f));
     button.setColour (juce::TextButton::textColourOnId, ink());
     button.setMouseCursor (juce::MouseCursor::PointingHandCursor);
 }
@@ -217,12 +262,14 @@ public:
         auto bounds = button.getLocalBounds().toFloat().reduced (0.5f);
         const auto enabled = button.isEnabled();
         const auto toggled = button.getToggleState();
-        auto fill = toggled ? button.findColour (juce::TextButton::buttonOnColourId) : backgroundColour;
+        const auto accent = button.findColour (juce::TextButton::buttonOnColourId).withAlpha (1.0f);
+        auto fill = toggled ? button.findColour (juce::TextButton::buttonOnColourId)
+                            : backgroundColour;
 
         if (shouldDrawButtonAsDown)
-            fill = fill.brighter (0.08f);
+            fill = toggled ? fill.brighter (0.10f) : accent.withAlpha (0.12f);
         else if (shouldDrawButtonAsHighlighted)
-            fill = fill.brighter (0.05f);
+            fill = toggled ? fill.brighter (0.06f) : accent.withAlpha (0.085f);
 
         if (! enabled)
             fill = panel().withAlpha (0.36f);
@@ -230,10 +277,16 @@ public:
         g.setColour (fill);
         g.fillRoundedRectangle (bounds, 4.0f);
 
-        const auto lineColour = toggled ? button.findColour (juce::TextButton::buttonOnColourId).withAlpha (enabled ? 0.42f : 0.12f)
-                                        : mutedInk().withAlpha (enabled ? 0.12f : 0.06f);
+        const auto lineColour = toggled ? accent.withAlpha (enabled ? 0.56f : 0.12f)
+                                        : accent.withAlpha (enabled ? 0.18f : 0.06f);
         g.setColour (lineColour);
         g.drawRoundedRectangle (bounds, 4.0f, toggled ? 1.0f : 0.7f);
+
+        if (toggled && enabled)
+        {
+            g.setColour (accent.withAlpha (0.52f));
+            g.fillRoundedRectangle (bounds.reduced (5.0f, 0.0f).removeFromTop (2.0f), 1.0f);
+        }
     }
 
     void drawButtonText (juce::Graphics& g,
@@ -604,7 +657,7 @@ private:
         g.setColour (juce::Colour (0xff070a08).withAlpha (0.78f));
         g.fillRect (bounds.withWidth (gutterWidth));
 
-        g.setColour (mutedInk().withAlpha (0.10f));
+        g.setColour (blue().withAlpha (0.12f));
         g.drawVerticalLine (gutterWidth, 4.0f, static_cast<float> (bounds.getBottom() - 4));
 
         const auto text = getText();
@@ -628,7 +681,17 @@ private:
             if (lineY + lineHeight >= 0)
             {
                 const auto currentLine = lineStart == caretLineStart;
-                g.setColour ((currentLine ? ink() : mutedInk()).withAlpha (currentLine ? 0.62f : 0.34f));
+                if (currentLine)
+                {
+                    g.setColour (blue().withAlpha (0.075f));
+                    g.fillRoundedRectangle (juce::Rectangle<float> (4.0f,
+                                                                    static_cast<float> (lineY),
+                                                                    static_cast<float> (gutterWidth - 8),
+                                                                    static_cast<float> (lineHeight)),
+                                            2.0f);
+                }
+
+                g.setColour ((currentLine ? blue() : mutedInk()).withAlpha (currentLine ? 0.86f : 0.34f));
                 g.drawText (juce::String (lineNumber),
                             0,
                             lineY,
@@ -1437,10 +1500,10 @@ public:
         const auto radius = juce::jmin (area.getWidth(), area.getHeight()) * 0.42f;
         const auto centre = area.getCentre();
 
-        g.setColour (panelSoft().withAlpha (0.18f));
+        g.setColour (panelSoft().withAlpha (0.20f));
         g.fillEllipse (centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f);
 
-        g.setColour (mutedInk().withAlpha (0.11f));
+        g.setColour (cyan().withAlpha (0.08f));
         g.drawEllipse (centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f, 1.0f);
 
         if (states == nullptr || states->empty())
@@ -1452,7 +1515,8 @@ public:
         for (int i = 0; i < count; ++i)
         {
             const auto next = (i + 1) % count;
-            g.setColour (mutedInk().withAlpha (0.10f));
+            const auto lineColour = stateAccentForIndex (i);
+            g.setColour (lineColour.withAlpha (i == selectedIndex ? 0.19f : 0.09f));
             g.drawLine ({ nodeCentres[static_cast<size_t> (i)], nodeCentres[static_cast<size_t> (next)] }, 1.0f);
         }
 
@@ -1460,15 +1524,15 @@ public:
         {
             const auto selected = i == selectedIndex;
             const auto point = nodeCentres[static_cast<size_t> (i)];
-            const auto colour = selected ? green() : blue().withAlpha (0.72f);
+            const auto colour = stateAccentForIndex (i);
             const auto size = selected ? 88.0f : 68.0f;
             const auto laneCount = static_cast<int> ((*states)[static_cast<size_t> (i)].lanes.size());
 
-            g.setColour (colour.withAlpha (selected ? 0.17f : 0.08f));
+            g.setColour (colour.withAlpha (selected ? 0.19f : 0.075f));
             g.fillEllipse (point.x - size * 0.5f, point.y - size * 0.5f, size, size);
-            g.setColour (colour.withAlpha (selected ? 0.98f : 0.78f));
+            g.setColour (colour.withAlpha (selected ? 0.98f : 0.70f));
             g.drawEllipse (point.x - size * 0.5f, point.y - size * 0.5f, size, size, selected ? 2.2f : 1.3f);
-            g.setColour (colour.withAlpha (selected ? 0.20f : 0.09f));
+            g.setColour (colour.withAlpha (selected ? 0.22f : 0.09f));
             g.drawEllipse (point.x - size * 0.5f + 8.0f,
                            point.y - size * 0.5f + 8.0f,
                            size - 16.0f,
@@ -1477,7 +1541,7 @@ public:
             drawClockTicks (g, point, size * 0.5f, colour, selected);
             drawLaneDots (g, point, size, laneCount, selected);
 
-            g.setColour (ink());
+            g.setColour (ink().withAlpha (selected ? 0.98f : 0.86f));
             g.setFont (juce::FontOptions (selected ? 16.0f : 13.5f, juce::Font::bold));
             g.drawFittedText (trackDisplayName ((*states)[static_cast<size_t> (i)].name),
                               juce::Rectangle<int> (static_cast<int> (point.x - 74.0f),
@@ -1492,7 +1556,7 @@ public:
         {
             const auto base = nodeCentres[static_cast<size_t> (selectedIndex)];
             const auto angle = juce::MathConstants<float>::twoPi * phase - juce::MathConstants<float>::halfPi;
-            drawClockHand (g, base, angle, 34.0f, amber(), 1.8f, 0.86f, 3.4f);
+            drawClockHand (g, base, angle, 34.0f, stateAccentForIndex (selectedIndex), 1.8f, 0.92f, 3.4f);
         }
     }
 
@@ -1642,16 +1706,7 @@ private:
 
     static juce::Colour laneDotColour (int index)
     {
-        static const std::array<juce::Colour, 5> colours
-        {
-            green(),
-            amber(),
-            blue(),
-            coral(),
-            juce::Colour (0xffb4d06c)
-        };
-
-        return colours[static_cast<size_t> (index % static_cast<int> (colours.size()))];
+        return laneAccentForIndex (index);
     }
 
     static void drawLaneDots (juce::Graphics& g, juce::Point<float> centre, float nodeSize, int laneCount, bool selected)
@@ -1870,16 +1925,7 @@ public:
 private:
     static juce::Colour laneDotColour (int index)
     {
-        static const std::array<juce::Colour, 5> colours
-        {
-            green(),
-            amber(),
-            blue(),
-            coral(),
-            juce::Colour (0xffb4d06c)
-        };
-
-        return colours[static_cast<size_t> (index % static_cast<int> (colours.size()))];
+        return laneAccentForIndex (index);
     }
 
     static float phaseOffsetToAngle (float phaseOffset)
@@ -2199,11 +2245,11 @@ public:
                                && channel.laneIndex == selectedLane;
             const auto playing = channel.isStereoOutput ? arrangementPlus && running
                                                         : isPlayingChannel (channel);
-            const auto accent = channel.isStereoOutput ? amber() : (playing ? green() : (selected ? blue() : mutedInk()));
+            const auto accent = channelAccentColour (channel);
 
             if (channel.isStereoOutput)
             {
-                g.setColour (amber().withAlpha (0.22f));
+                g.setColour (accent.withAlpha (0.28f));
                 g.drawVerticalLine (static_cast<int> (strip.getX()) - 8,
                                     strip.getY() + 2.0f,
                                     strip.getBottom() - 2.0f);
@@ -2216,22 +2262,21 @@ public:
                                     strip.getBottom() - 4.0f);
             }
 
-            g.setColour (channel.isStereoOutput ? amber().withAlpha (0.075f)
-                                                : (playing ? green().withAlpha (0.13f)
-                                                           : (selected ? blue().withAlpha (0.13f)
-                                                                       : panelSoft().withAlpha (0.22f))));
+            g.setColour (channel.isStereoOutput ? accent.withAlpha (0.095f)
+                                                : (playing || selected ? accent.withAlpha (playing ? 0.14f : 0.11f)
+                                                                       : panelSoft().withAlpha (0.22f)));
             g.fillRoundedRectangle (strip, 5.0f);
-            g.setColour (accent.withAlpha (channel.isStereoOutput ? 0.46f : (playing ? 0.52f : (selected ? 0.38f : 0.12f))));
+            g.setColour (accent.withAlpha (channel.isStereoOutput ? 0.52f : (playing ? 0.50f : (selected ? 0.36f : 0.16f))));
             g.drawRoundedRectangle (strip, 5.0f, channel.isStereoOutput ? 1.2f : (playing ? 1.35f : 1.0f));
 
             if (playing)
             {
-                g.setColour ((channel.isStereoOutput ? amber() : green()).withAlpha (0.88f));
+                g.setColour (accent.withAlpha (0.88f));
                 g.fillRoundedRectangle (strip.reduced (7.0f, 0.0f).removeFromTop (3.0f), 1.5f);
             }
 
             auto metaArea = strip.removeFromTop (28).reduced (8.0f, 7.0f);
-            g.setColour (accent.withAlpha (channel.isStereoOutput ? 0.18f : 0.10f));
+            g.setColour (accent.withAlpha (channel.isStereoOutput ? 0.19f : 0.12f));
             g.fillRoundedRectangle (metaArea, 3.0f);
             g.setColour (accent.withAlpha (channel.isStereoOutput ? 0.78f : 0.58f));
             g.setFont (juce::FontOptions (9.5f, juce::Font::bold));
@@ -2254,7 +2299,7 @@ public:
                 g.fillRoundedRectangle (pan, 3.0f);
                 g.setColour (mutedInk().withAlpha (0.18f));
                 g.drawVerticalLine (static_cast<int> (pan.getCentreX()), pan.getY() - 3.0f, pan.getBottom() + 3.0f);
-                g.setColour (amber().withAlpha (0.70f));
+                g.setColour (accent.withAlpha (0.74f));
                 g.fillEllipse (panX - 5.0f, pan.getCentreY() - 5.0f, 10.0f, 10.0f);
                 g.setColour (mutedInk().withAlpha (0.52f));
                 g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
@@ -2275,7 +2320,7 @@ public:
                 g.drawLine (fader.getCentreX() - 11.0f, y, fader.getCentreX() - 6.0f, y, 1.0f);
                 g.drawLine (fader.getCentreX() + 6.0f, y, fader.getCentreX() + 11.0f, y, 1.0f);
             }
-            g.setColour ((channel.isStereoOutput ? amber() : green()).withAlpha (0.72f));
+            g.setColour (accent.withAlpha (0.74f));
             g.fillRoundedRectangle (juce::Rectangle<float> (7.0f, fader.getBottom() - thumbY).withPosition (fader.getCentreX() - 3.5f, thumbY), 3.5f);
             g.setColour (ink());
             g.fillRoundedRectangle (fader.getCentreX() - 10.0f, thumbY - 7.0f, 20.0f, 14.0f, 7.0f);
@@ -2296,9 +2341,9 @@ public:
                     const auto slot = effectSlotBounds (i, slotIndex);
                     const auto active = channel.effectActive[static_cast<size_t> (slotIndex)];
                     const auto hasPlugin = channel.effectNames[static_cast<size_t> (slotIndex)].isNotEmpty();
-                    g.setColour (active ? amber().withAlpha (0.18f) : panel().withAlpha (0.72f));
+                    g.setColour (active ? accent.withAlpha (0.18f) : panel().withAlpha (0.72f));
                     g.fillRoundedRectangle (slot, 3.5f);
-                    g.setColour ((active ? amber() : mutedInk()).withAlpha (active ? 0.60f : (hasPlugin ? 0.28f : 0.13f)));
+                    g.setColour ((active ? accent : mutedInk()).withAlpha (active ? 0.60f : (hasPlugin ? 0.28f : 0.13f)));
                     g.drawRoundedRectangle (slot, 3.5f, active ? 1.0f : 0.8f);
                     g.setColour ((active ? ink() : mutedInk()).withAlpha (active ? 0.88f : (hasPlugin ? 0.58f : 0.38f)));
                     g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
@@ -2504,10 +2549,13 @@ private:
         if (header.getWidth() <= 0.0f)
             return;
 
+        const auto accent = arrangementPlus ? cyan() : amber();
         g.setColour (panelSoft().withAlpha (0.30f));
         g.fillRoundedRectangle (header, 5.0f);
-        g.setColour (mutedInk().withAlpha (0.10f));
+        g.setColour (accent.withAlpha (0.16f));
         g.drawRoundedRectangle (header, 5.0f, 1.0f);
+        g.setColour (accent.withAlpha (0.24f));
+        g.fillRoundedRectangle (header.reduced (10.0f, 0.0f).removeFromTop (2.0f), 1.0f);
 
         const auto title = arrangementPlus ? "Mixer+" : "Mixer";
         auto left = header.reduced (12.0f, 0.0f);
@@ -2534,6 +2582,14 @@ private:
         return juce::String ("S") + juce::String (channel.stateIndex + 1)
              + "  T" + juce::String (channel.trackIndex + 1)
              + "  L" + juce::String (channel.laneIndex + 1);
+    }
+
+    static juce::Colour channelAccentColour (const Channel& channel)
+    {
+        if (channel.isStereoOutput)
+            return amber();
+
+        return laneAccentForIndex (channel.laneIndex);
     }
 
     bool isPlayingChannel (const Channel& channel) const noexcept
@@ -2937,12 +2993,12 @@ private:
             && ! states->at (static_cast<size_t> (index))->empty();
         const auto selected = index == viewedState;
         const auto playing = running && index == playingState;
-        const auto accent = playing ? amber() : (selected ? green() : blue());
+        const auto accent = playing ? amber() : stateAccentForIndex (index);
 
-        g.setColour (populated ? panelSoft().withAlpha (0.36f) : panel().withAlpha (0.32f));
+        g.setColour (populated ? accent.withAlpha (0.045f) : panel().withAlpha (0.32f));
         g.fillRoundedRectangle (cell.toFloat(), 4.0f);
 
-        g.setColour ((populated ? accent : mutedInk()).withAlpha (populated ? (selected || playing ? 0.50f : 0.16f) : 0.06f));
+        g.setColour ((populated ? accent : stateAccentForIndex (index)).withAlpha (populated ? (selected || playing ? 0.55f : 0.18f) : 0.055f));
         g.drawRoundedRectangle (cell.toFloat().reduced (0.5f), 4.0f, selected || playing ? 1.2f : 0.8f);
 
         auto inner = cell.reduced (14);
@@ -2960,13 +3016,23 @@ private:
             return total + static_cast<int> (track.lanes.size());
         });
 
-        g.setColour (accent.withAlpha (selected || playing ? 0.24f : 0.13f));
+        g.setColour (accent.withAlpha (selected || playing ? 0.25f : 0.12f));
         const auto circleSize = juce::jmin (inner.getWidth(), inner.getHeight() - 34);
         auto circle = juce::Rectangle<int> (circleSize, circleSize).withCentre (inner.getCentre());
         circle.translate (0, -4);
         g.fillEllipse (circle.toFloat());
         g.setColour (accent.withAlpha (selected || playing ? 0.82f : 0.44f));
         g.drawEllipse (circle.toFloat(), selected || playing ? 1.8f : 1.1f);
+
+        const auto dotCount = juce::jmin (6, laneCount);
+        for (int dot = 0; dot < dotCount; ++dot)
+        {
+            const auto dotColour = laneAccentForIndex (dot);
+            const auto dotX = static_cast<float> (inner.getX() + dot * 12);
+            const auto dotY = static_cast<float> (inner.getBottom() - 45);
+            g.setColour (dotColour.withAlpha (selected || playing ? 0.76f : 0.42f));
+            g.fillEllipse (dotX, dotY, 5.0f, 5.0f);
+        }
 
         g.setColour (ink().withAlpha (0.90f));
         g.setFont (juce::FontOptions (14.0f, juce::Font::bold));
@@ -3082,7 +3148,8 @@ public:
 
             playheadBars += juce::jlimit (0.0, juce::jmax (0.0, steps[playingStep].bars), playingStepElapsedBars);
             const auto x = static_cast<float> (timelineX) + static_cast<float> (playheadBars * getBarWidth());
-            g.setColour (green().withAlpha (0.90f));
+            const auto playheadColour = stateAccentForIndex (steps[playingStep].stateIndex);
+            g.setColour (playheadColour.withAlpha (0.92f));
             g.drawLine (x, 0.0f, x, static_cast<float> (getHeight()), 1.8f);
             g.fillRoundedRectangle (x - 5.0f, 6.0f, 10.0f, 16.0f, 2.0f);
         }
@@ -3183,7 +3250,7 @@ private:
         if (tracks == nullptr)
             return;
 
-        const auto accent = stepIndex % 3 == 0 ? green() : (stepIndex % 3 == 1 ? blue() : amber());
+        const auto accent = stateAccentForIndex (step.stateIndex);
         const auto playingStepNow = running && static_cast<size_t> (stepIndex) == playingStep;
         const auto trackHeaderHeight = getTrackHeaderHeight();
         const auto laneRowHeight = getLaneRowHeight();
@@ -3208,7 +3275,7 @@ private:
             const auto trackY = headerHeight + trackIndex * (trackHeaderHeight + maxLanesInAnyTrack * laneRowHeight + trackGap);
             auto trackNameArea = juce::Rectangle<float> (bounds.getX(), static_cast<float> (trackY), bounds.getWidth(), static_cast<float> (trackHeaderHeight)).reduced (2.0f, 2.0f);
 
-            g.setColour ((playingStepNow && trackIndex == playingTrack && step.stateIndex == playingState ? green() : mutedInk()).withAlpha (0.12f));
+            g.setColour ((playingStepNow && trackIndex == playingTrack && step.stateIndex == playingState ? accent : mutedInk()).withAlpha (0.12f));
             g.fillRoundedRectangle (trackNameArea, 2.0f);
             g.setColour (ink().withAlpha (0.78f));
             g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
@@ -3316,14 +3383,7 @@ private:
 
     static juce::Colour laneColourForIndex (int laneIndex)
     {
-        switch (laneIndex % 5)
-        {
-            case 0: return green();
-            case 1: return amber();
-            case 2: return blue();
-            case 3: return coral();
-            default: return mutedInk();
-        }
+        return laneAccentForIndex (laneIndex);
     }
 
     static constexpr int leftHeaderWidth = 170;
@@ -3455,7 +3515,7 @@ public:
             auto& button = stateButtons[static_cast<size_t> (i)];
             setupButton (button,
                          "State " + juce::String (i + 1),
-                         i == 0 ? green() : blue(),
+                         stateAccentForIndex (i),
                          [this, i]
                          {
                              selectViewedTopLevelState (i);
@@ -3786,7 +3846,7 @@ public:
         for (int i = 0; i < static_cast<int> (laneButtons.size()); ++i)
         {
             auto& button = laneButtons[static_cast<size_t> (i)];
-            setupButton (button, juce::String (i + 1), blue(), [this, i] { selectLane (i); });
+            setupButton (button, juce::String (i + 1), laneAccentForIndex (i), [this, i] { selectLane (i); });
             laneListContent.addAndMakeVisible (button);
             button.setClickingTogglesState (false);
 
@@ -3945,6 +4005,16 @@ public:
         g.setColour (mutedInk().withAlpha (0.06f));
         g.drawRoundedRectangle (area.toFloat(), 7.0f, 1.0f);
 
+        const auto viewAccent = currentViewAccent();
+        g.setColour (viewAccent.withAlpha (0.11f));
+        g.drawRoundedRectangle (area.toFloat().reduced (0.5f), 7.0f, 1.0f);
+        g.setColour (viewAccent.withAlpha (0.22f));
+        g.fillRoundedRectangle (juce::Rectangle<float> (static_cast<float> (area.getX() + 24),
+                                                        static_cast<float> (area.getY() + 1),
+                                                        126.0f,
+                                                        2.0f),
+                                1.0f);
+
         auto content = area.reduced (18);
         auto top = content.removeFromTop (48);
         auto navigation = content.removeFromBottom (48);
@@ -3973,11 +4043,11 @@ public:
             body.removeFromLeft (arrangementPaneGap);
             auto rightPane = body.removeFromRight (arrangementRightPaneWidth);
 
-            g.setColour (juce::Colour (0xff0b0f0c).withAlpha (0.30f));
+            g.setColour (viewAccent.withAlpha (0.030f));
             g.fillRoundedRectangle (leftPane.toFloat(), 3.0f);
             g.fillRoundedRectangle (rightPane.toFloat(), 3.0f);
 
-            g.setColour (mutedInk().withAlpha (0.028f));
+            g.setColour (viewAccent.withAlpha (0.055f));
             g.drawRoundedRectangle (leftPane.toFloat(), 3.0f, 1.0f);
             g.drawRoundedRectangle (rightPane.toFloat(), 3.0f, 1.0f);
 
@@ -4001,11 +4071,11 @@ public:
             content.removeFromTop (codeViewDividerHeight);
             auto laneCodePane = content;
 
-            g.setColour (juce::Colour (0xff0b0f0c).withAlpha (0.42f));
+            g.setColour (viewAccent.withAlpha (0.026f));
             g.fillRoundedRectangle (stateCodePane.toFloat(), 3.0f);
             g.fillRoundedRectangle (laneCodePane.toFloat(), 3.0f);
 
-            g.setColour (mutedInk().withAlpha (0.035f));
+            g.setColour (viewAccent.withAlpha (0.060f));
             g.drawRoundedRectangle (stateCodePane.toFloat(), 3.0f, 1.0f);
             g.drawRoundedRectangle (laneCodePane.toFloat(), 3.0f, 1.0f);
         }
@@ -4016,21 +4086,21 @@ public:
             content.removeFromLeft (trackFocusPaneGap);
             auto trackPane = content;
 
-            g.setColour (juce::Colour (0xff0b0f0c).withAlpha (0.42f));
+            g.setColour (viewAccent.withAlpha (0.026f));
             g.fillRoundedRectangle (trackPane.toFloat(), 3.0f);
             g.fillRoundedRectangle (codePane.toFloat(), 3.0f);
 
-            g.setColour (mutedInk().withAlpha (0.035f));
+            g.setColour (viewAccent.withAlpha (0.060f));
             g.drawRoundedRectangle (trackPane.toFloat(), 3.0f, 1.0f);
             g.drawRoundedRectangle (codePane.toFloat(), 3.0f, 1.0f);
         }
         else if (mainView == MainView::mixer || mainView == MainView::overall || mainView == MainView::timeline)
         {
             content.removeFromTop (12);
-            g.setColour (juce::Colour (0xff0b0f0c).withAlpha (0.42f));
+            g.setColour (viewAccent.withAlpha (0.026f));
             g.fillRoundedRectangle (content.toFloat(), 3.0f);
 
-            g.setColour (mutedInk().withAlpha (0.035f));
+            g.setColour (viewAccent.withAlpha (0.060f));
             g.drawRoundedRectangle (content.toFloat(), 3.0f, 1.0f);
         }
     }
@@ -4254,6 +4324,21 @@ public:
     }
 
 private:
+    juce::Colour currentViewAccent() const
+    {
+        switch (mainView)
+        {
+            case MainView::overall:     return cyan();
+            case MainView::arrangement: return stateAccentForIndex (viewedTopLevelState);
+            case MainView::code:        return blue();
+            case MainView::track:       return laneAccentForIndex (selectedLane);
+            case MainView::timeline:    return arrangementPlusMode ? cyan() : green();
+            case MainView::mixer:       return arrangementPlusMode ? cyan() : amber();
+        }
+
+        return green();
+    }
+
     static int stateButtonRowRightEdge (juce::Rectangle<int> area)
     {
         area.removeFromLeft (10);
@@ -7257,7 +7342,7 @@ private:
         {
             auto& button = stateButtons[static_cast<size_t> (i)];
             if (isTopLevelStatePopulated (i))
-                styleButton (button, i == 0 ? green() : blue());
+                styleButton (button, stateAccentForIndex (i));
             else
                 styleEmptyStateButton (button);
 
@@ -8464,7 +8549,7 @@ class WfApplication final : public juce::JUCEApplication
 {
 public:
     const juce::String getApplicationName() override { return "ChucK-ME"; }
-    const juce::String getApplicationVersion() override { return "0.1.3"; }
+    const juce::String getApplicationVersion() override { return "0.1.4"; }
     bool moreThanOneInstanceAllowed() override { return true; }
 
     void initialise (const juce::String&) override
