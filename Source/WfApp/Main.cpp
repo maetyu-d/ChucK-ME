@@ -382,6 +382,8 @@ class OrbitCanvas final : public juce::Component
 public:
     OrbitCanvas()
     {
+        setWantsKeyboardFocus (true);
+
         for (int i = 0; i < maxGraphTransitions; ++i)
         {
             auto& editor = transitionProbabilityEditors[static_cast<size_t> (i)];
@@ -505,6 +507,8 @@ public:
 
     void mouseDown (const juce::MouseEvent& event) override
     {
+        grabKeyboardFocus();
+
         if (nodeCentres.empty() || onStateSelected == nullptr)
             return;
 
