@@ -1,4 +1,5 @@
 #include <juce_audio_devices/juce_audio_devices.h>
+#include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_extra/juce_gui_extra.h>
 
@@ -6,10 +7,12 @@
 
 #include "WfChucKPrograms.h"
 
+#include <algorithm>
 #include <atomic>
 #include <array>
 #include <cmath>
 #include <limits>
+#include <memory>
 #include <numeric>
 #include <optional>
 #include <random>
@@ -39,6 +42,46 @@ constexpr float defaultBrightness = 0.48f;
 constexpr auto laneDeclarationMarker = "// wf::declaration";
 constexpr auto laneControlMarker = "// wf::control";
 
+juce::String defaultGlobalScriptText()
+{
+    return "tempo(88); timeSig(4, 4); playState(1, 8);\n"
+           "tempo(44); playState(2, 4);\n"
+           "stop();";
+}
+
+std::array<float, maxTopLevelStates> defaultTopLevelTempos()
+{
+    return
+    {
+        88.0f, 44.0f, 88.0f, 88.0f,
+        88.0f, 88.0f, 88.0f, 88.0f,
+        88.0f, 88.0f, 88.0f, 88.0f,
+        88.0f, 88.0f, 88.0f, 88.0f
+    };
+}
+
+std::array<int, maxTopLevelStates> defaultTopLevelTimeSigNumerators()
+{
+    return
+    {
+        4, 4, 4, 4,
+        4, 4, 4, 4,
+        4, 4, 4, 4,
+        4, 4, 4, 4
+    };
+}
+
+std::array<int, maxTopLevelStates> defaultTopLevelTimeSigDenominators()
+{
+    return
+    {
+        4, 4, 4, 4,
+        4, 4, 4, 4,
+        4, 4, 4, 4,
+        4, 4, 4, 4
+    };
+}
+
 struct GlobalScriptStep
 {
     int stateIndex = 0;
@@ -46,6 +89,20 @@ struct GlobalScriptStep
     std::optional<float> tempoBpm;
     std::optional<int> timeSigNumerator;
     std::optional<int> timeSigDenominator;
+};
+
+struct ImportedLaneAudioClip
+{
+    int stateIndex = 0;
+    int trackIndex = 0;
+    int laneIndex = 0;
+    juce::File file;
+    std::shared_ptr<juce::AudioBuffer<float>> audioData;
+    std::vector<float> waveformPeaks;
+    double audioSampleRate = 48000.0;
+    double lengthSeconds = 0.0;
+    float mixGain = 1.0f;
+    float mixPan = 0.0f;
 };
 
 juce::Colour ink() { return juce::Colour (0xfff2f4ef); }
@@ -56,6 +113,32 @@ juce::Colour green() { return juce::Colour (0xff8adf9a); }
 juce::Colour amber() { return juce::Colour (0xffd6b15f); }
 juce::Colour coral() { return juce::Colour (0xffd27a70); }
 juce::Colour blue() { return juce::Colour (0xff8ab6dc); }
+
+std::array<float, 2> linearPanGains (float gain, float pan)
+{
+    pan = juce::jlimit (-1.0f, 1.0f, pan);
+    return { gain * (pan <= 0.0f ? 1.0f : 1.0f - pan),
+             gain * (pan >= 0.0f ? 1.0f : 1.0f + pan) };
+}
+
+float readInterpolatedSample (const juce::AudioBuffer<float>& buffer, int channel, double sourcePosition)
+{
+    if (buffer.getNumSamples() <= 0 || buffer.getNumChannels() <= 0)
+        return 0.0f;
+
+    channel = juce::jlimit (0, buffer.getNumChannels() - 1, channel);
+    if (sourcePosition < 0.0 || sourcePosition >= static_cast<double> (buffer.getNumSamples() - 1))
+    {
+        const auto index = static_cast<int> (std::floor (sourcePosition));
+        return index >= 0 && index < buffer.getNumSamples() ? buffer.getSample (channel, index) : 0.0f;
+    }
+
+    const auto index = static_cast<int> (std::floor (sourcePosition));
+    const auto alpha = static_cast<float> (sourcePosition - static_cast<double> (index));
+    const auto a = buffer.getSample (channel, index);
+    const auto b = buffer.getSample (channel, index + 1);
+    return a + (b - a) * alpha;
+}
 
 void clearOutputs (float* const* outputChannelData, int numOutputChannels, int numSamples)
 {
@@ -257,6 +340,29 @@ public:
 
 class WfAudioCallback final : public juce::AudioIODeviceCallback
 {
+    struct PlaybackMode
+    {
+        enum Type
+        {
+            chuckEngine = 0,
+            importedAudio = 1
+        };
+    };
+
+    struct ImportedPlaybackClip
+    {
+        std::shared_ptr<const juce::AudioBuffer<float>> audio;
+        double sampleRate = 48000.0;
+        std::shared_ptr<std::atomic<float>> gain;
+        std::shared_ptr<std::atomic<float>> pan;
+    };
+
+    struct ImportedPlaybackSet
+    {
+        std::vector<ImportedPlaybackClip> clips;
+        double lengthSeconds = 0.0;
+    };
+
 public:
     WfAudioCallback()
     {
@@ -273,6 +379,7 @@ public:
     void audioDeviceStopped() override
     {
         ready.store (false, std::memory_order_release);
+        importedPlaying.store (false, std::memory_order_release);
 
         for (auto& slot : slots)
         {
@@ -304,6 +411,12 @@ public:
             return;
 
         juce::ScopedNoDenormals noDenormals;
+
+        if (playbackMode.load (std::memory_order_acquire) == PlaybackMode::importedAudio)
+        {
+            processImportedAudio (outputChannelData, numOutputChannels, numSamples);
+            return;
+        }
 
         for (auto& slot : slots)
         {
@@ -438,8 +551,133 @@ public:
             applyControlsToSlot (slot, masterGain, tempoHz, intensity, brightness, orbitPhase);
     }
 
+    bool loadImportedAudioClips (const std::vector<ImportedLaneAudioClip>& clips)
+    {
+        auto playbackSet = std::make_shared<ImportedPlaybackSet>();
+        playbackSet->clips.reserve (clips.size());
+
+        for (const auto& clip : clips)
+        {
+            if (clip.audioData == nullptr || clip.audioData->getNumSamples() <= 0)
+                continue;
+
+            ImportedPlaybackClip playbackClip;
+            playbackClip.audio = clip.audioData;
+            playbackClip.sampleRate = juce::jmax (1.0, clip.audioSampleRate);
+            playbackClip.gain = std::make_shared<std::atomic<float>> (clip.mixGain);
+            playbackClip.pan = std::make_shared<std::atomic<float>> (clip.mixPan);
+            playbackSet->lengthSeconds = juce::jmax (playbackSet->lengthSeconds,
+                                                     static_cast<double> (clip.audioData->getNumSamples()) / playbackClip.sampleRate);
+            playbackSet->clips.push_back (std::move (playbackClip));
+        }
+
+        const juce::SpinLock::ScopedLockType lock (importedPlaybackLock);
+        importedPlaybackSet = std::move (playbackSet);
+        importedPositionSamples.store (0, std::memory_order_release);
+        const auto hasImportedClips = importedPlaybackSet != nullptr && ! importedPlaybackSet->clips.empty();
+
+        if (hasImportedClips)
+        {
+            importedPlaying.store (false, std::memory_order_release);
+            for (auto& slot : slots)
+            {
+                slot.inUse.store (false, std::memory_order_release);
+                slot.targetGain.store (0.0f, std::memory_order_release);
+                slot.gain = 0.0f;
+            }
+
+            activeSlot.store (-1, std::memory_order_release);
+            playbackMode.store (PlaybackMode::importedAudio, std::memory_order_release);
+        }
+
+        return hasImportedClips;
+    }
+
+    void startImportedAudioPlayback (float masterGain)
+    {
+        lastMasterGain.store (masterGain, std::memory_order_relaxed);
+        importedPositionSamples.store (0, std::memory_order_release);
+        importedPlaying.store (true, std::memory_order_release);
+
+        for (auto& slot : slots)
+        {
+            slot.inUse.store (false, std::memory_order_release);
+            slot.targetGain.store (0.0f, std::memory_order_release);
+            slot.gain = 0.0f;
+        }
+
+        activeSlot.store (-1, std::memory_order_release);
+
+        playbackMode.store (PlaybackMode::importedAudio, std::memory_order_release);
+    }
+
+    void stopImportedAudioPlayback()
+    {
+        importedPlaying.store (false, std::memory_order_release);
+        importedPositionSamples.store (0, std::memory_order_release);
+    }
+
+    bool isImportedAudioPlaying() const noexcept
+    {
+        return importedPlaying.load (std::memory_order_acquire);
+    }
+
+    void useChucKPlayback()
+    {
+        importedPlaying.store (false, std::memory_order_release);
+        playbackMode.store (PlaybackMode::chuckEngine, std::memory_order_release);
+    }
+
+    void clearImportedAudioPlayback()
+    {
+        importedPlaying.store (false, std::memory_order_release);
+        importedPositionSamples.store (0, std::memory_order_release);
+        {
+            const juce::SpinLock::ScopedLockType lock (importedPlaybackLock);
+            importedPlaybackSet.reset();
+        }
+        playbackMode.store (PlaybackMode::chuckEngine, std::memory_order_release);
+    }
+
+    void setImportedMasterGain (float masterGain)
+    {
+        lastMasterGain.store (masterGain, std::memory_order_relaxed);
+    }
+
+    void setImportedClipMix (int clipIndex, float gain, float pan)
+    {
+        std::shared_ptr<ImportedPlaybackSet> playbackSet;
+        {
+            const juce::SpinLock::ScopedLockType lock (importedPlaybackLock);
+            playbackSet = importedPlaybackSet;
+        }
+
+        if (playbackSet == nullptr || clipIndex < 0 || clipIndex >= static_cast<int> (playbackSet->clips.size()))
+            return;
+
+        auto& clip = playbackSet->clips[static_cast<size_t> (clipIndex)];
+        if (clip.gain != nullptr)
+            clip.gain->store (gain, std::memory_order_release);
+        if (clip.pan != nullptr)
+            clip.pan->store (pan, std::memory_order_release);
+    }
+
     juce::String diagnostics() const
     {
+        if (playbackMode.load (std::memory_order_acquire) == PlaybackMode::importedAudio)
+        {
+            auto clipCount = 0;
+            {
+                const juce::SpinLock::ScopedLockType lock (importedPlaybackLock);
+                clipCount = importedPlaybackSet == nullptr ? 0 : static_cast<int> (importedPlaybackSet->clips.size());
+            }
+
+            return "src=audio files"
+                 + juce::String (" clips=") + juce::String (clipCount)
+                 + " sr=" + juce::String (lastSampleRate.load (std::memory_order_relaxed), 0)
+                 + " bs=" + juce::String (lastReportedBlockSize.load (std::memory_order_relaxed));
+        }
+
         uint64_t renderedBlocks = 0;
         uint64_t silentBlocks = 0;
         int voices = 0;
@@ -474,6 +712,74 @@ private:
         juce::MidiBuffer midi;
     };
 
+    void processImportedAudio (float* const* outputChannelData, int numOutputChannels, int numSamples)
+    {
+        if (! importedPlaying.load (std::memory_order_acquire))
+            return;
+
+        std::shared_ptr<ImportedPlaybackSet> playbackSet;
+        {
+            const juce::SpinLock::ScopedLockType lock (importedPlaybackLock);
+            playbackSet = importedPlaybackSet;
+        }
+
+        const auto deviceSampleRate = lastSampleRate.load (std::memory_order_relaxed);
+        if (playbackSet == nullptr || playbackSet->clips.empty() || deviceSampleRate <= 0.0)
+            return;
+
+        const auto startSample = importedPositionSamples.load (std::memory_order_acquire);
+        if (playbackSet->lengthSeconds > 0.0
+            && static_cast<double> (startSample) / deviceSampleRate >= playbackSet->lengthSeconds)
+        {
+            importedPlaying.store (false, std::memory_order_release);
+            return;
+        }
+
+        const auto masterGain = lastMasterGain.load (std::memory_order_relaxed);
+        if (masterGain > 0.000001f)
+        {
+            for (const auto& clip : playbackSet->clips)
+            {
+                if (clip.audio == nullptr || clip.audio->getNumSamples() <= 0)
+                    continue;
+
+                const auto gain = clip.gain != nullptr ? clip.gain->load (std::memory_order_acquire) : 1.0f;
+                if (gain <= 0.000001f)
+                    continue;
+
+                const auto pan = clip.pan != nullptr ? clip.pan->load (std::memory_order_acquire) : 0.0f;
+                const auto panGains = linearPanGains (masterGain * gain, pan);
+                const auto sourceScale = clip.sampleRate / deviceSampleRate;
+
+                for (int sample = 0; sample < numSamples; ++sample)
+                {
+                    const auto sourcePosition = static_cast<double> (startSample + sample) * sourceScale;
+                    if (sourcePosition >= static_cast<double> (clip.audio->getNumSamples()))
+                        break;
+
+                    const auto left = readInterpolatedSample (*clip.audio, 0, sourcePosition);
+                    const auto right = readInterpolatedSample (*clip.audio, clip.audio->getNumChannels() > 1 ? 1 : 0, sourcePosition);
+
+                    if (numOutputChannels > 0 && outputChannelData[0] != nullptr)
+                        outputChannelData[0][sample] += left * panGains[0];
+                    if (numOutputChannels > 1 && outputChannelData[1] != nullptr)
+                        outputChannelData[1][sample] += right * panGains[1];
+
+                    for (int channel = 2; channel < numOutputChannels; ++channel)
+                        if (outputChannelData[channel] != nullptr)
+                            outputChannelData[channel][sample] += 0.5f * (left + right) * masterGain * gain;
+                }
+            }
+        }
+
+        const auto nextSample = startSample + numSamples;
+        importedPositionSamples.store (nextSample, std::memory_order_release);
+
+        if (playbackSet->lengthSeconds > 0.0
+            && static_cast<double> (nextSample) / deviceSampleRate >= playbackSet->lengthSeconds)
+            importedPlaying.store (false, std::memory_order_release);
+    }
+
     bool prepare (double sampleRate, int reportedBlockSize)
     {
         ready.store (false, std::memory_order_release);
@@ -502,6 +808,7 @@ private:
         }
 
         activeSlot.store (-1, std::memory_order_release);
+        importedPositionSamples.store (0, std::memory_order_release);
         ready.store (prepared, std::memory_order_release);
         return prepared;
     }
@@ -624,8 +931,13 @@ private:
     juce::AudioBuffer<float> emptyInput;
     std::array<EngineSlot, 2> slots;
     juce::AudioPluginFormatManager pluginFormatManager;
+    mutable juce::SpinLock importedPlaybackLock;
+    std::shared_ptr<ImportedPlaybackSet> importedPlaybackSet;
     static constexpr double tailFadeSeconds = 0.42;
     std::atomic<bool> ready { false };
+    std::atomic<int> playbackMode { PlaybackMode::chuckEngine };
+    std::atomic<bool> importedPlaying { false };
+    std::atomic<int64_t> importedPositionSamples { 0 };
     std::atomic<int> activeSlot { -1 };
     std::atomic<int> preparedBlockSize { 0 };
     std::atomic<double> lastSampleRate { 0.0 };
@@ -1380,7 +1692,9 @@ public:
                      int selectedLaneToUse,
                      int playingStateToUse,
                      int playingTrackToUse,
-                     bool runningToUse)
+                     bool runningToUse,
+                     std::vector<ImportedLaneAudioClip>* importedLaneClipsToUse,
+                     bool arrangementPlusToUse)
     {
         states = statesToUse;
         viewedState = viewedStateToUse;
@@ -1389,6 +1703,8 @@ public:
         playingState = playingStateToUse;
         playingTrack = playingTrackToUse;
         running = runningToUse;
+        importedLaneClips = importedLaneClipsToUse;
+        arrangementPlus = arrangementPlusToUse;
         rebuildChannels();
         repaint();
     }
@@ -1438,7 +1754,10 @@ public:
         {
             g.setColour (mutedInk().withAlpha (0.55f));
             g.setFont (juce::FontOptions (15.0f, juce::Font::bold));
-            g.drawFittedText ("No lanes to mix", getLocalBounds().reduced (24), juce::Justification::centred, 1);
+            g.drawFittedText (arrangementPlus ? "No imported audio clips to mix" : "No lanes to mix",
+                              getLocalBounds().reduced (24),
+                              juce::Justification::centred,
+                              1);
             return;
         }
 
@@ -1478,7 +1797,7 @@ public:
 
             g.setColour (mutedInk().withAlpha (0.70f));
             g.setFont (juce::FontOptions (10.5f, juce::Font::bold));
-            g.drawFittedText ("S" + juce::String (channel.stateIndex + 1) + " T" + juce::String (channel.trackIndex + 1),
+            g.drawFittedText ((arrangementPlus ? "A+ " : "") + juce::String ("S") + juce::String (channel.stateIndex + 1) + " T" + juce::String (channel.trackIndex + 1),
                               strip.removeFromTop (18).toNearestInt(),
                               juce::Justification::centred,
                               1);
@@ -1489,6 +1808,16 @@ public:
             g.drawFittedText (channel.trackName, labelArea.removeFromTop (20).toNearestInt(), juce::Justification::centred, 1);
             g.setColour (mutedInk().withAlpha (0.78f));
             g.drawFittedText (channel.laneName, labelArea.toNearestInt(), juce::Justification::centred, 1);
+
+            if (arrangementPlus && channel.fileName.isNotEmpty())
+            {
+                g.setColour (blue().withAlpha (0.46f));
+                auto clipBadge = strip.removeFromTop (18).reduced (7.0f, 2.0f);
+                g.drawRoundedRectangle (clipBadge, 2.0f, 0.8f);
+                g.setColour (ink().withAlpha (0.66f));
+                g.setFont (juce::FontOptions (8.5f, juce::Font::bold));
+                g.drawFittedText (channel.fileName, clipBadge.toNearestInt().reduced (4, 0), juce::Justification::centred, 1);
+            }
 
             auto pan = panBounds (i);
             const auto panNorm = (juce::jlimit (-1.0f, 1.0f, channel.pan) + 1.0f) * 0.5f;
@@ -1502,7 +1831,7 @@ public:
             g.drawFittedText ("pan", pan.translated (0.0f, -14.0f).toNearestInt(), juce::Justification::centred, 1);
 
             auto fader = faderBounds (i);
-            const auto norm = juce::jlimit (0.0f, 1.0f, channel.volume / maxLaneVolume);
+            const auto norm = juce::jlimit (0.0f, 1.0f, channel.volume / getMaxChannelGain());
             const auto thumbY = fader.getBottom() - fader.getHeight() * norm;
 
             g.setColour (mutedInk().withAlpha (0.12f));
@@ -1606,6 +1935,8 @@ private:
         int laneIndex = 0;
         juce::String trackName;
         juce::String laneName;
+        juce::String fileName;
+        int importedClipIndex = -1;
         float volume = 0.0f;
         float pan = 0.0f;
         std::array<bool, maxTrackEffectSlots> effectActive {};
@@ -1618,6 +1949,18 @@ private:
 
         if (states == nullptr)
             return;
+
+        if (arrangementPlus && importedLaneClips != nullptr && ! importedLaneClips->empty())
+        {
+            for (int clipIndex = 0; clipIndex < static_cast<int> (importedLaneClips->size()); ++clipIndex)
+            {
+                auto channel = channelForClip (clipIndex, importedLaneClips->at (static_cast<size_t> (clipIndex)));
+                if (channel.has_value())
+                    channels.push_back (*channel);
+            }
+
+            return;
+        }
 
         for (int stateIndex = 0; stateIndex < maxTopLevelStates; ++stateIndex)
         {
@@ -1652,6 +1995,45 @@ private:
                 }
             }
         }
+    }
+
+    std::optional<Channel> channelForClip (int clipIndex, const ImportedLaneAudioClip& clip) const
+    {
+        if (states == nullptr || clip.stateIndex < 0 || clip.stateIndex >= maxTopLevelStates)
+            return {};
+
+        auto& stateSlot = (*states)[static_cast<size_t> (clip.stateIndex)];
+        if (! stateSlot.has_value())
+            return {};
+
+        auto& tracks = *stateSlot;
+        if (clip.trackIndex < 0 || clip.trackIndex >= static_cast<int> (tracks.size()))
+            return {};
+
+        const auto& track = tracks[static_cast<size_t> (clip.trackIndex)];
+        if (clip.laneIndex < 0 || clip.laneIndex >= static_cast<int> (track.lanes.size()))
+            return {};
+
+        const auto& lane = track.lanes[static_cast<size_t> (clip.laneIndex)];
+        Channel channel;
+        channel.stateIndex = clip.stateIndex;
+        channel.trackIndex = clip.trackIndex;
+        channel.laneIndex = clip.laneIndex;
+        channel.trackName = trackDisplayName (track.name);
+        channel.laneName = lane.name;
+        channel.fileName = clip.file.getFileName();
+        channel.importedClipIndex = clipIndex;
+        channel.volume = clip.mixGain;
+        channel.pan = clip.mixPan;
+
+        for (int effectIndex = 0; effectIndex < maxTrackEffectSlots; ++effectIndex)
+        {
+            const auto& effect = track.effectSlots[static_cast<size_t> (effectIndex)];
+            channel.effectActive[static_cast<size_t> (effectIndex)] = effect.active && effect.pluginName.isNotEmpty();
+            channel.effectNames[static_cast<size_t> (effectIndex)] = effect.pluginName;
+        }
+
+        return channel;
     }
 
     bool isPlayingChannel (const Channel& channel) const noexcept
@@ -1732,6 +2114,17 @@ private:
         return &lanes[static_cast<size_t> (channel.laneIndex)];
     }
 
+    ImportedLaneAudioClip* getImportedClip (const Channel& channel) const
+    {
+        if (importedLaneClips == nullptr || channel.importedClipIndex < 0)
+            return nullptr;
+
+        if (channel.importedClipIndex >= static_cast<int> (importedLaneClips->size()))
+            return nullptr;
+
+        return &importedLaneClips->at (static_cast<size_t> (channel.importedClipIndex));
+    }
+
     void selectActiveChannel()
     {
         if (activeChannel < 0 || activeChannel >= static_cast<int> (channels.size()))
@@ -1748,14 +2141,27 @@ private:
             return;
 
         auto& channel = channels[static_cast<size_t> (activeChannel)];
-        auto* lane = getLane (channel);
-        if (lane == nullptr)
-            return;
-
         const auto fader = faderBounds (activeChannel);
         const auto norm = 1.0f - juce::jlimit (0.0f, 1.0f, (y - fader.getY()) / juce::jmax (1.0f, fader.getHeight()));
-        const auto volume = juce::jlimit (0.0f, maxLaneVolume, norm * maxLaneVolume);
-        lane->volume = volume;
+        const auto volume = juce::jlimit (0.0f, getMaxChannelGain(), norm * getMaxChannelGain());
+
+        if (arrangementPlus)
+        {
+            auto* clip = getImportedClip (channel);
+            if (clip == nullptr)
+                return;
+
+            clip->mixGain = volume;
+        }
+        else
+        {
+            auto* lane = getLane (channel);
+            if (lane == nullptr)
+                return;
+
+            lane->volume = volume;
+        }
+
         channel.volume = volume;
 
         if (onLaneVolumeChanged != nullptr)
@@ -1770,14 +2176,27 @@ private:
             return;
 
         auto& channel = channels[static_cast<size_t> (activeChannel)];
-        auto* lane = getLane (channel);
-        if (lane == nullptr)
-            return;
-
         const auto panArea = panBounds (activeChannel);
         const auto norm = juce::jlimit (0.0f, 1.0f, (x - panArea.getX()) / juce::jmax (1.0f, panArea.getWidth()));
         const auto pan = norm * 2.0f - 1.0f;
-        lane->pan = pan;
+
+        if (arrangementPlus)
+        {
+            auto* clip = getImportedClip (channel);
+            if (clip == nullptr)
+                return;
+
+            clip->mixPan = pan;
+        }
+        else
+        {
+            auto* lane = getLane (channel);
+            if (lane == nullptr)
+                return;
+
+            lane->pan = pan;
+        }
+
         channel.pan = pan;
 
         if (onLanePanChanged != nullptr)
@@ -1794,12 +2213,19 @@ private:
         return name.substring (0, 5);
     }
 
+    float getMaxChannelGain() const noexcept
+    {
+        return arrangementPlus ? maxImportedClipGain : maxLaneVolume;
+    }
+
     static constexpr int horizontalPadding = 16;
     static constexpr int channelWidth = 86;
     static constexpr int channelGap = 8;
     static constexpr float maxLaneVolume = 0.8f;
+    static constexpr float maxImportedClipGain = 1.5f;
 
     std::array<std::optional<std::vector<Wf::StateSpec>>, maxTopLevelStates>* states = nullptr;
+    std::vector<ImportedLaneAudioClip>* importedLaneClips = nullptr;
     std::vector<Channel> channels;
     int viewedState = 0;
     int selectedTrack = 0;
@@ -1809,6 +2235,7 @@ private:
     int activeChannel = -1;
     ActiveControl activeControl = ActiveControl::none;
     bool running = false;
+    bool arrangementPlus = false;
 };
 
 class TrackFocusDivider final : public juce::Component
@@ -1988,7 +2415,9 @@ public:
                      int playingTrackToUse,
                      size_t playingStepToUse,
                      double playingStepElapsedBarsToUse,
-                     bool runningToUse)
+                     bool runningToUse,
+                     const std::vector<ImportedLaneAudioClip>* importedLaneClipsToUse,
+                     bool arrangementPlusToUse)
     {
         states = statesToUse;
         steps = std::move (stepsToUse);
@@ -1997,18 +2426,27 @@ public:
         playingStep = playingStepToUse;
         playingStepElapsedBars = playingStepElapsedBarsToUse;
         running = runningToUse;
+        importedLaneClips = importedLaneClipsToUse;
+        arrangementPlus = arrangementPlusToUse;
         rebuildMetrics();
         repaint();
     }
 
     int getPreferredWidth() const
     {
-        return juce::jmax (760, leftHeaderWidth + 60 + static_cast<int> (totalBars * barWidth));
+        return juce::jmax (760, leftHeaderWidth + 60 + static_cast<int> (totalBars * getBarWidth()));
     }
 
     int getPreferredHeight() const
     {
-        return juce::jmax (360, headerHeight + maxTracks * (trackHeaderHeight + maxLanesInAnyTrack * laneRowHeight + trackGap) + 34);
+        return juce::jmax (360, headerHeight + maxTracks * (getTrackHeaderHeight() + maxLanesInAnyTrack * getLaneRowHeight() + getTrackGap()) + 34);
+    }
+
+    void setZoom (double horizontalZoomToUse, double verticalZoomToUse)
+    {
+        horizontalZoom = juce::jlimit (0.35, 3.25, horizontalZoomToUse);
+        verticalZoom = juce::jlimit (0.55, 3.0, verticalZoomToUse);
+        repaint();
     }
 
     void paint (juce::Graphics& g) override
@@ -2042,12 +2480,13 @@ public:
         drawTrackLabels (g, contentTop);
 
         double barOffset = 0.0;
+        const auto barWidth = getBarWidth();
         for (int stepIndex = 0; stepIndex < static_cast<int> (steps.size()); ++stepIndex)
         {
             const auto& step = steps[static_cast<size_t> (stepIndex)];
             const auto stepX = static_cast<float> (timelineX) + static_cast<float> (barOffset * barWidth);
             const auto stepW = static_cast<float> (juce::jmax (0.25, step.bars) * barWidth);
-            drawStep (g, step, stepIndex, { stepX, 0.0f, stepW, static_cast<float> (getHeight()) });
+            drawStep (g, step, stepIndex, barOffset, { stepX, 0.0f, stepW, static_cast<float> (getHeight()) });
             barOffset += juce::jmax (0.0, step.bars);
         }
 
@@ -2058,7 +2497,7 @@ public:
                 playheadBars += juce::jmax (0.0, steps[i].bars);
 
             playheadBars += juce::jlimit (0.0, juce::jmax (0.0, steps[playingStep].bars), playingStepElapsedBars);
-            const auto x = static_cast<float> (timelineX) + static_cast<float> (playheadBars * barWidth);
+            const auto x = static_cast<float> (timelineX) + static_cast<float> (playheadBars * getBarWidth());
             g.setColour (green().withAlpha (0.90f));
             g.drawLine (x, 0.0f, x, static_cast<float> (getHeight()), 1.8f);
             g.fillRoundedRectangle (x - 5.0f, 6.0f, 10.0f, 16.0f, 2.0f);
@@ -2100,6 +2539,8 @@ private:
     void drawRuler (juce::Graphics& g, int timelineX, int timelineRight)
     {
         const auto visibleBars = static_cast<int> (std::ceil (totalBars));
+        const auto barWidth = getBarWidth();
+        const auto labelEveryBars = juce::jmax (1, static_cast<int> (std::ceil (34.0 / juce::jmax (1.0, barWidth))));
         g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
 
         for (int bar = 0; bar <= visibleBars; ++bar)
@@ -2111,7 +2552,7 @@ private:
             g.setColour (mutedInk().withAlpha (bar == 0 ? 0.22f : 0.10f));
             g.drawLine (x, 0.0f, x, static_cast<float> (getHeight()), bar == 0 ? 1.2f : 0.8f);
 
-            if (bar > 0)
+            if (bar > 0 && bar % labelEveryBars == 0)
             {
                 g.setColour (mutedInk().withAlpha (0.70f));
                 g.drawFittedText (juce::String (bar), juce::Rectangle<int> (static_cast<int> (x) + 5, 8, 44, 16), juce::Justification::centredLeft, 1);
@@ -2122,6 +2563,9 @@ private:
     void drawTrackLabels (juce::Graphics& g, int contentTop)
     {
         auto y = contentTop;
+        const auto trackHeaderHeight = getTrackHeaderHeight();
+        const auto laneRowHeight = getLaneRowHeight();
+        const auto trackGap = getTrackGap();
         for (int trackIndex = 0; trackIndex < maxTracks; ++trackIndex)
         {
             const auto trackHeight = trackHeaderHeight + maxLanesInAnyTrack * laneRowHeight;
@@ -2149,7 +2593,7 @@ private:
         }
     }
 
-    void drawStep (juce::Graphics& g, const GlobalScriptStep& step, int stepIndex, juce::Rectangle<float> bounds)
+    void drawStep (juce::Graphics& g, const GlobalScriptStep& step, int stepIndex, double stepStartBars, juce::Rectangle<float> bounds)
     {
         const auto* tracks = getTracks (step.stateIndex);
         if (tracks == nullptr)
@@ -2157,6 +2601,9 @@ private:
 
         const auto accent = stepIndex % 3 == 0 ? green() : (stepIndex % 3 == 1 ? blue() : amber());
         const auto playingStepNow = running && static_cast<size_t> (stepIndex) == playingStep;
+        const auto trackHeaderHeight = getTrackHeaderHeight();
+        const auto laneRowHeight = getLaneRowHeight();
+        const auto trackGap = getTrackGap();
 
         auto header = bounds.withY (0.0f).withHeight (static_cast<float> (headerHeight - 1)).reduced (2.0f, 4.0f);
         g.setColour (accent.withAlpha (playingStepNow ? 0.24f : 0.14f));
@@ -2192,17 +2639,95 @@ private:
                                                         static_cast<float> (laneRowHeight - 4));
                 const auto laneColour = laneColourForIndex (laneIndex);
                 const auto active = ! lane.muted;
+                const auto* importedClip = findImportedClip (step.stateIndex, trackIndex, laneIndex);
 
-                g.setColour (laneColour.withAlpha (active ? 0.20f : 0.06f));
+                g.setColour (laneColour.withAlpha (active ? (importedClip != nullptr ? 0.28f : 0.20f) : 0.06f));
                 g.fillRoundedRectangle (laneArea, 2.0f);
-                g.setColour (laneColour.withAlpha (active ? 0.64f : 0.18f));
-                g.drawRoundedRectangle (laneArea, 2.0f, 0.8f);
 
-                g.setColour ((active ? ink() : mutedInk()).withAlpha (active ? 0.86f : 0.34f));
-                g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
-                g.drawFittedText (lane.name, laneArea.toNearestInt().reduced (6, 0), juce::Justification::centredLeft, 1);
+                if (importedClip != nullptr)
+                    drawImportedAudioClip (g, laneArea, laneColour, *importedClip, stepStartBars, step.bars, totalBars);
+                else
+                {
+                    g.setColour (laneColour.withAlpha (active ? 0.64f : 0.18f));
+                    g.drawRoundedRectangle (laneArea, 2.0f, 0.8f);
+
+                    g.setColour ((active ? ink() : mutedInk()).withAlpha (active ? 0.86f : 0.34f));
+                    g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
+                    g.drawFittedText (lane.name, laneArea.toNearestInt().reduced (6, 0), juce::Justification::centredLeft, 1);
+                }
             }
         }
+    }
+
+    const ImportedLaneAudioClip* findImportedClip (int stateIndex, int trackIndex, int laneIndex) const
+    {
+        if (! arrangementPlus || importedLaneClips == nullptr)
+            return nullptr;
+
+        const auto match = std::find_if (importedLaneClips->begin(), importedLaneClips->end(), [=] (const ImportedLaneAudioClip& clip)
+        {
+            return clip.stateIndex == stateIndex
+                && clip.trackIndex == trackIndex
+                && clip.laneIndex == laneIndex
+                && clip.file.existsAsFile();
+        });
+
+        return match == importedLaneClips->end() ? nullptr : &*match;
+    }
+
+    static void drawImportedAudioClip (juce::Graphics& g,
+                                       juce::Rectangle<float> laneArea,
+                                       juce::Colour laneColour,
+                                       const ImportedLaneAudioClip& clip,
+                                       double stepStartBars,
+                                       double stepBars,
+                                       double arrangementBars)
+    {
+        laneArea = laneArea.reduced (0.5f);
+        g.setColour (laneColour.withAlpha (0.82f));
+        g.drawRoundedRectangle (laneArea, 2.0f, 1.1f);
+
+        auto waveArea = laneArea.reduced (5.0f, 4.0f);
+        const auto centreY = waveArea.getCentreY();
+        g.setColour (mutedInk().withAlpha (0.18f));
+        g.drawHorizontalLine (static_cast<int> (centreY), waveArea.getX(), waveArea.getRight());
+
+        if (! clip.waveformPeaks.empty())
+        {
+            const auto columns = juce::jmax (1, static_cast<int> (waveArea.getWidth()));
+            const auto startNorm = arrangementBars > 0.0 ? juce::jlimit (0.0, 1.0, stepStartBars / arrangementBars) : 0.0;
+            const auto endNorm = arrangementBars > 0.0 ? juce::jlimit (startNorm, 1.0, (stepStartBars + stepBars) / arrangementBars) : 1.0;
+            g.setColour (laneColour.withAlpha (0.86f));
+            for (int column = 0; column < columns; column += 2)
+            {
+                const auto columnNorm = static_cast<double> (column) / juce::jmax (1.0, static_cast<double> (columns - 1));
+                const auto peakIndex = juce::jlimit (0,
+                                                     static_cast<int> (clip.waveformPeaks.size()) - 1,
+                                                     static_cast<int> ((startNorm + (endNorm - startNorm) * columnNorm)
+                                                                       * static_cast<double> (clip.waveformPeaks.size())));
+                const auto peak = juce::jlimit (0.0f, 1.0f, clip.waveformPeaks[static_cast<size_t> (peakIndex)]);
+                const auto height = juce::jmax (1.0f, peak * waveArea.getHeight() * 0.50f);
+                const auto x = waveArea.getX() + static_cast<float> (column);
+                g.drawLine (x, centreY - height, x, centreY + height, 1.15f);
+            }
+        }
+        else
+        {
+            g.setColour (laneColour.withAlpha (0.38f));
+            for (int x = static_cast<int> (waveArea.getX()); x < static_cast<int> (waveArea.getRight()); x += 5)
+            {
+                const auto phase = static_cast<float> ((x / 5) % 7) / 6.0f;
+                const auto height = 2.0f + std::sin (phase * juce::MathConstants<float>::pi) * juce::jmax (1.0f, waveArea.getHeight() * 0.34f);
+                g.drawLine (static_cast<float> (x), centreY - height, static_cast<float> (x), centreY + height, 0.8f);
+            }
+        }
+
+        auto labelArea = laneArea.withWidth (juce::jmin (laneArea.getWidth(), 320.0f)).reduced (4.0f, 2.0f);
+        g.setColour (juce::Colour (0xff080c09).withAlpha (0.72f));
+        g.fillRoundedRectangle (labelArea, 2.0f);
+        g.setColour (ink().withAlpha (0.88f));
+        g.setFont (juce::FontOptions (9.2f, juce::Font::bold));
+        g.drawFittedText (clip.file.getFileName(), labelArea.toNearestInt().reduced (5, 0), juce::Justification::centredLeft, 1);
     }
 
     static juce::Colour laneColourForIndex (int laneIndex)
@@ -2219,13 +2744,36 @@ private:
 
     static constexpr int leftHeaderWidth = 170;
     static constexpr int headerHeight = 42;
-    static constexpr int trackHeaderHeight = 22;
-    static constexpr int laneRowHeight = 18;
-    static constexpr int trackGap = 8;
-    static constexpr double barWidth = 68.0;
+    static constexpr int baseTrackHeaderHeight = 24;
+    static constexpr int baseLaneRowHeight = 24;
+    static constexpr int baseTrackGap = 8;
+    static constexpr double baseBarWidth = 68.0;
+
+    double getBarWidth() const noexcept
+    {
+        return baseBarWidth * horizontalZoom;
+    }
+
+    int getTrackHeaderHeight() const noexcept
+    {
+        return static_cast<int> (std::round (static_cast<double> (baseTrackHeaderHeight)
+                                             * juce::jlimit (0.85, 1.45, verticalZoom)));
+    }
+
+    int getLaneRowHeight() const noexcept
+    {
+        return static_cast<int> (std::round (static_cast<double> (baseLaneRowHeight) * verticalZoom));
+    }
+
+    int getTrackGap() const noexcept
+    {
+        return static_cast<int> (std::round (static_cast<double> (baseTrackGap)
+                                             * juce::jlimit (0.75, 1.8, verticalZoom)));
+    }
 
     const std::array<std::optional<std::vector<Wf::StateSpec>>, maxTopLevelStates>* states = nullptr;
     std::vector<GlobalScriptStep> steps;
+    const std::vector<ImportedLaneAudioClip>* importedLaneClips = nullptr;
     double totalBars = 0.0;
     int maxTracks = 1;
     int maxLanesInAnyTrack = 1;
@@ -2234,9 +2782,13 @@ private:
     size_t playingStep = 0;
     double playingStepElapsedBars = 0.0;
     bool running = false;
+    bool arrangementPlus = false;
+    double horizontalZoom = 1.0;
+    double verticalZoom = 1.0;
 };
 
 class MainComponent final : public juce::Component,
+                            public juce::MenuBarModel,
                             private juce::Timer
 {
     enum class MainView
@@ -2247,6 +2799,17 @@ class MainComponent final : public juce::Component,
         code,
         timeline,
         mixer
+    };
+
+    enum MenuIds
+    {
+        menuNewProject = 1,
+        menuLoadProject,
+        menuSaveProject,
+        menuSaveProjectAs,
+        menuRenderLanes,
+        menuRenderWav,
+        menuRemoveRenderedAudio
     };
 
 public:
@@ -2275,6 +2838,11 @@ public:
 
         setupSlider (gainSlider, "Volume", 0.0, 0.8, 0.18, green());
         gainSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 56, 22);
+        gainSlider.onValueChange = [this]
+        {
+            markProjectDirty();
+            applyCurrentAudioControls();
+        };
 
         for (int i = 0; i < maxTopLevelStates; ++i)
         {
@@ -2300,7 +2868,7 @@ public:
 
         globalScriptEditor.setMultiLine (true);
         globalScriptEditor.setReturnKeyStartsNewLine (true);
-        globalScriptEditor.setText ("tempo(88); timeSig(4, 4); playState(1, 8);\ntempo(44); playState(2, 4);\nstop();", juce::dontSendNotification);
+        globalScriptEditor.setText (defaultGlobalScriptText(), juce::dontSendNotification);
         globalScriptEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff0c100d));
         globalScriptEditor.setColour (juce::TextEditor::textColourId, ink());
         globalScriptEditor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.07f));
@@ -2309,6 +2877,7 @@ public:
         globalScriptEditor.setFont (juce::FontOptions (13.0f));
         globalScriptEditor.onTextChange = [this]
         {
+            markProjectDirty();
             if (mainView == MainView::timeline)
                 syncArrangementTimelineView();
         };
@@ -2441,6 +3010,7 @@ public:
                 return;
 
             topLevelTemposBpm[static_cast<size_t> (viewedTopLevelState)] = static_cast<float> (stateTempoSlider.getValue());
+            markProjectDirty();
             refreshLabels();
 
             if (viewedTopLevelState == performingTopLevelState)
@@ -2476,6 +3046,7 @@ public:
                 return;
 
             topLevelTimeSigNumerators[static_cast<size_t> (viewedTopLevelState)] = timeSigNumeratorBox.getSelectedId();
+            markProjectDirty();
             refreshLabels();
         };
 
@@ -2485,6 +3056,7 @@ public:
                 return;
 
             topLevelTimeSigDenominators[static_cast<size_t> (viewedTopLevelState)] = timeSigDenominatorBox.getSelectedId();
+            markProjectDirty();
             refreshLabels();
         };
 
@@ -2544,6 +3116,25 @@ public:
         setupButton (codeViewButton, "Code", blue(), [this] { setMainView (MainView::code); });
         setupButton (timelineViewButton, "Arrangement", green(), [this] { setMainView (MainView::timeline); });
         setupButton (mixerViewButton, "Mixer", amber(), [this] { setMainView (MainView::mixer); });
+        setupButton (removeRenderedAudioButton, "Remove audio", coral(), [this] { removeRenderedAudioAndReturnToCodePlayback(); });
+
+        arrangementHorizontalZoomLabel.setText ("H zoom", juce::dontSendNotification);
+        styleLabel (arrangementHorizontalZoomLabel, 0.72f);
+        addAndMakeVisible (arrangementHorizontalZoomLabel);
+        setupSlider (arrangementHorizontalZoomSlider, "Arrangement horizontal zoom", 0.35, 3.25, arrangementHorizontalZoom, green());
+        arrangementHorizontalZoomSlider.setRange (0.35, 3.25, 0.01);
+        arrangementHorizontalZoomSlider.setNumDecimalPlacesToDisplay (2);
+        arrangementHorizontalZoomSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 44, 22);
+        arrangementHorizontalZoomSlider.onValueChange = [this] { applyArrangementZoomChange(); };
+
+        arrangementVerticalZoomLabel.setText ("V zoom", juce::dontSendNotification);
+        styleLabel (arrangementVerticalZoomLabel, 0.72f);
+        addAndMakeVisible (arrangementVerticalZoomLabel);
+        setupSlider (arrangementVerticalZoomSlider, "Arrangement vertical zoom", 0.55, 3.0, arrangementVerticalZoom, blue());
+        arrangementVerticalZoomSlider.setRange (0.55, 3.0, 0.01);
+        arrangementVerticalZoomSlider.setNumDecimalPlacesToDisplay (2);
+        arrangementVerticalZoomSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 44, 22);
+        arrangementVerticalZoomSlider.onValueChange = [this] { applyArrangementZoomChange(); };
 
         addAndMakeVisible (laneHeader);
         laneHeader.setText ("lanes", juce::dontSendNotification);
@@ -2583,6 +3174,51 @@ public:
     {
         audioDeviceManager.removeAudioCallback (&audioCallback);
         setLookAndFeel (nullptr);
+    }
+
+    juce::StringArray getMenuBarNames() override
+    {
+        return { "File" };
+    }
+
+    juce::PopupMenu getMenuForIndex (int menuIndex, const juce::String&) override
+    {
+        juce::PopupMenu menu;
+
+        if (menuIndex == 0)
+        {
+            menu.addItem (menuNewProject, "New Project");
+            menu.addSeparator();
+            menu.addItem (menuLoadProject, "Load Project...");
+            menu.addItem (menuSaveProject, "Save Project", projectDirty || currentProjectFile == juce::File());
+            menu.addItem (menuSaveProjectAs, "Save Project As...");
+            menu.addSeparator();
+            menu.addItem (menuRenderLanes, "Render Lanes...");
+            menu.addItem (menuRenderWav, arrangementPlusMode ? "Render WAV+..." : "Render WAV...");
+            menu.addItem (menuRemoveRenderedAudio, "Remove Rendered Audio", arrangementPlusMode);
+        }
+
+        return menu;
+    }
+
+    void menuItemSelected (int menuItemID, int) override
+    {
+        switch (menuItemID)
+        {
+            case menuNewProject: confirmUnsavedChangesThen ([this] { newProject(); }); break;
+            case menuLoadProject: confirmUnsavedChangesThen ([this] { chooseProjectToLoad(); }); break;
+            case menuSaveProject: saveProject(); break;
+            case menuSaveProjectAs: chooseProjectSaveFile(); break;
+            case menuRenderLanes: chooseArrangementLaneRenderDirectory(); break;
+            case menuRenderWav: chooseArrangementRenderFile(); break;
+            case menuRemoveRenderedAudio: removeRenderedAudioAndReturnToCodePlayback(); break;
+            default: break;
+        }
+    }
+
+    void confirmQuitThen (std::function<void()> quitAction)
+    {
+        confirmUnsavedChangesThen (std::move (quitAction));
     }
 
     bool keyPressed (const juce::KeyPress& key) override
@@ -2769,6 +3405,20 @@ public:
         if (mainView == MainView::timeline)
         {
             area.removeFromTop (12);
+            auto toolbar = area.removeFromTop (38);
+            if (arrangementPlusMode)
+            {
+                removeRenderedAudioButton.setBounds (toolbar.removeFromRight (122).reduced (0, 2));
+            }
+            toolbar.removeFromRight (18);
+            auto verticalZoomArea = toolbar.removeFromRight (158);
+            arrangementVerticalZoomLabel.setBounds (verticalZoomArea.removeFromLeft (52).reduced (0, 10));
+            arrangementVerticalZoomSlider.setBounds (verticalZoomArea.reduced (0, 7));
+            toolbar.removeFromRight (12);
+            auto horizontalZoomArea = toolbar.removeFromRight (158);
+            arrangementHorizontalZoomLabel.setBounds (horizontalZoomArea.removeFromLeft (52).reduced (0, 10));
+            arrangementHorizontalZoomSlider.setBounds (horizontalZoomArea.reduced (0, 7));
+            area.removeFromTop (8);
             arrangementTimelineViewport.setBounds (area.reduced (8, 0));
             resizeArrangementTimelineCanvas();
             return;
@@ -2984,8 +3634,11 @@ private:
         overallButton.setToggleState (mainView == MainView::overall, juce::dontSendNotification);
         arrangementButton.setToggleState (mainView == MainView::arrangement, juce::dontSendNotification);
         codeViewButton.setToggleState (mainView == MainView::code, juce::dontSendNotification);
+        timelineViewButton.setButtonText (arrangementPlusMode ? "Arrangement+" : "Arrangement");
         timelineViewButton.setToggleState (mainView == MainView::timeline, juce::dontSendNotification);
+        mixerViewButton.setButtonText (arrangementPlusMode ? "Mixer+" : "Mixer");
         mixerViewButton.setToggleState (mainView == MainView::mixer, juce::dontSendNotification);
+        syncTransportButtons();
     }
 
     void syncViewVisibility()
@@ -3053,6 +3706,11 @@ private:
         laneCodeRunButton.setVisible (track || code);
         stateCodeHeader.setVisible (code);
         arrangementTimelineViewport.setVisible (timeline);
+        removeRenderedAudioButton.setVisible (timeline && arrangementPlusMode);
+        arrangementHorizontalZoomLabel.setVisible (timeline);
+        arrangementHorizontalZoomSlider.setVisible (timeline);
+        arrangementVerticalZoomLabel.setVisible (timeline);
+        arrangementVerticalZoomSlider.setVisible (timeline);
         mixerViewport.setVisible (mixer);
 
         overallButton.setVisible (true);
@@ -3070,7 +3728,9 @@ private:
                                 selectedLane,
                                 performingTopLevelState,
                                 performingTrackIndex,
-                                running);
+                                running,
+                                &importedLaneAudioClips,
+                                arrangementPlusMode);
         resizeMixerCanvas();
 
         if (mainView == MainView::mixer)
@@ -3095,7 +3755,10 @@ private:
                                               performingTrackIndex,
                                               scriptRunning ? scriptStepIndex : 0,
                                               scriptRunning ? scriptStepElapsedBars : 0.0,
-                                              running);
+                                              running,
+                                              &importedLaneAudioClips,
+                                              arrangementPlusMode);
+        arrangementTimelineCanvas.setZoom (arrangementHorizontalZoom, arrangementVerticalZoom);
         resizeArrangementTimelineCanvas();
     }
 
@@ -3139,6 +3802,1479 @@ private:
         const auto width = juce::jmax (arrangementTimelineViewport.getWidth(), arrangementTimelineCanvas.getPreferredWidth());
         const auto height = juce::jmax (arrangementTimelineViewport.getHeight(), arrangementTimelineCanvas.getPreferredHeight());
         arrangementTimelineCanvas.setSize (width, height);
+    }
+
+    void applyArrangementZoomChange()
+    {
+        const auto previousWidth = juce::jmax (1, arrangementTimelineCanvas.getWidth());
+        const auto previousHeight = juce::jmax (1, arrangementTimelineCanvas.getHeight());
+        const auto centreXFraction = static_cast<double> (arrangementTimelineViewport.getViewPositionX()
+                                                          + arrangementTimelineViewport.getViewWidth() / 2)
+                                   / static_cast<double> (previousWidth);
+        const auto centreYFraction = static_cast<double> (arrangementTimelineViewport.getViewPositionY()
+                                                          + arrangementTimelineViewport.getViewHeight() / 2)
+                                   / static_cast<double> (previousHeight);
+
+        arrangementHorizontalZoom = arrangementHorizontalZoomSlider.getValue();
+        arrangementVerticalZoom = arrangementVerticalZoomSlider.getValue();
+        markProjectDirty();
+        arrangementTimelineCanvas.setZoom (arrangementHorizontalZoom, arrangementVerticalZoom);
+        resizeArrangementTimelineCanvas();
+
+        const auto targetX = static_cast<int> (centreXFraction * static_cast<double> (arrangementTimelineCanvas.getWidth())
+                                               - arrangementTimelineViewport.getViewWidth() / 2);
+        const auto targetY = static_cast<int> (centreYFraction * static_cast<double> (arrangementTimelineCanvas.getHeight())
+                                               - arrangementTimelineViewport.getViewHeight() / 2);
+        arrangementTimelineViewport.setViewPosition (juce::jmax (0, targetX), juce::jmax (0, targetY));
+    }
+
+    void chooseArrangementRenderFile()
+    {
+        if (! globalScriptHasStop())
+        {
+            statusLabel.setText ("render needs stop() in state code", juce::dontSendNotification);
+            return;
+        }
+
+        const auto defaultFile = juce::File::getSpecialLocation (juce::File::userDesktopDirectory)
+            .getChildFile (isUsingImportedAudioPlayback() ? "ChucK-ME arrangement+.wav"
+                                                           : "ChucK-ME arrangement.wav");
+        renderChooser = std::make_unique<juce::FileChooser> ("Render Arrangement to WAV",
+                                                             defaultFile,
+                                                             "*.wav");
+        renderChooser->launchAsync (juce::FileBrowserComponent::saveMode
+                                        | juce::FileBrowserComponent::canSelectFiles
+                                        | juce::FileBrowserComponent::warnAboutOverwriting,
+                                    [this] (const juce::FileChooser& chooser)
+                                    {
+                                        auto file = chooser.getResult();
+                                        if (file == juce::File())
+                                            return;
+
+                                        if (file.getFileExtension().isEmpty())
+                                            file = file.withFileExtension ("wav");
+
+                                        if (isUsingImportedAudioPlayback())
+                                            renderImportedArrangementToWav (file);
+                                        else
+                                            renderArrangementToWav (file);
+                                    });
+    }
+
+    void chooseArrangementLaneRenderDirectory()
+    {
+        if (! globalScriptHasStop())
+        {
+            statusLabel.setText ("lane render needs stop() in state code", juce::dontSendNotification);
+            return;
+        }
+
+        renderChooser = std::make_unique<juce::FileChooser> ("Render lane WAVs to folder",
+                                                             juce::File::getSpecialLocation (juce::File::userDesktopDirectory),
+                                                             juce::String());
+        renderChooser->launchAsync (juce::FileBrowserComponent::openMode
+                                        | juce::FileBrowserComponent::canSelectDirectories,
+                                    [this] (const juce::FileChooser& chooser)
+                                    {
+                                        const auto directory = chooser.getResult();
+                                        if (directory == juce::File())
+                                            return;
+
+                                        renderArrangementLanesToDirectory (directory);
+                                    });
+    }
+
+    bool globalScriptHasStop() const
+    {
+        return juce::String (stripGlobalScriptComments (globalScriptEditor.getText().toStdString())).containsIgnoreCase ("stop");
+    }
+
+    static bool hasJsonValue (const juce::var& value)
+    {
+        return ! value.isVoid() && ! value.isUndefined();
+    }
+
+    static void setJsonProperty (juce::DynamicObject& object, const char* name, const juce::var& value)
+    {
+        object.setProperty (juce::Identifier (name), value);
+    }
+
+    static juce::var getJsonProperty (const juce::DynamicObject& object, const char* name)
+    {
+        return object.getProperty (juce::Identifier (name));
+    }
+
+    static juce::String stringFromJson (const juce::DynamicObject& object,
+                                        const char* name,
+                                        const juce::String& fallback = {})
+    {
+        const auto value = getJsonProperty (object, name);
+        return hasJsonValue (value) ? value.toString() : fallback;
+    }
+
+    static int intFromJson (const juce::DynamicObject& object, const char* name, int fallback)
+    {
+        const auto value = getJsonProperty (object, name);
+        return hasJsonValue (value) ? value.toString().getIntValue() : fallback;
+    }
+
+    static double doubleFromJson (const juce::DynamicObject& object, const char* name, double fallback)
+    {
+        const auto value = getJsonProperty (object, name);
+        return hasJsonValue (value) ? static_cast<double> (value) : fallback;
+    }
+
+    static bool boolFromJson (const juce::DynamicObject& object, const char* name, bool fallback)
+    {
+        const auto value = getJsonProperty (object, name);
+        return hasJsonValue (value) ? static_cast<bool> (value) : fallback;
+    }
+
+    static juce::var durationToVar (const Wf::TrackDurationSpec& duration)
+    {
+        auto* object = new juce::DynamicObject();
+        setJsonProperty (*object, "bars", duration.bars);
+        setJsonProperty (*object, "beats", duration.beats);
+        return juce::var (object);
+    }
+
+    static std::optional<Wf::TrackDurationSpec> durationFromVar (const juce::var& value)
+    {
+        if (auto* object = value.getDynamicObject())
+        {
+            const auto bars = juce::jlimit (0, 128, intFromJson (*object, "bars", 0));
+            const auto beats = juce::jlimit (0, 1024, intFromJson (*object, "beats", 0));
+
+            if (bars == 0 && beats == 0)
+                return {};
+
+            return Wf::TrackDurationSpec { bars, beats };
+        }
+
+        if (value.isString())
+            return parseTrackDuration (value.toString());
+
+        return {};
+    }
+
+    static juce::var effectSlotToVar (const Wf::TrackEffectSlotSpec& slot)
+    {
+        auto* object = new juce::DynamicObject();
+        setJsonProperty (*object, "active", slot.active);
+        setJsonProperty (*object, "pluginName", slot.pluginName);
+        setJsonProperty (*object, "pluginFormatName", slot.pluginFormatName);
+        setJsonProperty (*object, "pluginFileOrIdentifier", slot.pluginFileOrIdentifier);
+        setJsonProperty (*object, "pluginIdentifier", slot.pluginIdentifier);
+        return juce::var (object);
+    }
+
+    static Wf::TrackEffectSlotSpec effectSlotFromVar (const juce::var& value)
+    {
+        Wf::TrackEffectSlotSpec slot;
+
+        if (auto* object = value.getDynamicObject())
+        {
+            slot.active = boolFromJson (*object, "active", false);
+            slot.pluginName = stringFromJson (*object, "pluginName");
+            slot.pluginFormatName = stringFromJson (*object, "pluginFormatName");
+            slot.pluginFileOrIdentifier = stringFromJson (*object, "pluginFileOrIdentifier");
+            slot.pluginIdentifier = stringFromJson (*object, "pluginIdentifier");
+        }
+
+        return slot;
+    }
+
+    static juce::var laneToVar (const Wf::LaneSpec& lane)
+    {
+        auto* object = new juce::DynamicObject();
+        setJsonProperty (*object, "name", lane.name);
+        setJsonProperty (*object, "role", lane.role);
+        setJsonProperty (*object, "baseHz", static_cast<double> (lane.baseHz));
+        setJsonProperty (*object, "volume", static_cast<double> (lane.volume));
+        setJsonProperty (*object, "pan", static_cast<double> (lane.pan));
+        setJsonProperty (*object, "pulseTicks", lane.pulseTicks);
+        setJsonProperty (*object, "openTicks", lane.openTicks);
+        setJsonProperty (*object, "phaseOffsetBars", static_cast<double> (lane.phaseOffsetBars));
+        setJsonProperty (*object, "muted", lane.muted);
+        setJsonProperty (*object, "solo", lane.solo);
+
+        if (lane.tempoBpm.has_value())
+            setJsonProperty (*object, "tempoBpm", static_cast<double> (*lane.tempoBpm));
+
+        if (lane.duration.has_value())
+            setJsonProperty (*object, "duration", durationToVar (*lane.duration));
+
+        if (lane.customDeclarationCode.has_value())
+            setJsonProperty (*object, "customDeclarationCode", *lane.customDeclarationCode);
+
+        if (lane.customControlCode.has_value())
+            setJsonProperty (*object, "customControlCode", *lane.customControlCode);
+
+        return juce::var (object);
+    }
+
+    static Wf::LaneSpec laneFromVar (const juce::var& value)
+    {
+        Wf::LaneSpec lane;
+
+        if (auto* object = value.getDynamicObject())
+        {
+            lane.name = stringFromJson (*object, "name", "Lane");
+            lane.role = stringFromJson (*object, "role");
+            lane.baseHz = juce::jlimit (10.0f, 20000.0f, static_cast<float> (doubleFromJson (*object, "baseHz", lane.baseHz)));
+            lane.volume = juce::jlimit (0.0f, 1.0f, static_cast<float> (doubleFromJson (*object, "volume", lane.volume)));
+            lane.pan = juce::jlimit (-1.0f, 1.0f, static_cast<float> (doubleFromJson (*object, "pan", lane.pan)));
+            lane.pulseTicks = juce::jlimit (1, 1024, intFromJson (*object, "pulseTicks", lane.pulseTicks));
+            lane.openTicks = juce::jlimit (1, 1024, intFromJson (*object, "openTicks", lane.openTicks));
+            lane.phaseOffsetBars = juce::jlimit (0.0f, 1.0f, static_cast<float> (doubleFromJson (*object, "phaseOffsetBars", lane.phaseOffsetBars)));
+            lane.muted = boolFromJson (*object, "muted", lane.muted);
+            lane.solo = boolFromJson (*object, "solo", lane.solo);
+
+            const auto tempo = getJsonProperty (*object, "tempoBpm");
+            if (hasJsonValue (tempo))
+                lane.tempoBpm = juce::jlimit (30.0f, 220.0f, static_cast<float> (static_cast<double> (tempo)));
+
+            lane.duration = durationFromVar (getJsonProperty (*object, "duration"));
+
+            const auto declarationCode = getJsonProperty (*object, "customDeclarationCode");
+            if (hasJsonValue (declarationCode))
+                lane.customDeclarationCode = declarationCode.toString();
+
+            const auto controlCode = getJsonProperty (*object, "customControlCode");
+            if (hasJsonValue (controlCode))
+                lane.customControlCode = controlCode.toString();
+        }
+
+        return lane;
+    }
+
+    static juce::var trackToVar (const Wf::StateSpec& track)
+    {
+        auto* object = new juce::DynamicObject();
+        setJsonProperty (*object, "name", track.name);
+        setJsonProperty (*object, "tempoBpm", track.tempoBpm);
+        setJsonProperty (*object, "clockBeatsPerBar", track.clockBeatsPerBar);
+        setJsonProperty (*object, "clockQuarterNotesPerBar", track.clockQuarterNotesPerBar);
+
+        if (track.duration.has_value())
+            setJsonProperty (*object, "duration", durationToVar (*track.duration));
+
+        if (track.transitionProbabilityPercent.has_value())
+            setJsonProperty (*object, "transitionProbabilityPercent", *track.transitionProbabilityPercent);
+
+        juce::Array<juce::var> lanes;
+        for (const auto& lane : track.lanes)
+            lanes.add (laneToVar (lane));
+        setJsonProperty (*object, "lanes", lanes);
+
+        juce::Array<juce::var> effectSlots;
+        for (const auto& slot : track.effectSlots)
+            effectSlots.add (effectSlotToVar (slot));
+        setJsonProperty (*object, "effectSlots", effectSlots);
+
+        return juce::var (object);
+    }
+
+    static Wf::StateSpec trackFromVar (const juce::var& value)
+    {
+        Wf::StateSpec track;
+
+        if (auto* object = value.getDynamicObject())
+        {
+            track.name = trackDisplayName (stringFromJson (*object, "name", "Track"));
+            track.tempoBpm = juce::jlimit (30.0, 220.0, doubleFromJson (*object, "tempoBpm", track.tempoBpm));
+            track.clockBeatsPerBar = juce::jlimit (1, 16, intFromJson (*object, "clockBeatsPerBar", track.clockBeatsPerBar));
+            track.clockQuarterNotesPerBar = juce::jlimit (1.0, 16.0, doubleFromJson (*object, "clockQuarterNotesPerBar", track.clockQuarterNotesPerBar));
+            track.duration = durationFromVar (getJsonProperty (*object, "duration"));
+
+            const auto probability = getJsonProperty (*object, "transitionProbabilityPercent");
+            if (hasJsonValue (probability))
+                track.transitionProbabilityPercent = juce::jlimit (0, 100, probability.toString().getIntValue());
+
+            track.lanes.clear();
+            const auto lanesValue = getJsonProperty (*object, "lanes");
+            if (auto* lanes = lanesValue.getArray())
+            {
+                const auto laneCount = juce::jmin (maxTrackLanes, lanes->size());
+                for (int i = 0; i < laneCount; ++i)
+                    track.lanes.push_back (laneFromVar ((*lanes)[i]));
+            }
+
+            const auto effectsValue = getJsonProperty (*object, "effectSlots");
+            if (auto* effects = effectsValue.getArray())
+            {
+                const auto effectCount = juce::jmin (maxTrackEffectSlots, effects->size());
+                for (int i = 0; i < effectCount; ++i)
+                    track.effectSlots[static_cast<size_t> (i)] = effectSlotFromVar ((*effects)[i]);
+            }
+        }
+
+        return track;
+    }
+
+    juce::var projectToVar() const
+    {
+        auto* object = new juce::DynamicObject();
+        setJsonProperty (*object, "format", "ChucK-ME Project");
+        setJsonProperty (*object, "version", 1);
+        setJsonProperty (*object, "stateCode", globalScriptEditor.getText());
+        setJsonProperty (*object, "masterVolume", gainSlider.getValue());
+        setJsonProperty (*object, "viewedState", viewedTopLevelState);
+        setJsonProperty (*object, "selectedTrack", selectedState);
+        setJsonProperty (*object, "selectedLane", selectedLane);
+        setJsonProperty (*object, "arrangementPlusMode", arrangementPlusMode);
+        setJsonProperty (*object, "arrangementHorizontalZoom", arrangementHorizontalZoom);
+        setJsonProperty (*object, "arrangementVerticalZoom", arrangementVerticalZoom);
+
+        juce::Array<juce::var> states;
+        for (int i = 0; i < maxTopLevelStates; ++i)
+        {
+            auto* stateObject = new juce::DynamicObject();
+            setJsonProperty (*stateObject, "tempoBpm", static_cast<double> (topLevelTemposBpm[static_cast<size_t> (i)]));
+            setJsonProperty (*stateObject, "timeSigNumerator", topLevelTimeSigNumerators[static_cast<size_t> (i)]);
+            setJsonProperty (*stateObject, "timeSigDenominator", topLevelTimeSigDenominators[static_cast<size_t> (i)]);
+
+            if (topLevelStates[static_cast<size_t> (i)].has_value())
+            {
+                juce::Array<juce::var> tracks;
+                for (const auto& track : *topLevelStates[static_cast<size_t> (i)])
+                    tracks.add (trackToVar (track));
+                setJsonProperty (*stateObject, "tracks", tracks);
+            }
+
+            states.add (juce::var (stateObject));
+        }
+        setJsonProperty (*object, "states", states);
+
+        juce::Array<juce::var> importedAudio;
+        for (const auto& clip : importedLaneAudioClips)
+        {
+            auto* clipObject = new juce::DynamicObject();
+            setJsonProperty (*clipObject, "stateIndex", clip.stateIndex);
+            setJsonProperty (*clipObject, "trackIndex", clip.trackIndex);
+            setJsonProperty (*clipObject, "laneIndex", clip.laneIndex);
+            setJsonProperty (*clipObject, "file", clip.file.getFullPathName());
+            setJsonProperty (*clipObject, "mixGain", static_cast<double> (clip.mixGain));
+            setJsonProperty (*clipObject, "mixPan", static_cast<double> (clip.mixPan));
+            importedAudio.add (juce::var (clipObject));
+        }
+        setJsonProperty (*object, "importedAudio", importedAudio);
+
+        return juce::var (object);
+    }
+
+    bool applyProjectVar (const juce::var& project)
+    {
+        auto* object = project.getDynamicObject();
+        if (object == nullptr)
+            return false;
+
+        juce::ScopedValueSetter<bool> dirtyGuard (suppressProjectDirty, true);
+        running = false;
+        scriptRunning = false;
+        audioCallback.clearImportedAudioPlayback();
+        importedLaneAudioClips.clear();
+        arrangementPlusMode = false;
+        missingImportedAudioOnLastLoad = 0;
+
+        for (auto& slot : topLevelStates)
+            slot.reset();
+        topLevelTemposBpm = defaultTopLevelTempos();
+        topLevelTimeSigNumerators = defaultTopLevelTimeSigNumerators();
+        topLevelTimeSigDenominators = defaultTopLevelTimeSigDenominators();
+
+        const auto statesValue = getJsonProperty (*object, "states");
+        if (auto* states = statesValue.getArray())
+        {
+            const auto stateCount = juce::jmin (maxTopLevelStates, states->size());
+
+            for (int stateIndex = 0; stateIndex < stateCount; ++stateIndex)
+            {
+                auto* stateObject = (*states)[stateIndex].getDynamicObject();
+                if (stateObject == nullptr)
+                    continue;
+
+                topLevelTemposBpm[static_cast<size_t> (stateIndex)] =
+                    juce::jlimit (30.0f,
+                                  220.0f,
+                                  static_cast<float> (doubleFromJson (*stateObject,
+                                                                      "tempoBpm",
+                                                                      topLevelTemposBpm[static_cast<size_t> (stateIndex)])));
+                topLevelTimeSigNumerators[static_cast<size_t> (stateIndex)] =
+                    sanitizeScriptTimeSigNumerator (intFromJson (*stateObject, "timeSigNumerator", 4));
+                topLevelTimeSigDenominators[static_cast<size_t> (stateIndex)] =
+                    sanitizeScriptTimeSigDenominator (intFromJson (*stateObject, "timeSigDenominator", 4));
+
+                const auto tracksValue = getJsonProperty (*stateObject, "tracks");
+                if (auto* tracks = tracksValue.getArray())
+                {
+                    std::vector<Wf::StateSpec> loadedTracks;
+                    const auto trackCount = juce::jmin (maxStateTracks, tracks->size());
+                    loadedTracks.reserve (static_cast<size_t> (trackCount));
+
+                    for (int trackIndex = 0; trackIndex < trackCount; ++trackIndex)
+                    {
+                        auto track = trackFromVar ((*tracks)[trackIndex]);
+                        if (track.lanes.empty())
+                            track.lanes.push_back (Wf::LaneSpec { "Lane 1", {}, 220.0f, 0.2f, 96, 18 });
+                        loadedTracks.push_back (std::move (track));
+                    }
+
+                    if (! loadedTracks.empty())
+                        topLevelStates[static_cast<size_t> (stateIndex)] = std::move (loadedTracks);
+                }
+            }
+        }
+
+        if (! isTopLevelStatePopulated (0))
+            topLevelStates[0] = Wf::makeDefaultStates();
+
+        {
+            juce::ScopedValueSetter<bool> guard (suppressEditCallbacks, true);
+            juce::ScopedValueSetter<bool> laneGuard (suppressLaneCodeCallbacks, true);
+            globalScriptEditor.setText (stringFromJson (*object, "stateCode", defaultGlobalScriptText()), juce::dontSendNotification);
+            gainSlider.setValue (juce::jlimit (0.0, 0.8, doubleFromJson (*object, "masterVolume", 0.18)), juce::dontSendNotification);
+            arrangementHorizontalZoom = juce::jlimit (0.35, 3.25, doubleFromJson (*object, "arrangementHorizontalZoom", 1.0));
+            arrangementVerticalZoom = juce::jlimit (0.55, 3.0, doubleFromJson (*object, "arrangementVerticalZoom", 1.0));
+            arrangementHorizontalZoomSlider.setValue (arrangementHorizontalZoom, juce::dontSendNotification);
+            arrangementVerticalZoomSlider.setValue (arrangementVerticalZoom, juce::dontSendNotification);
+            laneCodeDirty = false;
+        }
+
+        viewedTopLevelState = juce::jlimit (0, maxTopLevelStates - 1, intFromJson (*object, "viewedState", 0));
+        if (! isTopLevelStatePopulated (viewedTopLevelState))
+            viewedTopLevelState = 0;
+        performingTopLevelState = viewedTopLevelState;
+        selectedState = juce::jmax (0, intFromJson (*object, "selectedTrack", 0));
+        selectedLane = juce::jmax (0, intFromJson (*object, "selectedLane", 0));
+        focusedTrackIndex = selectedState;
+        performingTrackIndex = selectedState;
+        trackElapsedBars = 0.0;
+        nextBarTransitionCheck = 1.0;
+        orbitPhase = 0.0f;
+
+        std::vector<ImportedLaneAudioClip> loadedClips;
+        const auto importedValue = getJsonProperty (*object, "importedAudio");
+        if (auto* imported = importedValue.getArray())
+        {
+            loadedClips.reserve (static_cast<size_t> (imported->size()));
+
+            for (const auto& clipValue : *imported)
+            {
+                auto* clipObject = clipValue.getDynamicObject();
+                if (clipObject == nullptr)
+                    continue;
+
+                ImportedLaneAudioClip clip;
+                clip.stateIndex = intFromJson (*clipObject, "stateIndex", 0);
+                clip.trackIndex = intFromJson (*clipObject, "trackIndex", 0);
+                clip.laneIndex = intFromJson (*clipObject, "laneIndex", 0);
+                clip.file = juce::File (stringFromJson (*clipObject, "file"));
+                clip.mixGain = juce::jlimit (0.0f, 1.5f, static_cast<float> (doubleFromJson (*clipObject, "mixGain", 1.0)));
+                clip.mixPan = juce::jlimit (-1.0f, 1.0f, static_cast<float> (doubleFromJson (*clipObject, "mixPan", 0.0)));
+
+                if (isTopLevelStatePopulated (clip.stateIndex))
+                {
+                    const auto& tracks = *topLevelStates[static_cast<size_t> (clip.stateIndex)];
+                    if (clip.trackIndex >= 0
+                        && clip.trackIndex < static_cast<int> (tracks.size())
+                        && clip.laneIndex >= 0
+                        && clip.laneIndex < static_cast<int> (tracks[static_cast<size_t> (clip.trackIndex)].lanes.size())
+                        && clip.file.existsAsFile())
+                    {
+                        loadedClips.push_back (std::move (clip));
+                        continue;
+                    }
+                }
+
+                ++missingImportedAudioOnLastLoad;
+            }
+        }
+
+        refreshLabels();
+        syncTransportButtons();
+        syncArrangementTimelineView();
+        syncMixerView();
+
+        if (boolFromJson (*object, "arrangementPlusMode", false) && ! loadedClips.empty())
+            importRenderedLaneFiles (std::move (loadedClips), false);
+        else
+            setMainView (MainView::arrangement);
+
+        return true;
+    }
+
+    void resetProjectToDefaults()
+    {
+        running = false;
+        scriptRunning = false;
+        scriptStepIndex = 0;
+        scriptStepElapsedBars = 0.0;
+        globalScriptSteps.clear();
+        audioCallback.clearImportedAudioPlayback();
+        importedLaneAudioClips.clear();
+        arrangementPlusMode = false;
+
+        for (auto& slot : topLevelStates)
+            slot.reset();
+        topLevelStates[0] = Wf::makeDefaultStates();
+        topLevelStates[1] = Wf::makeDefaultStates();
+        topLevelTemposBpm = defaultTopLevelTempos();
+        topLevelTimeSigNumerators = defaultTopLevelTimeSigNumerators();
+        topLevelTimeSigDenominators = defaultTopLevelTimeSigDenominators();
+
+        {
+            juce::ScopedValueSetter<bool> editGuard (suppressEditCallbacks, true);
+            juce::ScopedValueSetter<bool> laneGuard (suppressLaneCodeCallbacks, true);
+            globalScriptEditor.setText (defaultGlobalScriptText(), juce::dontSendNotification);
+            gainSlider.setValue (0.18, juce::dontSendNotification);
+            laneCodeDirty = false;
+            laneCodeRunButton.setEnabled (false);
+        }
+
+        viewedTopLevelState = 0;
+        performingTopLevelState = 0;
+        selectedState = 0;
+        selectedLane = 0;
+        focusedTrackIndex = 0;
+        performingTrackIndex = 0;
+        trackElapsedBars = 0.0;
+        nextBarTransitionCheck = 1.0;
+        orbitPhase = 0.0f;
+        arrangementHorizontalZoom = 1.0;
+        arrangementVerticalZoom = 1.0;
+        arrangementHorizontalZoomSlider.setValue (arrangementHorizontalZoom, juce::dontSendNotification);
+        arrangementVerticalZoomSlider.setValue (arrangementVerticalZoom, juce::dontSendNotification);
+        currentProjectFile = juce::File();
+
+        refreshLabels();
+        syncTransportButtons();
+        setMainView (MainView::arrangement);
+    }
+
+    static juce::File withProjectExtension (juce::File file)
+    {
+        return file.getFileExtension().isEmpty() ? file.withFileExtension ("chuckme") : file;
+    }
+
+    void updateProjectDirtyState (bool dirty)
+    {
+        projectDirty = dirty;
+        titleLabel.setText (projectDirty ? "ChucK-ME *" : "ChucK-ME", juce::dontSendNotification);
+
+        if (auto* window = dynamic_cast<juce::DocumentWindow*> (getTopLevelComponent()))
+            window->setName (projectDirty ? "ChucK-ME *" : "ChucK-ME");
+    }
+
+    void markProjectDirty()
+    {
+        if (! suppressProjectDirty)
+            updateProjectDirtyState (true);
+    }
+
+    void saveCurrentProjectThen (std::function<void (bool)> afterSave)
+    {
+        if (currentProjectFile == juce::File())
+        {
+            chooseProjectSaveFile (std::move (afterSave));
+            return;
+        }
+
+        const auto saved = saveProjectToFile (currentProjectFile);
+        if (afterSave != nullptr)
+            afterSave (saved);
+    }
+
+    void confirmUnsavedChangesThen (std::function<void()> continueAction)
+    {
+        if (! projectDirty)
+        {
+            if (continueAction != nullptr)
+                continueAction();
+            return;
+        }
+
+        juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                        .withIconType (juce::MessageBoxIconType::WarningIcon)
+                                        .withTitle ("Unsaved changes")
+                                        .withMessage ("Save this project before continuing?")
+                                        .withButton ("Save")
+                                        .withButton ("Discard")
+                                        .withButton ("Cancel")
+                                        .withAssociatedComponent (this),
+                                      [this, actionAfterPrompt = std::move (continueAction)] (int result) mutable
+                                      {
+                                          if (result == 1)
+                                          {
+                                              saveCurrentProjectThen ([actionAfterSave = std::move (actionAfterPrompt)] (bool saved) mutable
+                                              {
+                                                  if (saved && actionAfterSave != nullptr)
+                                                      actionAfterSave();
+                                              });
+                                          }
+                                          else if (result == 2 && actionAfterPrompt != nullptr)
+                                          {
+                                              actionAfterPrompt();
+                                          }
+                                      });
+    }
+
+    void newProject()
+    {
+        resetProjectToDefaults();
+        updateProjectDirtyState (false);
+        statusLabel.setText ("new project", juce::dontSendNotification);
+    }
+
+    void chooseProjectToLoad()
+    {
+        projectChooser = std::make_unique<juce::FileChooser> ("Load ChucK-ME Project",
+                                                              juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
+                                                              "*.chuckme;*.json");
+        projectChooser->launchAsync (juce::FileBrowserComponent::openMode
+                                        | juce::FileBrowserComponent::canSelectFiles,
+                                      [this] (const juce::FileChooser& chooser)
+                                      {
+                                          const auto file = chooser.getResult();
+                                          if (file == juce::File())
+                                              return;
+
+                                          loadProjectFromFile (file);
+                                      });
+    }
+
+    void chooseProjectSaveFile (std::function<void (bool)> afterSave = {})
+    {
+        const auto defaultFile = (currentProjectFile == juce::File()
+                                      ? juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
+                                            .getChildFile ("ChucK-ME project.chuckme")
+                                      : currentProjectFile);
+        projectChooser = std::make_unique<juce::FileChooser> ("Save ChucK-ME Project",
+                                                              defaultFile,
+                                                              "*.chuckme");
+        projectChooser->launchAsync (juce::FileBrowserComponent::saveMode
+                                        | juce::FileBrowserComponent::canSelectFiles
+                                        | juce::FileBrowserComponent::warnAboutOverwriting,
+                                      [this, saveCallback = std::move (afterSave)] (const juce::FileChooser& chooser) mutable
+                                      {
+                                          auto file = chooser.getResult();
+                                          if (file == juce::File())
+                                          {
+                                              if (saveCallback != nullptr)
+                                                  saveCallback (false);
+                                              return;
+                                          }
+
+                                          const auto saved = saveProjectToFile (withProjectExtension (file));
+                                          if (saveCallback != nullptr)
+                                              saveCallback (saved);
+                                      });
+    }
+
+    void saveProject()
+    {
+        if (currentProjectFile == juce::File())
+        {
+            chooseProjectSaveFile();
+            return;
+        }
+
+        saveProjectToFile (currentProjectFile);
+    }
+
+    bool saveProjectToFile (const juce::File& file)
+    {
+        const auto projectText = juce::JSON::toString (projectToVar(), false);
+        if (projectText.isEmpty() || ! file.replaceWithText (projectText, false, false, "\n"))
+        {
+            statusLabel.setText ("project save failed", juce::dontSendNotification);
+            return false;
+        }
+
+        currentProjectFile = file;
+        updateProjectDirtyState (false);
+        statusLabel.setText ("saved " + file.getFileName(), juce::dontSendNotification);
+        return true;
+    }
+
+    bool loadProjectFromFile (const juce::File& file)
+    {
+        if (! file.existsAsFile())
+        {
+            statusLabel.setText ("project file not found", juce::dontSendNotification);
+            return false;
+        }
+
+        const auto parsed = juce::JSON::parse (file.loadFileAsString());
+        if (! parsed.isObject() || ! applyProjectVar (parsed))
+        {
+            statusLabel.setText ("project load failed", juce::dontSendNotification);
+            return false;
+        }
+
+        currentProjectFile = file;
+        updateProjectDirtyState (false);
+        statusLabel.setText ("loaded " + file.getFileName()
+                                + (missingImportedAudioOnLastLoad > 0
+                                    ? " (" + juce::String (missingImportedAudioOnLastLoad) + " missing audio files skipped)"
+                                    : juce::String()),
+                             juce::dontSendNotification);
+        return true;
+    }
+
+    struct RenderStemTarget
+    {
+        int stateIndex = 0;
+        int trackIndex = 0;
+        int laneIndex = 0;
+    };
+
+    static bool isLaneAudibleInTrack (const Wf::StateSpec& track, int laneIndex)
+    {
+        if (laneIndex < 0 || laneIndex >= static_cast<int> (track.lanes.size()))
+            return false;
+
+        const auto hasSoloLane = std::any_of (track.lanes.begin(), track.lanes.end(), [] (const Wf::LaneSpec& lane)
+        {
+            return lane.solo;
+        });
+
+        const auto& lane = track.lanes[static_cast<size_t> (laneIndex)];
+        return ! lane.muted && (! hasSoloLane || lane.solo);
+    }
+
+    static juce::String safeRenderFileToken (juce::String text)
+    {
+        text = text.trim();
+        if (text.isEmpty())
+            text = "untitled";
+
+        text = text.replaceCharacter (' ', '_');
+        return text.retainCharacters ("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-");
+    }
+
+    std::vector<RenderStemTarget> collectArrangementLaneStems (const std::vector<GlobalScriptStep>& steps) const
+    {
+        std::vector<RenderStemTarget> stems;
+
+        auto containsStem = [&stems] (const RenderStemTarget& target)
+        {
+            return std::any_of (stems.begin(), stems.end(), [&target] (const RenderStemTarget& existing)
+            {
+                return existing.stateIndex == target.stateIndex
+                    && existing.trackIndex == target.trackIndex
+                    && existing.laneIndex == target.laneIndex;
+            });
+        };
+
+        for (const auto& step : steps)
+        {
+            if (! isTopLevelStatePopulated (step.stateIndex))
+                continue;
+
+            const auto& tracks = *topLevelStates[static_cast<size_t> (step.stateIndex)];
+            for (int trackIndex = 0; trackIndex < static_cast<int> (tracks.size()); ++trackIndex)
+            {
+                const auto& track = tracks[static_cast<size_t> (trackIndex)];
+                for (int laneIndex = 0; laneIndex < static_cast<int> (track.lanes.size()); ++laneIndex)
+                {
+                    if (! isLaneAudibleInTrack (track, laneIndex))
+                        continue;
+
+                    RenderStemTarget target { step.stateIndex, trackIndex, laneIndex };
+                    if (! containsStem (target))
+                        stems.push_back (target);
+                }
+            }
+        }
+
+        return stems;
+    }
+
+    juce::String renderStemFileName (const RenderStemTarget& target) const
+    {
+        const auto& tracks = *topLevelStates[static_cast<size_t> (target.stateIndex)];
+        const auto& track = tracks[static_cast<size_t> (target.trackIndex)];
+        const auto& lane = track.lanes[static_cast<size_t> (target.laneIndex)];
+
+        return "S" + juce::String (target.stateIndex + 1)
+             + "_T" + juce::String (target.trackIndex + 1)
+             + "_L" + juce::String (target.laneIndex + 1)
+             + "_" + safeRenderFileToken (track.name)
+             + "_" + safeRenderFileToken (lane.name)
+             + ".wav";
+    }
+
+    enum class RenderResult
+    {
+        success,
+        failed,
+        silent
+    };
+
+    RenderResult renderImportedArrangementToWav (const juce::File& destination)
+    {
+        if (importedLaneAudioClips.empty())
+        {
+            statusLabel.setText ("render WAV+ failed: no reimported audio", juce::dontSendNotification);
+            return RenderResult::failed;
+        }
+
+        constexpr double renderSampleRate = 48000.0;
+        constexpr int renderBlockSize = 512;
+        constexpr int renderChannels = 2;
+        const auto renderMasterGain = static_cast<float> (gainSlider.getValue());
+        if (renderMasterGain <= 0.0001f)
+        {
+            statusLabel.setText ("render WAV+ failed: master volume is zero", juce::dontSendNotification);
+            return RenderResult::failed;
+        }
+
+        auto totalSeconds = 0.0;
+        for (auto& clip : importedLaneAudioClips)
+        {
+            if (clip.audioData == nullptr)
+                populateImportedClipWaveform (clip);
+
+            if (clip.audioData != nullptr)
+                totalSeconds = juce::jmax (totalSeconds,
+                                           static_cast<double> (clip.audioData->getNumSamples()) / juce::jmax (1.0, clip.audioSampleRate));
+        }
+
+        if (totalSeconds <= 0.0)
+        {
+            statusLabel.setText ("render WAV+ failed: imported audio is empty", juce::dontSendNotification);
+            return RenderResult::failed;
+        }
+
+        juce::WavAudioFormat wavFormat;
+        std::unique_ptr<juce::OutputStream> stream = destination.createOutputStream();
+        if (stream == nullptr)
+        {
+            statusLabel.setText ("render WAV+ failed: could not open file", juce::dontSendNotification);
+            return RenderResult::failed;
+        }
+
+        auto writer = wavFormat.createWriterFor (stream,
+                                                 juce::AudioFormatWriterOptions {}
+                                                    .withSampleRate (renderSampleRate)
+                                                    .withNumChannels (renderChannels)
+                                                    .withBitsPerSample (24));
+        if (writer == nullptr)
+        {
+            statusLabel.setText ("render WAV+ failed: could not create WAV writer", juce::dontSendNotification);
+            return RenderResult::failed;
+        }
+
+        juce::AudioBuffer<float> mixBuffer (renderChannels, renderBlockSize);
+        const auto totalSamples = static_cast<int64_t> (std::ceil (totalSeconds * renderSampleRate));
+        auto renderedSamples = static_cast<int64_t> (0);
+        double renderedEnergy = 0.0;
+        float renderedPeak = 0.0f;
+
+        while (renderedSamples < totalSamples)
+        {
+            const auto blockSamples = static_cast<int> (juce::jmin<int64_t> (renderBlockSize, totalSamples - renderedSamples));
+            mixBuffer.clear (0, blockSamples);
+
+            for (const auto& clip : importedLaneAudioClips)
+            {
+                if (clip.audioData == nullptr || clip.audioData->getNumSamples() <= 0 || clip.mixGain <= 0.000001f)
+                    continue;
+
+                const auto panGains = linearPanGains (renderMasterGain * clip.mixGain, clip.mixPan);
+                const auto sourceScale = juce::jmax (1.0, clip.audioSampleRate) / renderSampleRate;
+
+                for (int sample = 0; sample < blockSamples; ++sample)
+                {
+                    const auto sourcePosition = static_cast<double> (renderedSamples + sample) * sourceScale;
+                    if (sourcePosition >= static_cast<double> (clip.audioData->getNumSamples()))
+                        break;
+
+                    const auto left = readInterpolatedSample (*clip.audioData, 0, sourcePosition);
+                    const auto right = readInterpolatedSample (*clip.audioData, clip.audioData->getNumChannels() > 1 ? 1 : 0, sourcePosition);
+                    mixBuffer.addSample (0, sample, left * panGains[0]);
+                    mixBuffer.addSample (1, sample, right * panGains[1]);
+                }
+            }
+
+            for (int channel = 0; channel < renderChannels; ++channel)
+            {
+                const auto* samples = mixBuffer.getReadPointer (channel);
+                for (int sample = 0; sample < blockSamples; ++sample)
+                {
+                    const auto value = samples[sample];
+                    renderedPeak = juce::jmax (renderedPeak, std::abs (value));
+                    renderedEnergy += static_cast<double> (value) * static_cast<double> (value);
+                }
+            }
+
+            if (! writer->writeFromAudioSampleBuffer (mixBuffer, 0, blockSamples))
+            {
+                statusLabel.setText ("render WAV+ failed: could not write WAV", juce::dontSendNotification);
+                return RenderResult::failed;
+            }
+
+            renderedSamples += blockSamples;
+        }
+
+        writer.reset();
+        if (renderedPeak <= 0.000001f || renderedEnergy <= 0.0000001)
+        {
+            destination.deleteFile();
+            statusLabel.setText ("render WAV+ failed: silent output", juce::dontSendNotification);
+            return RenderResult::silent;
+        }
+
+        statusLabel.setText ("rendered WAV+: " + destination.getFileName(), juce::dontSendNotification);
+        return RenderResult::success;
+    }
+
+    void renderArrangementLanesToDirectory (const juce::File& directory)
+    {
+        const auto steps = parseGlobalScript();
+        if (steps.empty())
+        {
+            statusLabel.setText ("lane render failed: no playable states", juce::dontSendNotification);
+            return;
+        }
+
+        const auto stems = collectArrangementLaneStems (steps);
+        if (stems.empty())
+        {
+            statusLabel.setText ("lane render failed: no audible lanes", juce::dontSendNotification);
+            return;
+        }
+
+        if (! directory.createDirectory())
+        {
+            statusLabel.setText ("lane render failed: could not create folder", juce::dontSendNotification);
+            return;
+        }
+
+        int renderedCount = 0;
+        int skippedSilentCount = 0;
+        std::vector<ImportedLaneAudioClip> renderedClips;
+        for (const auto& stem : stems)
+        {
+            const auto file = directory.getChildFile (renderStemFileName (stem));
+            const auto result = renderArrangementToWav (file, stem);
+            if (result == RenderResult::success)
+            {
+                ++renderedCount;
+                ImportedLaneAudioClip clip;
+                clip.stateIndex = stem.stateIndex;
+                clip.trackIndex = stem.trackIndex;
+                clip.laneIndex = stem.laneIndex;
+                clip.file = file;
+                renderedClips.push_back (std::move (clip));
+            }
+            else if (result == RenderResult::silent)
+                ++skippedSilentCount;
+            else
+                return;
+        }
+
+        statusLabel.setText ("rendered " + juce::String (renderedCount) + " lane WAVs"
+                                + (skippedSilentCount > 0 ? " (" + juce::String (skippedSilentCount) + " silent skipped)" : juce::String()),
+                            juce::dontSendNotification);
+
+        if (! renderedClips.empty())
+            askToReimportRenderedLanes (std::move (renderedClips));
+    }
+
+    void askToReimportRenderedLanes (std::vector<ImportedLaneAudioClip> renderedClips)
+    {
+        juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                        .withIconType (juce::MessageBoxIconType::QuestionIcon)
+                                        .withTitle ("Reimport rendered lanes?")
+                                        .withMessage ("Place the rendered WAV files back into the Arrangement view as audio clips?")
+                                        .withButton ("Reimport")
+                                        .withButton ("Not now")
+                                        .withAssociatedComponent (this),
+                                      [this, clips = std::move (renderedClips)] (int result) mutable
+                                      {
+                                          if (result == 1)
+                                              importRenderedLaneFiles (std::move (clips));
+                                      });
+    }
+
+    void populateImportedClipWaveform (ImportedLaneAudioClip& clip)
+    {
+        clip.audioData.reset();
+        clip.waveformPeaks.clear();
+        clip.lengthSeconds = 0.0;
+        clip.audioSampleRate = 48000.0;
+
+        juce::AudioFormatManager formatManager;
+        formatManager.registerBasicFormats();
+
+        std::unique_ptr<juce::AudioFormatReader> reader (formatManager.createReaderFor (clip.file));
+        if (reader == nullptr || reader->lengthInSamples <= 0 || reader->numChannels == 0)
+            return;
+
+        const auto samplesToLoad = static_cast<int> (juce::jmin<juce::int64> (reader->lengthInSamples,
+                                                                              static_cast<juce::int64> (std::numeric_limits<int>::max())));
+        const auto channelsToRead = static_cast<int> (juce::jmin<juce::uint32> (reader->numChannels, 2));
+        auto audio = std::make_shared<juce::AudioBuffer<float>> (channelsToRead, samplesToLoad);
+        audio->clear();
+        if (! reader->read (audio.get(), 0, samplesToLoad, 0, true, true))
+            return;
+
+        clip.audioData = audio;
+        clip.audioSampleRate = juce::jmax (1.0, reader->sampleRate);
+        clip.lengthSeconds = static_cast<double> (samplesToLoad) / clip.audioSampleRate;
+
+        constexpr int previewBins = 512;
+        clip.waveformPeaks.assign (previewBins, 0.0f);
+
+        const auto samplesPerBin = juce::jmax (1, samplesToLoad / previewBins);
+        auto previewPeak = 0.0f;
+
+        for (int bin = 0; bin < previewBins; ++bin)
+        {
+            const auto binStart = bin * samplesPerBin;
+            if (binStart >= samplesToLoad)
+                break;
+
+            const auto binSamples = juce::jmin (samplesPerBin, samplesToLoad - binStart);
+            auto peak = 0.0f;
+
+            for (int channel = 0; channel < audio->getNumChannels(); ++channel)
+                peak = juce::jmax (peak, audio->getMagnitude (channel, binStart, binSamples));
+
+            peak = juce::jlimit (0.0f, 1.0f, peak);
+            previewPeak = juce::jmax (previewPeak, peak);
+            clip.waveformPeaks[static_cast<size_t> (bin)] = peak;
+        }
+
+        if (previewPeak > 0.000001f)
+            for (auto& peak : clip.waveformPeaks)
+                peak = juce::jlimit (0.0f, 1.0f, peak / previewPeak);
+    }
+
+    void importRenderedLaneFiles (std::vector<ImportedLaneAudioClip> renderedClips, bool markDirty = true)
+    {
+        for (auto& clip : renderedClips)
+            populateImportedClipWaveform (clip);
+
+        renderedClips.erase (std::remove_if (renderedClips.begin(), renderedClips.end(), [] (const ImportedLaneAudioClip& clip)
+        {
+            return clip.audioData == nullptr || clip.audioData->getNumSamples() <= 0;
+        }), renderedClips.end());
+
+        if (renderedClips.empty())
+        {
+            statusLabel.setText ("Arrangement+ import failed: no readable audio files", juce::dontSendNotification);
+            return;
+        }
+
+        scriptRunning = false;
+        running = false;
+        audioCallback.clearImportedAudioPlayback();
+        importedLaneAudioClips = std::move (renderedClips);
+        arrangementPlusMode = true;
+        if (! audioCallback.loadImportedAudioClips (importedLaneAudioClips))
+        {
+            importedLaneAudioClips.clear();
+            arrangementPlusMode = false;
+            statusLabel.setText ("Arrangement+ import failed: could not prepare audio playback", juce::dontSendNotification);
+            setMainView (MainView::timeline);
+            return;
+        }
+
+        setMainView (MainView::timeline);
+        if (markDirty)
+            markProjectDirty();
+        statusLabel.setText ("Arrangement+ imported " + juce::String (importedLaneAudioClips.size()) + " audio files", juce::dontSendNotification);
+    }
+
+    void removeRenderedAudioAndReturnToCodePlayback()
+    {
+        const auto removedCount = static_cast<int> (importedLaneAudioClips.size());
+        importedLaneAudioClips.clear();
+        arrangementPlusMode = false;
+        scriptRunning = false;
+        running = false;
+        audioCallback.clearImportedAudioPlayback();
+        syncTransportButtons();
+        setMainView (MainView::timeline);
+        markProjectDirty();
+        statusLabel.setText ("removed " + juce::String (removedCount) + " rendered audio files; state/code playback restored",
+                             juce::dontSendNotification);
+    }
+
+    RenderResult renderArrangementToWav (const juce::File& destination, std::optional<RenderStemTarget> stemTarget = {})
+    {
+        const auto steps = parseGlobalScript();
+        if (steps.empty())
+        {
+            statusLabel.setText ("render failed: no playable states in state code", juce::dontSendNotification);
+            return RenderResult::failed;
+        }
+
+        juce::ScopedNoDenormals noDenormals;
+        constexpr double renderSampleRate = 48000.0;
+        constexpr int renderBlockSize = 512;
+        constexpr int renderChannels = 2;
+        constexpr double transitionFadeSeconds = 0.42;
+        constexpr double finalTailSeconds = 0.70;
+
+        struct RenderSlot
+        {
+            EmbeddedChucKEngine engine;
+            juce::AudioBuffer<float> output;
+            std::array<int, 5> parameterIndexes { -1, -1, -1, -1, -1 };
+            bool inUse = false;
+            float gain = 0.0f;
+            float targetGain = 0.0f;
+        };
+
+        std::array<RenderSlot, 2> slots;
+        for (auto& slot : slots)
+        {
+            slot.output.setSize (renderChannels, renderBlockSize, false, false, true);
+            if (! slot.engine.prepare (renderSampleRate, renderBlockSize, 0, renderChannels))
+            {
+                statusLabel.setText ("render failed: could not prepare ChucK", juce::dontSendNotification);
+                return RenderResult::failed;
+            }
+        }
+
+        juce::WavAudioFormat wavFormat;
+        std::unique_ptr<juce::OutputStream> stream = destination.createOutputStream();
+        if (stream == nullptr)
+        {
+            statusLabel.setText ("render failed: could not open file", juce::dontSendNotification);
+            return RenderResult::failed;
+        }
+
+        auto writer = wavFormat.createWriterFor (stream,
+                                                 juce::AudioFormatWriterOptions {}
+                                                    .withSampleRate (renderSampleRate)
+                                                    .withNumChannels (renderChannels)
+                                                    .withBitsPerSample (24));
+        if (writer == nullptr)
+        {
+            statusLabel.setText ("render failed: could not create WAV writer", juce::dontSendNotification);
+            return RenderResult::failed;
+        }
+
+        juce::AudioBuffer<float> emptyInput (0, renderBlockSize);
+        juce::AudioBuffer<float> mixBuffer (renderChannels, renderBlockSize);
+        juce::AudioBuffer<float> writeBuffer (renderChannels, renderBlockSize);
+        const auto fadeStepPerSample = static_cast<float> (1.0 / (renderSampleRate * transitionFadeSeconds));
+        const auto renderMasterGain = static_cast<float> (gainSlider.getValue());
+        if (renderMasterGain <= 0.0001f)
+        {
+            statusLabel.setText ("render failed: master volume is zero", juce::dontSendNotification);
+            return RenderResult::failed;
+        }
+
+        double renderedEnergy = 0.0;
+        float renderedPeak = 0.0f;
+        int activeSlot = -1;
+        int nextSlot = 0;
+        std::mt19937 renderRandom { 0x51a7e5u };
+
+        auto refreshParameterIndexes = [] (RenderSlot& slot)
+        {
+            const std::array<juce::String, 5> names
+            {
+                "hostMasterGain",
+                "hostTempoHz",
+                "hostIntensity",
+                "hostBrightness",
+                "hostOrbitPhase"
+            };
+
+            for (int i = 0; i < static_cast<int> (names.size()); ++i)
+            {
+                slot.parameterIndexes[static_cast<size_t> (i)] = slot.engine.getParameterIndex (names[static_cast<size_t> (i)]);
+                if (slot.parameterIndexes[static_cast<size_t> (i)] < 0)
+                    return false;
+            }
+
+            return true;
+        };
+
+        auto setSlotControls = [] (RenderSlot& slot, float masterGain, float tempoHz, float renderOrbitPhase)
+        {
+            static_cast<void> (slot.engine.setParameterValue (slot.parameterIndexes[0], masterGain));
+            static_cast<void> (slot.engine.setParameterValue (slot.parameterIndexes[1], tempoHz));
+            static_cast<void> (slot.engine.setParameterValue (slot.parameterIndexes[2], defaultIntensity));
+            static_cast<void> (slot.engine.setParameterValue (slot.parameterIndexes[3], defaultBrightness));
+            static_cast<void> (slot.engine.setParameterValue (slot.parameterIndexes[4], renderOrbitPhase));
+        };
+
+        auto stepTempoBpm = [this] (const GlobalScriptStep& step)
+        {
+            if (step.tempoBpm.has_value())
+                return *step.tempoBpm;
+
+            return topLevelTemposBpm[static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, step.stateIndex))];
+        };
+
+        auto stepBeatsPerBar = [this] (const GlobalScriptStep& step)
+        {
+            const auto index = static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, step.stateIndex));
+            return static_cast<double> (step.timeSigNumerator.value_or (topLevelTimeSigNumerators[index]));
+        };
+
+        auto stepQuarterNotesPerBar = [this] (const GlobalScriptStep& step)
+        {
+            const auto index = static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, step.stateIndex));
+            const auto numerator = static_cast<double> (step.timeSigNumerator.value_or (topLevelTimeSigNumerators[index]));
+            const auto denominator = static_cast<double> (juce::jmax (1, step.timeSigDenominator.value_or (topLevelTimeSigDenominators[index])));
+            return numerator * 4.0 / denominator;
+        };
+
+        auto trackDurationBars = [] (const Wf::StateSpec& track, double beatsPerBar) -> std::optional<double>
+        {
+            if (! track.duration.has_value())
+                return {};
+
+            const auto duration = *track.duration;
+            const auto totalBars = static_cast<double> (duration.bars)
+                                 + (static_cast<double> (duration.beats) / juce::jmax (1.0, beatsPerBar));
+            if (totalBars <= 0.0)
+                return {};
+
+            return juce::jmax (0.25, totalBars);
+        };
+
+        auto shouldTransition = [&renderRandom] (int probabilityPercent)
+        {
+            if (probabilityPercent <= 0)
+                return false;
+            if (probabilityPercent >= 100)
+                return true;
+
+            std::uniform_int_distribution<int> distribution (1, 100);
+            return distribution (renderRandom) <= probabilityPercent;
+        };
+
+        auto loadTrackIntoNextSlot = [&] (const Wf::StateSpec& track,
+                                          int trackIndexForRender,
+                                          const GlobalScriptStep& step,
+                                          int beatsPerBar,
+                                          double quarterNotesPerBar,
+                                          float renderOrbitPhase)
+        {
+            auto audioTrack = track;
+            if (stemTarget.has_value())
+            {
+                for (int laneIndex = 0; laneIndex < static_cast<int> (audioTrack.lanes.size()); ++laneIndex)
+                {
+                    auto& lane = audioTrack.lanes[static_cast<size_t> (laneIndex)];
+                    const auto keepLane = step.stateIndex == stemTarget->stateIndex
+                                       && trackIndexForRender == stemTarget->trackIndex
+                                       && laneIndex == stemTarget->laneIndex;
+
+                    if (! keepLane)
+                    {
+                        lane.volume = 0.0f;
+                        lane.muted = true;
+                        lane.solo = false;
+                    }
+                }
+            }
+
+            audioTrack.clockBeatsPerBar = beatsPerBar;
+            audioTrack.clockQuarterNotesPerBar = quarterNotesPerBar;
+
+            auto& incoming = slots[static_cast<size_t> (nextSlot)];
+            incoming.inUse = false;
+            incoming.gain = activeSlot < 0 ? 1.0f : 0.0f;
+            incoming.targetGain = 1.0f;
+
+            if (! incoming.engine.loadProgram (Wf::buildStateProgram (audioTrack), Wf::makeWfParameterBindings()))
+                return false;
+
+            if (! refreshParameterIndexes (incoming))
+                return false;
+
+            setSlotControls (incoming, renderMasterGain, stepTempoBpm (step) / 60.0f, renderOrbitPhase);
+            incoming.inUse = true;
+
+            if (activeSlot >= 0)
+                slots[static_cast<size_t> (activeSlot)].targetGain = 0.0f;
+
+            activeSlot = nextSlot;
+            nextSlot = nextSlot == 0 ? 1 : 0;
+            return true;
+        };
+
+        auto renderSamples = [&] (int samples, float tempoHz, float renderOrbitPhase) -> bool
+        {
+            auto samplesRemaining = samples;
+
+            while (samplesRemaining > 0)
+            {
+                const auto blockSamples = juce::jmin (renderBlockSize, samplesRemaining);
+                mixBuffer.clear (0, blockSamples);
+
+                for (auto& slot : slots)
+                {
+                    if (! slot.inUse || ! slot.engine.isReady())
+                        continue;
+
+                    setSlotControls (slot, renderMasterGain, tempoHz, renderOrbitPhase);
+                    slot.output.clear (0, blockSamples);
+                    juce::AudioBuffer<float> slotView (slot.output.getArrayOfWritePointers(), renderChannels, blockSamples);
+                    slot.engine.process (emptyInput, slotView);
+
+                    for (int sample = 0; sample < blockSamples; ++sample)
+                    {
+                        const auto startGain = slot.gain;
+                        if (slot.targetGain > slot.gain)
+                            slot.gain = juce::jmin (slot.targetGain, slot.gain + fadeStepPerSample);
+                        else if (slot.targetGain < slot.gain)
+                            slot.gain = juce::jmax (slot.targetGain, slot.gain - fadeStepPerSample);
+
+                        const auto sampleGain = 0.5f * (startGain + slot.gain);
+                        for (int channel = 0; channel < renderChannels; ++channel)
+                            mixBuffer.addSample (channel, sample, slot.output.getSample (channel, sample) * sampleGain);
+                    }
+
+                    if (slot.targetGain <= 0.0f && slot.gain <= 0.0001f && (&slot - slots.data()) != activeSlot)
+                        slot.inUse = false;
+                }
+
+                writeBuffer.makeCopyOf (mixBuffer, true);
+                for (int channel = 0; channel < renderChannels; ++channel)
+                {
+                    const auto* samplesToMeasure = mixBuffer.getReadPointer (channel);
+                    for (int sample = 0; sample < blockSamples; ++sample)
+                    {
+                        const auto value = samplesToMeasure[sample];
+                        renderedPeak = juce::jmax (renderedPeak, std::abs (value));
+                        renderedEnergy += static_cast<double> (value) * static_cast<double> (value);
+                    }
+                }
+
+                if (! writer->writeFromAudioSampleBuffer (writeBuffer, 0, blockSamples))
+                    return false;
+
+                samplesRemaining -= blockSamples;
+            }
+
+            return true;
+        };
+
+        for (const auto& step : steps)
+        {
+            if (! isTopLevelStatePopulated (step.stateIndex))
+                continue;
+
+            const auto& tracks = *topLevelStates[static_cast<size_t> (step.stateIndex)];
+            if (tracks.empty())
+                continue;
+
+            const auto tempoBpm = stepTempoBpm (step);
+            const auto quarterNotesPerBar = stepQuarterNotesPerBar (step);
+            const auto beatsPerBar = static_cast<int> (juce::jlimit (1.0, 16.0, stepBeatsPerBar (step)));
+            const auto barDurationSeconds = quarterNotesPerBar * 60.0 / juce::jmax (1.0f, tempoBpm);
+            const auto totalStepSamples = static_cast<int64_t> (std::ceil (step.bars * barDurationSeconds * renderSampleRate));
+            auto renderedStepSamples = static_cast<int64_t> (0);
+            auto trackIndex = stemTarget.has_value()
+                && step.stateIndex == stemTarget->stateIndex
+                && stemTarget->trackIndex >= 0
+                && stemTarget->trackIndex < static_cast<int> (tracks.size())
+                    ? stemTarget->trackIndex
+                    : 0;
+            auto renderTrackElapsedBars = 0.0;
+            auto renderNextBarTransitionCheck = 1.0;
+            auto orbitPhaseForRender = 0.0f;
+
+            if (! loadTrackIntoNextSlot (tracks[static_cast<size_t> (trackIndex)], trackIndex, step, beatsPerBar, quarterNotesPerBar, orbitPhaseForRender))
+            {
+                statusLabel.setText ("render failed: could not load ChucK code", juce::dontSendNotification);
+                return RenderResult::failed;
+            }
+
+            while (renderedStepSamples < totalStepSamples)
+            {
+                const auto blockSamples = static_cast<int> (juce::jmin<int64_t> (renderBlockSize, totalStepSamples - renderedStepSamples));
+                if (! renderSamples (blockSamples, tempoBpm / 60.0f, orbitPhaseForRender))
+                {
+                    statusLabel.setText ("render failed: could not write WAV", juce::dontSendNotification);
+                    return RenderResult::failed;
+                }
+
+                renderedStepSamples += blockSamples;
+                renderTrackElapsedBars += (static_cast<double> (blockSamples) / renderSampleRate) * (tempoBpm / 60.0) / quarterNotesPerBar;
+
+                const auto& currentTrack = tracks[static_cast<size_t> (trackIndex)];
+                auto shouldAdvance = false;
+                if (currentTrack.transitionProbabilityPercent.has_value())
+                {
+                    while (renderTrackElapsedBars >= renderNextBarTransitionCheck && ! shouldAdvance)
+                    {
+                        shouldAdvance = shouldTransition (*currentTrack.transitionProbabilityPercent);
+                        if (! shouldAdvance)
+                            renderNextBarTransitionCheck += 1.0;
+                    }
+
+                    orbitPhaseForRender = static_cast<float> (std::fmod (renderTrackElapsedBars, 1.0));
+                }
+                else if (const auto duration = trackDurationBars (currentTrack, static_cast<double> (beatsPerBar)))
+                {
+                    orbitPhaseForRender = static_cast<float> (juce::jlimit (0.0, 1.0, renderTrackElapsedBars / *duration));
+                    shouldAdvance = renderTrackElapsedBars >= *duration;
+                }
+                else
+                {
+                    orbitPhaseForRender = static_cast<float> (std::fmod (renderTrackElapsedBars, 1.0));
+                }
+
+                if (stemTarget.has_value())
+                    shouldAdvance = false;
+
+                if (shouldAdvance && ! tracks.empty())
+                {
+                    trackIndex = (trackIndex + 1) % static_cast<int> (tracks.size());
+                    renderTrackElapsedBars = 0.0;
+                    renderNextBarTransitionCheck = 1.0;
+                    orbitPhaseForRender = 0.0f;
+
+                    if (! loadTrackIntoNextSlot (tracks[static_cast<size_t> (trackIndex)], trackIndex, step, beatsPerBar, quarterNotesPerBar, orbitPhaseForRender))
+                    {
+                        statusLabel.setText ("render failed: could not transition track", juce::dontSendNotification);
+                        return RenderResult::failed;
+                    }
+                }
+            }
+        }
+
+        for (auto& slot : slots)
+            slot.targetGain = 0.0f;
+
+        if (! renderSamples (static_cast<int> (std::ceil (finalTailSeconds * renderSampleRate)),
+                            topLevelTemposBpm[static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, performingTopLevelState))] / 60.0f,
+                            0.0f))
+        {
+            statusLabel.setText ("render failed: could not write final tail", juce::dontSendNotification);
+            return RenderResult::failed;
+        }
+
+        writer.reset();
+        if (renderedPeak <= 0.000001f || renderedEnergy <= 0.0000001)
+        {
+            if (! stemTarget.has_value())
+            {
+                destination.deleteFile();
+                statusLabel.setText ("render failed: silent output, check volume/mutes", juce::dontSendNotification);
+                return RenderResult::silent;
+            }
+
+            return RenderResult::success;
+        }
+
+        if (! stemTarget.has_value())
+            statusLabel.setText ("rendered WAV: " + destination.getFileName(), juce::dontSendNotification);
+
+        return RenderResult::success;
     }
 
     void scrollMixerToPlayingChannels()
@@ -3185,6 +5321,13 @@ private:
     void applyMixerLaneVolumeChange (int stateIndex, int trackIndex, int laneIndex, float)
     {
         selectMixerChannel (stateIndex, trackIndex, laneIndex);
+        markProjectDirty();
+
+        if (arrangementPlusMode)
+        {
+            syncImportedPlaybackMix();
+            return;
+        }
 
         if (stateIndex == performingTopLevelState && trackIndex == performingTrackIndex)
             loadSelectedContentForCurrentState();
@@ -3193,9 +5336,25 @@ private:
     void applyMixerLanePanChange (int stateIndex, int trackIndex, int laneIndex, float)
     {
         selectMixerChannel (stateIndex, trackIndex, laneIndex);
+        markProjectDirty();
+
+        if (arrangementPlusMode)
+        {
+            syncImportedPlaybackMix();
+            return;
+        }
 
         if (stateIndex == performingTopLevelState && trackIndex == performingTrackIndex)
             loadSelectedContentForCurrentState();
+    }
+
+    void syncImportedPlaybackMix()
+    {
+        for (int clipIndex = 0; clipIndex < static_cast<int> (importedLaneAudioClips.size()); ++clipIndex)
+        {
+            const auto& clip = importedLaneAudioClips[static_cast<size_t> (clipIndex)];
+            audioCallback.setImportedClipMix (clipIndex, clip.mixGain, clip.mixPan);
+        }
     }
 
     Wf::StateSpec* getTrack (int stateIndex, int trackIndex)
@@ -3316,6 +5475,7 @@ private:
         if (stateIndex == performingTopLevelState && trackIndex == performingTrackIndex)
             loadSelectedContentForCurrentState();
 
+        markProjectDirty();
         refreshLabels();
     }
 
@@ -3405,6 +5565,7 @@ private:
         viewedTopLevelState = target;
         selectedState = 0;
         selectedLane = 0;
+        markProjectDirty();
         selectViewedTopLevelState (target);
     }
 
@@ -3419,6 +5580,7 @@ private:
         topLevelTemposBpm[static_cast<size_t> (target)] = topLevelTemposBpm[source];
         topLevelTimeSigNumerators[static_cast<size_t> (target)] = topLevelTimeSigNumerators[source];
         topLevelTimeSigDenominators[static_cast<size_t> (target)] = topLevelTimeSigDenominators[source];
+        markProjectDirty();
         selectViewedTopLevelState (target);
     }
 
@@ -3455,6 +5617,7 @@ private:
         }
 
         refreshLabels();
+        markProjectDirty();
         grabKeyboardFocus();
     }
 
@@ -3602,6 +5765,11 @@ private:
         return 4;
     }
 
+    bool isUsingImportedAudioPlayback() const
+    {
+        return arrangementPlusMode && ! importedLaneAudioClips.empty();
+    }
+
     void toggleMainTransport()
     {
         if (running)
@@ -3618,6 +5786,19 @@ private:
         scriptShouldStopAtEnd = juce::String (stripGlobalScriptComments (globalScriptEditor.getText().toStdString())).containsIgnoreCase ("stop");
         running = true;
         syncTransportButtons();
+
+        if (isUsingImportedAudioPlayback())
+        {
+            scriptRunning = false;
+            static_cast<void> (audioCallback.loadImportedAudioClips (importedLaneAudioClips));
+            syncImportedPlaybackMix();
+            audioCallback.startImportedAudioPlayback (getCurrentMasterGain());
+            applyCurrentAudioControls();
+            refreshLabels();
+            return;
+        }
+
+        audioCallback.useChucKPlayback();
 
         if (globalScriptSteps.empty())
         {
@@ -3639,13 +5820,18 @@ private:
         scriptRunning = false;
         running = false;
         syncTransportButtons();
-        applyCurrentAudioControls();
+        if (isUsingImportedAudioPlayback())
+            audioCallback.stopImportedAudioPlayback();
+        else
+            applyCurrentAudioControls();
         refreshLabels();
     }
 
     void syncTransportButtons()
     {
-        const auto text = running ? "Stop" : "Play";
+        const auto text = isUsingImportedAudioPlayback()
+            ? (running ? "Stop+" : "Play+")
+            : (running ? "Stop" : "Play");
         runScriptButton.setButtonText (text);
     }
 
@@ -3713,6 +5899,7 @@ private:
         if (viewedTopLevelState == performingTopLevelState && trackIndex == performingTrackIndex)
             nextBarTransitionCheck = std::floor (trackElapsedBars) + 1.0;
 
+        markProjectDirty();
         refreshLabels();
     }
 
@@ -4130,6 +6317,7 @@ private:
         if (reloadAudioIfNeeded && viewedTopLevelState == performingTopLevelState && selectedState == performingTrackIndex)
             loadSelectedContentForCurrentState();
 
+        markProjectDirty();
         refreshLabels();
     }
 
@@ -4276,6 +6464,7 @@ private:
         laneCodeDirty = false;
         laneCodeRunButton.setEnabled (false);
         updateLaneCodeHeader ("lane code - live", green().withAlpha (0.58f));
+        markProjectDirty();
         syncMixerView();
 
         if (viewedTopLevelState == performingTopLevelState && selectedState == performingTrackIndex)
@@ -4452,7 +6641,15 @@ private:
         const auto rate = defaultPlaybackRate;
         const auto tempoBpm = getPerformingTempoBpm();
 
-        if (running)
+        if (running && isUsingImportedAudioPlayback())
+        {
+            if (! audioCallback.isImportedAudioPlaying())
+            {
+                running = false;
+                syncTransportButtons();
+            }
+        }
+        else if (running)
         {
             trackElapsedBars += deltaSeconds * (tempoBpm / 60.0) * static_cast<double> (rate) / getPerformingQuarterNotesPerBar();
             advanceGlobalScript (deltaSeconds, tempoBpm, rate);
@@ -4716,6 +6913,9 @@ private:
 
     void loadSelectedContentForCurrentState()
     {
+        if (isUsingImportedAudioPlayback())
+            return;
+
         const auto* performingTracks = getPerformingTracks();
         if (performingTracks == nullptr || performingTracks->empty())
             return;
@@ -4734,6 +6934,12 @@ private:
 
     void applyCurrentAudioControls()
     {
+        if (isUsingImportedAudioPlayback())
+        {
+            audioCallback.setImportedMasterGain (getCurrentMasterGain());
+            return;
+        }
+
         if (getPerformingTracks() == nullptr)
             return;
 
@@ -4749,7 +6955,11 @@ private:
     juce::AudioDeviceManager audioDeviceManager;
     juce::AudioPluginFormatManager pluginFormatManager;
     std::unique_ptr<juce::FileChooser> pluginChooser;
+    std::unique_ptr<juce::FileChooser> renderChooser;
+    std::unique_ptr<juce::FileChooser> projectChooser;
+    juce::File currentProjectFile;
     std::array<std::optional<std::vector<Wf::StateSpec>>, maxTopLevelStates> topLevelStates;
+    std::vector<ImportedLaneAudioClip> importedLaneAudioClips;
     std::mt19937 random { 0x5eed1234u };
 
     juce::Label titleLabel;
@@ -4795,6 +7005,7 @@ private:
     juce::TextButton codeViewButton;
     juce::TextButton timelineViewButton;
     juce::TextButton mixerViewButton;
+    juce::TextButton removeRenderedAudioButton;
     juce::TextButton muteLaneButton;
     juce::TextButton soloLaneButton;
     juce::TextButton duplicateLaneButton;
@@ -4802,6 +7013,10 @@ private:
     juce::TextButton laneCodeRunButton;
     juce::Slider gainSlider;
     juce::Slider stateTempoSlider;
+    juce::Label arrangementHorizontalZoomLabel;
+    juce::Slider arrangementHorizontalZoomSlider;
+    juce::Label arrangementVerticalZoomLabel;
+    juce::Slider arrangementVerticalZoomSlider;
     juce::ComboBox timeSigNumeratorBox;
     juce::ComboBox timeSigDenominatorBox;
     juce::TextEditor globalScriptEditor;
@@ -4813,27 +7028,9 @@ private:
     juce::TextEditor laneDurationEditor;
     juce::TextEditor laneCountEditor;
     juce::TextEditor stateTrackCountEditor;
-    std::array<float, maxTopLevelStates> topLevelTemposBpm
-    {
-        88.0f, 44.0f, 88.0f, 88.0f,
-        88.0f, 88.0f, 88.0f, 88.0f,
-        88.0f, 88.0f, 88.0f, 88.0f,
-        88.0f, 88.0f, 88.0f, 88.0f
-    };
-    std::array<int, maxTopLevelStates> topLevelTimeSigNumerators
-    {
-        4, 4, 4, 4,
-        4, 4, 4, 4,
-        4, 4, 4, 4,
-        4, 4, 4, 4
-    };
-    std::array<int, maxTopLevelStates> topLevelTimeSigDenominators
-    {
-        4, 4, 4, 4,
-        4, 4, 4, 4,
-        4, 4, 4, 4,
-        4, 4, 4, 4
-    };
+    std::array<float, maxTopLevelStates> topLevelTemposBpm = defaultTopLevelTempos();
+    std::array<int, maxTopLevelStates> topLevelTimeSigNumerators = defaultTopLevelTimeSigNumerators();
+    std::array<int, maxTopLevelStates> topLevelTimeSigDenominators = defaultTopLevelTimeSigDenominators();
 
     int viewedTopLevelState = 0;
     int performingTopLevelState = 0;
@@ -4848,15 +7045,21 @@ private:
     double scriptStepElapsedBars = 0.0;
     bool scriptRunning = false;
     bool scriptShouldStopAtEnd = false;
+    bool arrangementPlusMode = false;
+    double arrangementHorizontalZoom = 1.0;
+    double arrangementVerticalZoom = 1.0;
     bool suppressStateControlCallbacks = false;
     bool suppressEditCallbacks = false;
     bool suppressLaneCodeCallbacks = false;
+    bool suppressProjectDirty = false;
     bool laneCodeDirty = false;
+    bool projectDirty = false;
     MainView mainView = MainView::arrangement;
     juce::String laneCodeLastValidatedText;
     int laneCodeViewedTopLevelState = -1;
     int laneCodeTrackIndex = -1;
     int laneCodeLaneIndex = -1;
+    int missingImportedAudioOnLastLoad = 0;
     float orbitPhase = 0.0f;
     double trackElapsedBars = 0.0;
     double nextBarTransitionCheck = 1.0;
@@ -4868,7 +7071,7 @@ class WfApplication final : public juce::JUCEApplication
 {
 public:
     const juce::String getApplicationName() override { return "ChucK-ME"; }
-    const juce::String getApplicationVersion() override { return "0.1.0"; }
+    const juce::String getApplicationVersion() override { return "0.1.2"; }
     bool moreThanOneInstanceAllowed() override { return true; }
 
     void initialise (const juce::String&) override
@@ -4883,6 +7086,12 @@ public:
 
     void systemRequestedQuit() override
     {
+        if (mainWindow != nullptr)
+        {
+            mainWindow->requestCloseWithPrompt();
+            return;
+        }
+
         quit();
     }
 
@@ -4894,16 +7103,37 @@ private:
             : DocumentWindow (std::move (name), juce::Colour (0xff0c100e), DocumentWindow::allButtons)
         {
             setUsingNativeTitleBar (true);
-            setContentOwned (new MainComponent(), true);
+            mainComponent = new MainComponent();
+            setContentOwned (mainComponent, true);
+            juce::MenuBarModel::setMacMainMenu (mainComponent);
             centreWithSize (getWidth(), getHeight());
             setResizable (true, true);
             setVisible (true);
         }
 
+        ~MainWindow() override
+        {
+            juce::MenuBarModel::setMacMainMenu (nullptr);
+        }
+
         void closeButtonPressed() override
         {
-            juce::JUCEApplication::getInstance()->systemRequestedQuit();
+            requestCloseWithPrompt();
         }
+
+        void requestCloseWithPrompt()
+        {
+            if (mainComponent == nullptr)
+            {
+                juce::JUCEApplication::getInstance()->quit();
+                return;
+            }
+
+            mainComponent->confirmQuitThen ([] { juce::JUCEApplication::getInstance()->quit(); });
+        }
+
+    private:
+        MainComponent* mainComponent = nullptr;
     };
 
     std::unique_ptr<MainWindow> mainWindow;

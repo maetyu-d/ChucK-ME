@@ -2,6 +2,8 @@
 
 #include "WfChucKPrograms.h"
 
+#include <juce_audio_formats/juce_audio_formats.h>
+
 #include <array>
 #include <cmath>
 #include <iostream>
@@ -44,6 +46,23 @@ double renderEnergy (EmbeddedChucKEngine& engine,
 
         energy += blockEnergy;
     }
+
+    return energy;
+}
+
+double bufferEnergy (const juce::AudioSampleBuffer& buffer, int frames)
+{
+    double energy = 0.0;
+
+    for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+        for (int sample = 0; sample < frames; ++sample)
+        {
+            const auto value = buffer.getSample (channel, sample);
+            if (! std::isfinite (value))
+                return -1.0;
+
+            energy += static_cast<double> (value) * static_cast<double> (value);
+        }
 
     return energy;
 }
@@ -121,6 +140,82 @@ int main()
     {
         std::cerr << "one-lane render failed: " << oneLaneEnergy << '\n';
         return 6;
+    }
+
+    {
+        auto wavState = states.front();
+        EmbeddedChucKEngine wavEngine;
+        if (! wavEngine.prepare (48000.0, blockSize, 0, 2))
+        {
+            std::cerr << "wav render prepare failed: " << wavEngine.getLastError() << '\n';
+            return 45;
+        }
+
+        if (! wavEngine.loadProgram (Wf::buildStateProgram (wavState), bindings))
+        {
+            std::cerr << "wav render program failed: " << wavEngine.getLastError() << '\n';
+            return 46;
+        }
+
+        static_cast<void> (wavEngine.setParameterValue ("hostMasterGain", 0.18f));
+        static_cast<void> (wavEngine.setParameterValue ("hostTempoHz", static_cast<float> (wavState.tempoBpm / 60.0)));
+        static_cast<void> (wavEngine.setParameterValue ("hostIntensity", 0.58f));
+        static_cast<void> (wavEngine.setParameterValue ("hostBrightness", 0.48f));
+        static_cast<void> (wavEngine.setParameterValue ("hostOrbitPhase", 0.0f));
+
+        juce::MemoryBlock wavData;
+        std::unique_ptr<juce::OutputStream> outputStream (new juce::MemoryOutputStream (wavData, false));
+        juce::WavAudioFormat wavFormat;
+        auto writer = wavFormat.createWriterFor (outputStream,
+                                                 juce::AudioFormatWriterOptions {}
+                                                    .withSampleRate (48000.0)
+                                                    .withNumChannels (2)
+                                                    .withBitsPerSample (24));
+        if (writer == nullptr)
+        {
+            std::cerr << "wav writer create failed\n";
+            return 47;
+        }
+
+        juce::AudioBuffer<float> wavInput (0, blockSize);
+        juce::AudioBuffer<float> wavOutput (2, blockSize);
+        double writtenEnergy = 0.0;
+        for (int block = 0; block < 128; ++block)
+        {
+            wavOutput.clear();
+            wavEngine.process (wavInput, wavOutput);
+            writtenEnergy += bufferEnergy (wavOutput, blockSize);
+            if (! writer->writeFromAudioSampleBuffer (wavOutput, 0, blockSize))
+            {
+                std::cerr << "wav writer write failed\n";
+                return 48;
+            }
+        }
+
+        writer.reset();
+
+        if (writtenEnergy <= 0.0)
+        {
+            std::cerr << "wav render generated silence before write\n";
+            return 49;
+        }
+
+        std::unique_ptr<juce::AudioFormatReader> reader (wavFormat.createReaderFor (new juce::MemoryInputStream (wavData.getData(), wavData.getSize(), false),
+                                                                                    true));
+        if (reader == nullptr)
+        {
+            std::cerr << "wav reader create failed\n";
+            return 53;
+        }
+
+        juce::AudioBuffer<float> decoded (2, static_cast<int> (reader->lengthInSamples));
+        reader->read (&decoded, 0, decoded.getNumSamples(), 0, true, true);
+        const auto decodedEnergy = bufferEnergy (decoded, decoded.getNumSamples());
+        if (decodedEnergy <= 0.0)
+        {
+            std::cerr << "wav writer produced silent file\n";
+            return 54;
+        }
     }
 
     auto laneClockState = states.front();

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(WeldChucK VERSION 0.1.0 LANGUAGES C CXX)
+project(WeldChucK VERSION 0.1.2 LANGUAGES C CXX)
 enable_testing()
 
 set(CMAKE_CXX_STANDARD 17)
@@ -172,6 +172,7 @@ target_link_libraries(wf
     PRIVATE
         WeldChucK::Engine
         juce::juce_audio_devices
+        juce::juce_audio_formats
         juce::juce_audio_processors
         juce::juce_gui_extra
         "-framework CoreAudioKit"
@@ -206,6 +207,7 @@ target_include_directories(WfProgramTest
 target_link_libraries(WfProgramTest
     PRIVATE
         WeldChucK::Engine
+        juce::juce_audio_formats
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
 
