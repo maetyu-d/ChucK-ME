@@ -25,10 +25,12 @@ constexpr int maxStateTracks = 16;
 constexpr int maxTrackLanes = 8;
 constexpr int maxTrackEffectSlots = 3;
 constexpr int maxGraphTransitions = 32;
-constexpr int arrangementLeftPaneWidth = 304;
-constexpr int arrangementRightPaneWidth = 286;
-constexpr int arrangementPaneGap = 16;
-constexpr int trackFocusCodePaneWidth = 390;
+constexpr int arrangementLeftPaneWidth = 292;
+constexpr int arrangementRightPaneWidth = 292;
+constexpr int arrangementPaneGap = 18;
+constexpr int defaultTrackFocusCodePaneWidth = 390;
+constexpr int minTrackFocusCodePaneWidth = 260;
+constexpr int minTrackFocusCanvasWidth = 380;
 constexpr int trackFocusPaneGap = 16;
 constexpr float defaultPlaybackRate = 1.0f;
 constexpr float defaultIntensity = 0.58f;
@@ -57,9 +59,9 @@ void clearOutputs (float* const* outputChannelData, int numOutputChannels, int n
 
 void styleButton (juce::TextButton& button, juce::Colour colour)
 {
-    button.setColour (juce::TextButton::buttonColourId, panelSoft().withAlpha (0.72f));
-    button.setColour (juce::TextButton::buttonOnColourId, colour.withAlpha (0.24f));
-    button.setColour (juce::TextButton::textColourOffId, ink().withAlpha (0.82f));
+    button.setColour (juce::TextButton::buttonColourId, panelSoft().withAlpha (0.48f));
+    button.setColour (juce::TextButton::buttonOnColourId, colour.withAlpha (0.22f));
+    button.setColour (juce::TextButton::textColourOffId, ink().withAlpha (0.78f));
     button.setColour (juce::TextButton::textColourOnId, ink());
     button.setMouseCursor (juce::MouseCursor::PointingHandCursor);
 }
@@ -131,12 +133,12 @@ public:
             fill = panel().withAlpha (0.36f);
 
         g.setColour (fill);
-        g.fillRoundedRectangle (bounds, 5.0f);
+        g.fillRoundedRectangle (bounds, 4.0f);
 
         const auto lineColour = toggled ? button.findColour (juce::TextButton::buttonOnColourId).withAlpha (enabled ? 0.42f : 0.12f)
-                                        : mutedInk().withAlpha (enabled ? 0.16f : 0.07f);
+                                        : mutedInk().withAlpha (enabled ? 0.12f : 0.06f);
         g.setColour (lineColour);
-        g.drawRoundedRectangle (bounds, 5.0f, toggled ? 1.1f : 0.8f);
+        g.drawRoundedRectangle (bounds, 4.0f, toggled ? 1.0f : 0.7f);
     }
 
     void drawButtonText (juce::Graphics& g,
@@ -692,17 +694,17 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (juce::Colour (0xff0b0f0c));
+        g.fillAll (juce::Colour (0xff080c09));
 
-        auto area = getLocalBounds().toFloat().reduced (24.0f);
-        const auto radius = juce::jmin (area.getWidth(), area.getHeight()) * 0.36f;
+        auto area = getLocalBounds().toFloat().reduced (18.0f);
+        const auto radius = juce::jmin (area.getWidth(), area.getHeight()) * 0.42f;
         const auto centre = area.getCentre();
 
-        g.setColour (panelSoft().withAlpha (0.28f));
+        g.setColour (panelSoft().withAlpha (0.18f));
         g.fillEllipse (centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f);
 
-        g.setColour (mutedInk().withAlpha (0.14f));
-        g.drawEllipse (centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f, 1.2f);
+        g.setColour (mutedInk().withAlpha (0.11f));
+        g.drawEllipse (centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f, 1.0f);
 
         if (states == nullptr || states->empty())
             return;
@@ -713,8 +715,8 @@ public:
         for (int i = 0; i < count; ++i)
         {
             const auto next = (i + 1) % count;
-            g.setColour (mutedInk().withAlpha (0.12f));
-            g.drawLine ({ nodeCentres[static_cast<size_t> (i)], nodeCentres[static_cast<size_t> (next)] }, 1.1f);
+            g.setColour (mutedInk().withAlpha (0.10f));
+            g.drawLine ({ nodeCentres[static_cast<size_t> (i)], nodeCentres[static_cast<size_t> (next)] }, 1.0f);
         }
 
         for (int i = 0; i < count; ++i)
@@ -722,13 +724,13 @@ public:
             const auto selected = i == selectedIndex;
             const auto point = nodeCentres[static_cast<size_t> (i)];
             const auto colour = selected ? green() : blue().withAlpha (0.72f);
-            const auto size = selected ? 62.0f : 47.0f;
+            const auto size = selected ? 66.0f : 50.0f;
             const auto laneCount = static_cast<int> ((*states)[static_cast<size_t> (i)].lanes.size());
 
             g.setColour (colour.withAlpha (selected ? 0.20f : 0.10f));
             g.fillEllipse (point.x - size * 0.5f, point.y - size * 0.5f, size, size);
             g.setColour (colour.withAlpha (selected ? 0.98f : 0.78f));
-            g.drawEllipse (point.x - size * 0.5f, point.y - size * 0.5f, size, size, selected ? 2.0f : 1.2f);
+            g.drawEllipse (point.x - size * 0.5f, point.y - size * 0.5f, size, size, selected ? 1.8f : 1.1f);
             drawLaneDots (g, point, size, laneCount, selected);
 
             g.setColour (ink());
@@ -746,8 +748,8 @@ public:
         {
             const auto base = nodeCentres[static_cast<size_t> (selectedIndex)];
             const auto angle = juce::MathConstants<float>::twoPi * phase - juce::MathConstants<float>::halfPi;
-            const juce::Point<float> marker { base.x + std::cos (angle) * 34.0f,
-                                              base.y + std::sin (angle) * 34.0f };
+            const juce::Point<float> marker { base.x + std::cos (angle) * 36.0f,
+                                              base.y + std::sin (angle) * 36.0f };
 
             g.setColour (running ? amber() : coral());
             g.fillEllipse (marker.x - 4.0f, marker.y - 4.0f, 8.0f, 8.0f);
@@ -805,8 +807,8 @@ private:
         if (states == nullptr || states->empty())
             return;
 
-        auto area = getLocalBounds().toFloat().reduced (24.0f);
-        const auto radius = juce::jmin (area.getWidth(), area.getHeight()) * 0.36f;
+        auto area = getLocalBounds().toFloat().reduced (18.0f);
+        const auto radius = juce::jmin (area.getWidth(), area.getHeight()) * 0.42f;
         const auto centre = area.getCentre();
         const auto count = static_cast<int> (states->size());
 
@@ -960,6 +962,7 @@ public:
     }
 
     std::function<void (int)> onLaneSelected;
+    std::function<void (int, float)> onLanePhaseOffsetChanged;
 
     void setTrack (const Wf::StateSpec* trackToUse,
                    int selectedLaneToUse,
@@ -1008,6 +1011,12 @@ public:
         g.setColour (mutedInk().withAlpha (0.09f));
         g.drawEllipse (centre.x - ringRadius, centre.y - ringRadius, ringRadius * 2.0f, ringRadius * 2.0f, 1.0f);
 
+        if (running)
+        {
+            const auto angle = juce::MathConstants<float>::twoPi * phase - juce::MathConstants<float>::halfPi;
+            drawClockHand (g, centre, angle, ringRadius - 7.0f, amber(), 2.0f, 0.74f, 4.2f);
+        }
+
         g.setColour (ink());
         g.setFont (juce::FontOptions (31.0f, juce::Font::bold));
         g.drawFittedText (trackDisplayName (track->name),
@@ -1030,23 +1039,20 @@ public:
 
         rebuildLaneCentres();
         drawLanes (g, centre, nodeRadius);
-
-        if (running)
-        {
-            const auto angle = juce::MathConstants<float>::twoPi * phase - juce::MathConstants<float>::halfPi;
-            const juce::Point<float> marker { centre.x + std::cos (angle) * ringRadius,
-                                              centre.y + std::sin (angle) * ringRadius };
-
-            g.setColour (juce::Colour (0xff0b0f0c).withAlpha (0.92f));
-            g.fillEllipse (marker.x - 7.0f, marker.y - 7.0f, 14.0f, 14.0f);
-            g.setColour (amber());
-            g.fillEllipse (marker.x - 4.5f, marker.y - 4.5f, 9.0f, 9.0f);
-        }
     }
 
     void mouseDown (const juce::MouseEvent& event) override
     {
         grabKeyboardFocus();
+
+        if (const auto index = startHandleIndexAt (event.position); index >= 0)
+        {
+            draggedStartHandleLane = index;
+            if (onLaneSelected != nullptr)
+                onLaneSelected (index);
+            updateDraggedStartHandle (event.position);
+            return;
+        }
 
         if (onLaneSelected == nullptr)
             return;
@@ -1059,6 +1065,17 @@ public:
                 return;
             }
         }
+    }
+
+    void mouseDrag (const juce::MouseEvent& event) override
+    {
+        if (draggedStartHandleLane >= 0)
+            updateDraggedStartHandle (event.position);
+    }
+
+    void mouseUp (const juce::MouseEvent&) override
+    {
+        draggedStartHandleLane = -1;
     }
 
 private:
@@ -1074,6 +1091,48 @@ private:
         };
 
         return colours[static_cast<size_t> (index % static_cast<int> (colours.size()))];
+    }
+
+    static float phaseOffsetToAngle (float phaseOffset)
+    {
+        return juce::MathConstants<float>::twoPi * juce::jlimit (0.0f, 0.999f, phaseOffset)
+             - juce::MathConstants<float>::halfPi;
+    }
+
+    static float angleToPhaseOffset (juce::Point<float> laneCentre, juce::Point<float> position)
+    {
+        auto phase = (std::atan2 (position.y - laneCentre.y, position.x - laneCentre.x) + juce::MathConstants<float>::halfPi)
+                   / juce::MathConstants<float>::twoPi;
+        phase -= std::floor (phase);
+        return juce::jlimit (0.0f, 0.999f, phase);
+    }
+
+    static void drawClockHand (juce::Graphics& g,
+                               juce::Point<float> centre,
+                               float angle,
+                               float length,
+                               juce::Colour colour,
+                               float thickness,
+                               float alpha,
+                               float hubRadius)
+    {
+        const juce::Point<float> handEnd { centre.x + std::cos (angle) * length,
+                                           centre.y + std::sin (angle) * length };
+
+        g.setColour (juce::Colour (0xff050806).withAlpha (0.72f));
+        g.drawLine (juce::Line<float> (centre, handEnd), thickness + 2.0f);
+
+        g.setColour (colour.withAlpha (alpha));
+        g.drawLine (juce::Line<float> (centre, handEnd), thickness);
+
+        g.setColour (juce::Colour (0xff050806).withAlpha (0.92f));
+        g.fillEllipse (centre.x - hubRadius - 1.4f,
+                       centre.y - hubRadius - 1.4f,
+                       (hubRadius + 1.4f) * 2.0f,
+                       (hubRadius + 1.4f) * 2.0f);
+
+        g.setColour (colour.withAlpha (juce::jmin (1.0f, alpha + 0.14f)));
+        g.fillEllipse (centre.x - hubRadius, centre.y - hubRadius, hubRadius * 2.0f, hubRadius * 2.0f);
     }
 
     void rebuildLaneCentres()
@@ -1133,7 +1192,7 @@ private:
                            (dotRadius - 8.0f) * 2.0f,
                            laneIsSelected ? 0.8f : 0.5f);
 
-            drawLaneTimingMarks (g, point, dotRadius, colour, laneIsSelected);
+            drawLaneTimingMarks (g, point, dotRadius, colour, laneIsSelected, lane.phaseOffsetBars);
 
             if (running)
                 drawLanePlayhead (g, point, dotRadius, lane);
@@ -1147,32 +1206,47 @@ private:
         }
     }
 
-    void drawLaneTimingMarks (juce::Graphics& g, juce::Point<float> laneCentre, float ringRadius, juce::Colour colour, bool laneIsSelected) const
+    void drawLaneTimingMarks (juce::Graphics& g, juce::Point<float> laneCentre, float ringRadius, juce::Colour colour, bool laneIsSelected, float phaseOffset) const
     {
         const auto count = juce::jmax (1, beatsPerBar);
 
         for (int beat = 0; beat < count; ++beat)
         {
             const auto isBarStart = beat == 0;
-            const auto angle = juce::MathConstants<float>::twoPi * (static_cast<float> (beat) / static_cast<float> (count))
-                             - juce::MathConstants<float>::halfPi;
-            const auto innerRadius = ringRadius - (isBarStart ? 9.0f : 5.5f);
-            const auto outerRadius = ringRadius + (isBarStart ? 9.0f : 5.5f);
+            const auto angle = phaseOffsetToAngle (phaseOffset + static_cast<float> (beat) / static_cast<float> (count));
+            const auto innerRadius = ringRadius - (isBarStart ? 12.0f : 8.0f);
+            const auto outerRadius = ringRadius + (isBarStart ? 11.0f : 7.0f);
             const juce::Point<float> start { laneCentre.x + std::cos (angle) * innerRadius,
                                              laneCentre.y + std::sin (angle) * innerRadius };
             const juce::Point<float> end { laneCentre.x + std::cos (angle) * outerRadius,
                                            laneCentre.y + std::sin (angle) * outerRadius };
+            const auto tickAlpha = isBarStart ? (laneIsSelected ? 0.72f : 0.52f)
+                                              : (laneIsSelected ? 0.48f : 0.32f);
+            const auto tickWidth = isBarStart ? (laneIsSelected ? 2.1f : 1.7f)
+                                              : (laneIsSelected ? 1.35f : 1.1f);
 
-            g.setColour ((isBarStart ? ink() : colour).withAlpha (isBarStart ? (laneIsSelected ? 0.42f : 0.28f)
-                                                                             : (laneIsSelected ? 0.28f : 0.16f)));
-            g.drawLine (juce::Line<float> (start, end), isBarStart ? 1.4f : 0.9f);
+            g.setColour ((isBarStart ? ink() : colour).withAlpha (tickAlpha));
+            g.drawLine (juce::Line<float> (start, end), tickWidth);
+
+            if (isBarStart)
+            {
+                const auto dotRadius = laneIsSelected ? 2.8f : 2.2f;
+                const juce::Point<float> dot { laneCentre.x + std::cos (angle) * (outerRadius + 3.0f),
+                                               laneCentre.y + std::sin (angle) * (outerRadius + 3.0f) };
+                g.setColour (ink().withAlpha (laneIsSelected ? 0.64f : 0.42f));
+                g.fillEllipse (dot.x - dotRadius, dot.y - dotRadius, dotRadius * 2.0f, dotRadius * 2.0f);
+            }
         }
     }
 
     void drawLanePlayhead (juce::Graphics& g, juce::Point<float> laneCentre, float ringRadius, const Wf::LaneSpec& lane)
     {
         const auto laneTempoBpm = lane.tempoBpm.value_or (defaultTempoBpm);
-        const auto laneElapsedBars = trackElapsedBars * (static_cast<double> (laneTempoBpm) / static_cast<double> (defaultTempoBpm));
+        const auto laneElapsedBars = trackElapsedBars * (static_cast<double> (laneTempoBpm) / static_cast<double> (defaultTempoBpm))
+                                   - static_cast<double> (juce::jlimit (0.0f, 0.999f, lane.phaseOffsetBars));
+
+        if (laneElapsedBars < 0.0)
+            return;
 
         if (lane.duration.has_value())
         {
@@ -1182,21 +1256,49 @@ private:
                 return;
         }
 
-        const auto lanePhase = static_cast<float> (std::fmod (laneElapsedBars, 1.0));
-        const auto angle = juce::MathConstants<float>::twoPi * lanePhase - juce::MathConstants<float>::halfPi;
-        const auto markerRadius = ringRadius + 1.0f;
-        const juce::Point<float> marker { laneCentre.x + std::cos (angle) * markerRadius,
-                                          laneCentre.y + std::sin (angle) * markerRadius };
+        auto lanePhase = static_cast<float> (std::fmod (laneElapsedBars, 1.0));
+        lanePhase += juce::jlimit (0.0f, 0.999f, lane.phaseOffsetBars);
+        lanePhase -= std::floor (lanePhase);
+        const auto angle = phaseOffsetToAngle (lanePhase);
         const auto alpha = lane.muted ? 0.34f : 0.96f;
+        drawClockHand (g, laneCentre, angle, ringRadius - 8.0f, amber(), 1.8f, alpha, 3.0f);
+    }
 
-        g.setColour (juce::Colour (0xff0b0f0c).withAlpha (0.92f));
-        g.fillEllipse (marker.x - 7.0f, marker.y - 7.0f, 14.0f, 14.0f);
-        g.setColour (amber().withAlpha (alpha));
-        g.fillEllipse (marker.x - 4.5f, marker.y - 4.5f, 9.0f, 9.0f);
+    int startHandleIndexAt (juce::Point<float> position) const
+    {
+        if (track == nullptr)
+            return -1;
+
+        for (int i = 0; i < static_cast<int> (laneCentres.size()); ++i)
+        {
+            const auto& lane = track->lanes[static_cast<size_t> (i)];
+            const auto laneIsSelected = i == selectedLane;
+            const auto ringRadius = laneIsSelected ? 54.0f : 43.5f;
+            const auto angle = phaseOffsetToAngle (lane.phaseOffsetBars);
+            const auto handleRadius = ringRadius + 14.0f;
+            const juce::Point<float> handle { laneCentres[static_cast<size_t> (i)].x + std::cos (angle) * handleRadius,
+                                              laneCentres[static_cast<size_t> (i)].y + std::sin (angle) * handleRadius };
+
+            if (position.getDistanceFrom (handle) <= 12.0f)
+                return i;
+        }
+
+        return -1;
+    }
+
+    void updateDraggedStartHandle (juce::Point<float> position)
+    {
+        if (track == nullptr || draggedStartHandleLane < 0 || draggedStartHandleLane >= static_cast<int> (laneCentres.size()))
+            return;
+
+        const auto phaseOffset = angleToPhaseOffset (laneCentres[static_cast<size_t> (draggedStartHandleLane)], position);
+        if (onLanePhaseOffsetChanged != nullptr)
+            onLanePhaseOffsetChanged (draggedStartHandleLane, phaseOffset);
     }
 
     const Wf::StateSpec* track = nullptr;
     std::vector<juce::Point<float>> laneCentres;
+    int draggedStartHandleLane = -1;
     int selectedLane = 0;
     int beatsPerBar = 4;
     float defaultTempoBpm = 88.0f;
@@ -1650,6 +1752,53 @@ private:
     bool running = false;
 };
 
+class TrackFocusDivider final : public juce::Component
+{
+public:
+    TrackFocusDivider()
+    {
+        setMouseCursor (juce::MouseCursor::LeftRightResizeCursor);
+    }
+
+    std::function<void()> onDragStart;
+    std::function<void (int)> onDragDelta;
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto bounds = getLocalBounds().toFloat();
+        const auto hover = isMouseOverOrDragging();
+        const auto x = bounds.getCentreX();
+
+        g.setColour (mutedInk().withAlpha (hover ? 0.13f : 0.055f));
+        g.fillRoundedRectangle (bounds.reduced (6.0f, 0.0f), 2.0f);
+
+        g.setColour ((hover ? blue() : mutedInk()).withAlpha (hover ? 0.45f : 0.16f));
+        g.drawLine (x, bounds.getY() + 12.0f, x, bounds.getBottom() - 12.0f, hover ? 1.4f : 1.0f);
+    }
+
+    void mouseEnter (const juce::MouseEvent&) override
+    {
+        repaint();
+    }
+
+    void mouseExit (const juce::MouseEvent&) override
+    {
+        repaint();
+    }
+
+    void mouseDown (const juce::MouseEvent&) override
+    {
+        if (onDragStart != nullptr)
+            onDragStart();
+    }
+
+    void mouseDrag (const juce::MouseEvent& event) override
+    {
+        if (onDragDelta != nullptr)
+            onDragDelta (event.getDistanceFromDragStartX());
+    }
+};
+
 class MainComponent final : public juce::Component,
                             private juce::Timer
 {
@@ -1893,7 +2042,11 @@ public:
         addAndMakeVisible (orbitCanvas);
 
         trackFocusCanvas.onLaneSelected = [this] (int index) { selectFocusedLane (index); };
+        trackFocusCanvas.onLanePhaseOffsetChanged = [this] (int index, float phaseOffset) { setLanePhaseOffset (index, phaseOffset); };
         addAndMakeVisible (trackFocusCanvas);
+        trackFocusDivider.onDragStart = [this] { trackFocusCodePaneDragStartWidth = trackFocusCodePaneWidthPx; };
+        trackFocusDivider.onDragDelta = [this] (int delta) { setTrackFocusCodePaneWidth (trackFocusCodePaneDragStartWidth + delta); };
+        addAndMakeVisible (trackFocusDivider);
 
         mixerViewport.setViewedComponent (&mixerCanvas, false);
         mixerViewport.setScrollBarsShown (false, true);
@@ -1929,6 +2082,14 @@ public:
             auto& button = laneButtons[static_cast<size_t> (i)];
             setupButton (button, juce::String (i + 1), blue(), [this, i] { selectLane (i); });
             button.setClickingTogglesState (false);
+
+            auto& soloButton = laneSoloButtons[static_cast<size_t> (i)];
+            setupButton (soloButton, "S", amber(), [this, i] { toggleLaneSolo (i); });
+            soloButton.setClickingTogglesState (false);
+
+            auto& muteButton = laneMuteButtons[static_cast<size_t> (i)];
+            setupButton (muteButton, "M", coral(), [this, i] { toggleLaneMute (i); });
+            muteButton.setClickingTogglesState (false);
         }
 
         audioDeviceManager.initialiseWithDefaultDevices (0, 2);
@@ -1999,18 +2160,18 @@ public:
         if (mainView == MainView::arrangement)
         {
             auto stateRow = content.removeFromTop (60);
-            auto scriptRow = content.removeFromTop (70);
+            auto scriptRow = content.removeFromTop (64);
             auto body = content;
-            body.removeFromTop (12);
+            body.removeFromTop (14);
             auto leftPane = body.removeFromLeft (arrangementLeftPaneWidth);
             body.removeFromLeft (arrangementPaneGap);
             auto rightPane = body.removeFromRight (arrangementRightPaneWidth);
 
-            g.setColour (juce::Colour (0xff0b0f0c).withAlpha (0.42f));
+            g.setColour (juce::Colour (0xff0b0f0c).withAlpha (0.30f));
             g.fillRoundedRectangle (leftPane.toFloat(), 3.0f);
             g.fillRoundedRectangle (rightPane.toFloat(), 3.0f);
 
-            g.setColour (mutedInk().withAlpha (0.035f));
+            g.setColour (mutedInk().withAlpha (0.028f));
             g.drawRoundedRectangle (leftPane.toFloat(), 3.0f, 1.0f);
             g.drawRoundedRectangle (rightPane.toFloat(), 3.0f, 1.0f);
 
@@ -2044,7 +2205,7 @@ public:
         else if (mainView == MainView::track)
         {
             content.removeFromTop (12);
-            auto codePane = content.removeFromLeft (trackFocusCodePaneWidth);
+            auto codePane = content.removeFromLeft (clampedTrackFocusCodePaneWidth (content.getWidth()));
             content.removeFromLeft (trackFocusPaneGap);
             auto trackPane = content;
 
@@ -2123,8 +2284,9 @@ public:
         if (mainView == MainView::track)
         {
             area.removeFromTop (12);
-            auto codePane = area.removeFromLeft (trackFocusCodePaneWidth);
-            area.removeFromLeft (trackFocusPaneGap);
+            auto codePane = area.removeFromLeft (clampedTrackFocusCodePaneWidth (area.getWidth()));
+            auto dividerArea = area.removeFromLeft (trackFocusPaneGap);
+            trackFocusDivider.setBounds (dividerArea);
             trackFocusCanvas.setBounds (area.reduced (8, 0));
 
             auto laneNameRow = codePane.removeFromTop (30);
@@ -2165,58 +2327,47 @@ public:
             row.removeFromLeft (buttonGap);
         }
 
-        auto scriptRow = area.removeFromTop (70);
+        auto scriptRow = area.removeFromTop (64);
         scriptRow.removeFromLeft (10);
-        globalScriptEditor.setBounds (scriptRow.reduced (0, 8));
-        area.removeFromTop (12);
+        globalScriptEditor.setBounds (scriptRow.reduced (0, 6));
+        area.removeFromTop (14);
         auto codePane = area.removeFromLeft (arrangementLeftPaneWidth);
         area.removeFromLeft (arrangementPaneGap);
         auto right = area.removeFromRight (arrangementRightPaneWidth);
         area.removeFromRight (arrangementPaneGap);
 
-        auto inspector = codePane.reduced (8, 2);
+        auto inspector = codePane.reduced (10, 4);
         trackSectionLabel.setBounds (inspector.removeFromTop (24));
-        inspector.removeFromTop (4);
+        inspector.removeFromTop (6);
 
-        auto trackNameBlock = inspector.removeFromTop (54);
+        auto trackNameBlock = inspector.removeFromTop (52);
         trackNameLabel.setBounds (trackNameBlock.removeFromTop (18));
         trackNameEditor.setBounds (trackNameBlock.reduced (0, 2));
-        inspector.removeFromTop (8);
+        inspector.removeFromTop (7);
 
-        auto trackDurationBlock = inspector.removeFromTop (54);
+        auto trackDurationBlock = inspector.removeFromTop (52);
         trackDurationLabel.setBounds (trackDurationBlock.removeFromTop (18));
         trackDurationEditor.setBounds (trackDurationBlock.removeFromLeft (116).reduced (0, 2));
-        inspector.removeFromTop (18);
+        inspector.removeFromTop (16);
 
         laneSectionLabel.setBounds (inspector.removeFromTop (24));
-        inspector.removeFromTop (4);
+        inspector.removeFromTop (6);
 
-        auto laneNameBlock = inspector.removeFromTop (54);
+        auto laneNameBlock = inspector.removeFromTop (52);
         laneNameLabel.setBounds (laneNameBlock.removeFromTop (18));
         laneNameEditor.setBounds (laneNameBlock.reduced (0, 2));
-        inspector.removeFromTop (8);
+        inspector.removeFromTop (7);
 
-        auto laneTempoBlock = inspector.removeFromTop (54);
+        auto laneTempoBlock = inspector.removeFromTop (52);
         laneTempoLabel.setBounds (laneTempoBlock.removeFromTop (18));
         laneTempoEditor.setBounds (laneTempoBlock.removeFromLeft (116).reduced (0, 2));
-        inspector.removeFromTop (8);
+        inspector.removeFromTop (7);
 
-        auto laneDurationBlock = inspector.removeFromTop (54);
+        auto laneDurationBlock = inspector.removeFromTop (52);
         laneDurationLabel.setBounds (laneDurationBlock.removeFromTop (18));
         laneDurationEditor.setBounds (laneDurationBlock.removeFromLeft (116).reduced (0, 2));
-        inspector.removeFromTop (12);
-
-        auto laneEditRow = inspector.removeFromTop (34);
-        muteLaneButton.setBounds (laneEditRow.removeFromLeft (82).reduced (0, 3));
-        laneEditRow.removeFromLeft (8);
-        soloLaneButton.setBounds (laneEditRow.removeFromLeft (82).reduced (0, 3));
-        inspector.removeFromTop (8);
-
-        auto laneActionRow = inspector.removeFromTop (34);
-        duplicateLaneButton.setBounds (laneActionRow.removeFromLeft (116).reduced (0, 3));
-        laneActionRow.removeFromLeft (8);
-        deleteLaneButton.setBounds (laneActionRow.removeFromLeft (92).reduced (0, 3));
         orbitCanvas.setBounds (area);
+        right = right.reduced (10, 4);
         stateSettingsLabel.setBounds (right.removeFromTop (24));
         stateTempoLabel.setBounds (right.removeFromTop (22));
         stateTempoSlider.setBounds (right.removeFromTop (30));
@@ -2239,8 +2390,18 @@ public:
         selectedLabel.setBounds (right.removeFromTop (34));
         laneHeader.setBounds (right.removeFromTop (28));
 
-        for (auto& button : laneButtons)
-            button.setBounds (right.removeFromTop (25).reduced (0, 2));
+        for (int i = 0; i < static_cast<int> (laneButtons.size()); ++i)
+        {
+            auto row = right.removeFromTop (27).reduced (0, 2);
+            auto muteArea = row.removeFromRight (24);
+            row.removeFromRight (4);
+            auto soloArea = row.removeFromRight (24);
+            row.removeFromRight (6);
+
+            laneButtons[static_cast<size_t> (i)].setBounds (row);
+            laneSoloButtons[static_cast<size_t> (i)].setBounds (soloArea);
+            laneMuteButtons[static_cast<size_t> (i)].setBounds (muteArea);
+        }
     }
 
 private:
@@ -2250,6 +2411,28 @@ private:
         const auto buttonGap = 6;
         const auto buttonWidth = juce::jmax (52, (area.getWidth() - buttonGap * 7) / 8);
         return area.getX() + buttonWidth * 8 + buttonGap * 7;
+    }
+
+    int clampedTrackFocusCodePaneWidth (int availableWidth) const
+    {
+        const auto maximumWidth = juce::jmax (minTrackFocusCodePaneWidth,
+                                              availableWidth - trackFocusPaneGap - minTrackFocusCanvasWidth);
+        return juce::jlimit (minTrackFocusCodePaneWidth, maximumWidth, trackFocusCodePaneWidthPx);
+    }
+
+    void setTrackFocusCodePaneWidth (int requestedWidth)
+    {
+        const auto availableWidth = getLocalBounds().reduced (34).getWidth();
+        trackFocusCodePaneWidthPx = clampedTrackFocusCodePaneWidthForAvailableWidth (requestedWidth, availableWidth);
+        resized();
+        repaint();
+    }
+
+    static int clampedTrackFocusCodePaneWidthForAvailableWidth (int requestedWidth, int availableWidth)
+    {
+        const auto maximumWidth = juce::jmax (minTrackFocusCodePaneWidth,
+                                              availableWidth - trackFocusPaneGap - minTrackFocusCanvasWidth);
+        return juce::jlimit (minTrackFocusCodePaneWidth, maximumWidth, requestedWidth);
     }
 
     void setupButton (juce::TextButton& button, const juce::String& text, juce::Colour colour, std::function<void()> action)
@@ -2272,9 +2455,9 @@ private:
     void setupTextEditor (juce::TextEditor& editor, const juce::String& emptyText)
     {
         editor.setTextToShowWhenEmpty (emptyText, mutedInk().withAlpha (0.66f));
-        editor.setColour (juce::TextEditor::backgroundColourId, panelSoft().withAlpha (0.50f));
+        editor.setColour (juce::TextEditor::backgroundColourId, panelSoft().withAlpha (0.36f));
         editor.setColour (juce::TextEditor::textColourId, ink());
-        editor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.07f));
+        editor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.09f));
         editor.setColour (juce::TextEditor::focusedOutlineColourId, blue().withAlpha (0.30f));
         editor.setColour (juce::TextEditor::highlightColourId, blue().withAlpha (0.24f));
         editor.setFont (juce::FontOptions (13.0f));
@@ -2322,12 +2505,13 @@ private:
         laneTempoEditor.setVisible (arrangement || track);
         laneDurationLabel.setVisible (arrangement || track);
         laneDurationEditor.setVisible (arrangement || track);
-        muteLaneButton.setVisible (arrangement);
-        soloLaneButton.setVisible (arrangement);
-        duplicateLaneButton.setVisible (arrangement);
-        deleteLaneButton.setVisible (arrangement);
+        muteLaneButton.setVisible (false);
+        soloLaneButton.setVisible (false);
+        duplicateLaneButton.setVisible (false);
+        deleteLaneButton.setVisible (false);
         orbitCanvas.setVisible (arrangement);
         trackFocusCanvas.setVisible (track);
+        trackFocusDivider.setVisible (track);
         stateSettingsLabel.setVisible (arrangement);
         stateTempoLabel.setVisible (arrangement);
         stateTempoSlider.setVisible (arrangement);
@@ -2343,6 +2527,12 @@ private:
         laneHeader.setVisible (arrangement);
 
         for (auto& button : laneButtons)
+            button.setVisible (arrangement && button.isEnabled());
+
+        for (auto& button : laneSoloButtons)
+            button.setVisible (arrangement && button.isEnabled());
+
+        for (auto& button : laneMuteButtons)
             button.setVisible (arrangement && button.isEnabled());
 
         laneCodeHeader.setVisible (track || code);
@@ -3004,6 +3194,20 @@ private:
                 button.setVisible (false);
             }
 
+            for (auto& button : laneSoloButtons)
+            {
+                button.setToggleState (false, juce::dontSendNotification);
+                button.setEnabled (false);
+                button.setVisible (false);
+            }
+
+            for (auto& button : laneMuteButtons)
+            {
+                button.setToggleState (false, juce::dontSendNotification);
+                button.setEnabled (false);
+                button.setVisible (false);
+            }
+
             syncEditControls (nullptr, nullptr);
             updateLaneCodeHeader ("lane code", mutedInk().withAlpha (0.22f));
             laneCodeRunButton.setEnabled (false);
@@ -3024,20 +3228,25 @@ private:
         for (int i = 0; i < static_cast<int> (laneButtons.size()); ++i)
         {
             auto& button = laneButtons[static_cast<size_t> (i)];
+            auto& soloButton = laneSoloButtons[static_cast<size_t> (i)];
+            auto& muteButton = laneMuteButtons[static_cast<size_t> (i)];
 
             if (i < static_cast<int> (state.lanes.size()))
             {
                 const auto& lane = state.lanes[static_cast<size_t> (i)];
-                juce::String prefix;
-                if (lane.solo)
-                    prefix << "S ";
-                else if (lane.muted)
-                    prefix << "M ";
 
-                button.setButtonText (juce::String (i + 1) + "  " + prefix + lane.name);
+                button.setButtonText (juce::String (i + 1) + "  " + lane.name);
                 button.setEnabled (true);
                 button.setVisible (true);
                 button.setToggleState (selectedLane == i, juce::dontSendNotification);
+
+                soloButton.setEnabled (true);
+                soloButton.setVisible (true);
+                soloButton.setToggleState (lane.solo, juce::dontSendNotification);
+
+                muteButton.setEnabled (true);
+                muteButton.setVisible (true);
+                muteButton.setToggleState (lane.muted, juce::dontSendNotification);
             }
             else
             {
@@ -3045,6 +3254,14 @@ private:
                 button.setEnabled (false);
                 button.setVisible (false);
                 button.setToggleState (false, juce::dontSendNotification);
+
+                soloButton.setEnabled (false);
+                soloButton.setVisible (false);
+                soloButton.setToggleState (false, juce::dontSendNotification);
+
+                muteButton.setEnabled (false);
+                muteButton.setVisible (false);
+                muteButton.setToggleState (false, juce::dontSendNotification);
             }
         }
 
@@ -3269,6 +3486,42 @@ private:
         }
     }
 
+    void toggleLaneMute (int index)
+    {
+        auto* track = getSelectedViewedTrack();
+        if (track == nullptr || index < 0 || index >= static_cast<int> (track->lanes.size()))
+            return;
+
+        selectedLane = index;
+        auto& lane = track->lanes[static_cast<size_t> (index)];
+        lane.muted = ! lane.muted;
+        refreshAfterStructureEdit (true);
+    }
+
+    void toggleLaneSolo (int index)
+    {
+        auto* track = getSelectedViewedTrack();
+        if (track == nullptr || index < 0 || index >= static_cast<int> (track->lanes.size()))
+            return;
+
+        selectedLane = index;
+        auto& lane = track->lanes[static_cast<size_t> (index)];
+        lane.solo = ! lane.solo;
+        refreshAfterStructureEdit (true);
+    }
+
+    void setLanePhaseOffset (int index, float phaseOffset)
+    {
+        auto* track = getSelectedViewedTrack();
+        if (track == nullptr || index < 0 || index >= static_cast<int> (track->lanes.size()))
+            return;
+
+        selectedLane = index;
+        auto& lane = track->lanes[static_cast<size_t> (index)];
+        lane.phaseOffsetBars = juce::jlimit (0.0f, 0.999f, phaseOffset);
+        refreshAfterStructureEdit (true);
+    }
+
     void duplicateSelectedLane()
     {
         auto* track = getSelectedViewedTrack();
@@ -3322,7 +3575,8 @@ private:
              << "  pulseTicks: " << lane.pulseTicks
              << "  openTicks: " << lane.openTicks << "\n\n";
         code << "// bpm: " << (lane.tempoBpm.has_value() ? juce::String (*lane.tempoBpm, 1) : juce::String ("track"))
-             << "  duration: " << (lane.duration.has_value() ? formatTrackDuration (*lane.duration) : juce::String ("track")) << "\n\n";
+             << "  duration: " << (lane.duration.has_value() ? formatTrackDuration (*lane.duration) : juce::String ("track"))
+             << "  phaseOffset: " << juce::String (lane.phaseOffsetBars, 3) << "\n\n";
         code << laneDeclarationMarker << "\n";
         if (lane.customDeclarationCode.has_value())
             code << *lane.customDeclarationCode << "\n";
@@ -3873,9 +4127,12 @@ private:
     juce::Label selectedLabel;
     juce::Label laneHeader;
     std::array<juce::TextButton, maxTrackLanes> laneButtons;
+    std::array<juce::TextButton, maxTrackLanes> laneSoloButtons;
+    std::array<juce::TextButton, maxTrackLanes> laneMuteButtons;
 
     OrbitCanvas orbitCanvas;
     TrackFocusCanvas trackFocusCanvas;
+    TrackFocusDivider trackFocusDivider;
     MixerCanvas mixerCanvas;
     juce::Viewport mixerViewport;
     std::array<juce::TextButton, maxTopLevelStates> stateButtons;
@@ -3931,6 +4188,8 @@ private:
     int focusedTrackIndex = 0;
     int performingTrackIndex = 0;
     int selectedLane = 0;
+    int trackFocusCodePaneWidthPx = defaultTrackFocusCodePaneWidth;
+    int trackFocusCodePaneDragStartWidth = defaultTrackFocusCodePaneWidth;
     std::vector<GlobalScriptStep> globalScriptSteps;
     size_t scriptStepIndex = 0;
     double scriptStepElapsedBars = 0.0;

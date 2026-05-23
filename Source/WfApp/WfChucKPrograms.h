@@ -43,6 +43,7 @@ struct LaneSpec
     float pan = 0.0f;
     int pulseTicks = 96;
     int openTicks = 18;
+    float phaseOffsetBars = 0.0f;
     std::optional<float> tempoBpm;
     std::optional<TrackDurationSpec> duration;
     bool muted = false;
@@ -382,7 +383,7 @@ inline juce::String buildStateProgram (const StateSpec& state)
         program << "0 => int laneTickClock" << suffix << ";\n";
         program << "1 => int laneFirstFrame" << suffix << ";\n";
         program << "0.0 => float laneStepPhaseClock" << suffix << ";\n";
-        program << "0.0 => float laneElapsedBars" << suffix << ";\n";
+        program << chuckFloat (-juce::jlimit (0.0f, 0.999f, state.lanes[static_cast<size_t> (i)].phaseOffsetBars)) << " => float laneElapsedBars" << suffix << ";\n";
         program << "1.0 => float laneActive" << suffix << ";\n";
     }
 
@@ -420,8 +421,10 @@ inline juce::String buildStateProgram (const StateSpec& state)
 
         program << "    0 => int laneDidTickClock" << suffix << ";\n";
         program << "    " << (laneTempoHz > 0.0f ? chuckFloat (laneTempoHz) : juce::String ("tempo")) << " => float laneTempo" << suffix << ";\n";
-        program << "    laneStepPhaseClock" << suffix << " + (laneTempo" << suffix << " * 0.020) => laneStepPhaseClock" << suffix << ";\n";
         program << "    laneElapsedBars" << suffix << " + ((laneTempo" << suffix << " * 0.005) / laneQuarterNotesPerBar) => laneElapsedBars" << suffix << ";\n";
+        program << "    if (laneElapsedBars" << suffix << " >= 0.0)\n";
+        program << "    {\n";
+        program << "    laneStepPhaseClock" << suffix << " + (laneTempo" << suffix << " * 0.020) => laneStepPhaseClock" << suffix << ";\n";
         program << "    if (laneStepPhaseClock" << suffix << " >= 1.0)\n";
         program << "    {\n";
         program << "        laneTickClock" << suffix << " + 1 => laneTickClock" << suffix << ";\n";
@@ -433,19 +436,23 @@ inline juce::String buildStateProgram (const StateSpec& state)
         program << "        1 => laneDidTickClock" << suffix << ";\n";
         program << "        0 => laneFirstFrame" << suffix << ";\n";
         program << "    }\n";
+        program << "    }\n";
 
         if (lane.duration.has_value())
         {
             const auto durationBars = static_cast<float> (lane.duration->bars)
                                     + static_cast<float> (lane.duration->beats) / static_cast<float> (std::max (1, state.clockBeatsPerBar));
-            program << "    if (laneElapsedBars" << suffix << " < " << chuckFloat (std::max (0.001f, durationBars)) << ")\n";
+            program << "    if (laneElapsedBars" << suffix << " >= 0.0 && laneElapsedBars" << suffix << " < " << chuckFloat (std::max (0.001f, durationBars)) << ")\n";
             program << "        1.0 => laneActive" << suffix << ";\n";
             program << "    else\n";
             program << "        0.0 => laneActive" << suffix << ";\n";
         }
         else
         {
-            program << "    1.0 => laneActive" << suffix << ";\n";
+            program << "    if (laneElapsedBars" << suffix << " >= 0.0)\n";
+            program << "        1.0 => laneActive" << suffix << ";\n";
+            program << "    else\n";
+            program << "        0.0 => laneActive" << suffix << ";\n";
         }
 
         program << "    laneTickClock" << suffix << " => tick;\n";
