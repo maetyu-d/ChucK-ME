@@ -1938,8 +1938,8 @@ public:
         else if (mainView == MainView::track)
         {
             content.removeFromTop (12);
-            auto codePane = content.removeFromRight (trackFocusCodePaneWidth);
-            content.removeFromRight (trackFocusPaneGap);
+            auto codePane = content.removeFromLeft (trackFocusCodePaneWidth);
+            content.removeFromLeft (trackFocusPaneGap);
             auto trackPane = content;
 
             g.setColour (juce::Colour (0xff0b0f0c).withAlpha (0.42f));
@@ -2017,8 +2017,8 @@ public:
         if (mainView == MainView::track)
         {
             area.removeFromTop (12);
-            auto codePane = area.removeFromRight (trackFocusCodePaneWidth);
-            area.removeFromRight (trackFocusPaneGap);
+            auto codePane = area.removeFromLeft (trackFocusCodePaneWidth);
+            area.removeFromLeft (trackFocusPaneGap);
             trackFocusCanvas.setBounds (area.reduced (8, 0));
 
             auto laneCodeHeaderRow = codePane.removeFromTop (32);
