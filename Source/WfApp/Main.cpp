@@ -409,6 +409,15 @@ public:
     std::function<void (int)> onStateSelected;
     std::function<void (int, std::optional<int>)> onTransitionProbabilityChanged;
 
+    bool isEditingTransitionProbability() const
+    {
+        for (const auto& editor : transitionProbabilityEditors)
+            if (editor.hasKeyboardFocus (true))
+                return true;
+
+        return false;
+    }
+
     void setState (const std::vector<Wf::StateSpec>* statesToUse, int selectedIndexToUse, float phaseToUse, bool runningToUse)
     {
         states = statesToUse;
@@ -663,6 +672,8 @@ class MainComponent final : public juce::Component,
 public:
     MainComponent()
     {
+        setWantsKeyboardFocus (true);
+
         topLevelStates[0] = Wf::makeDefaultStates();
         topLevelStates[1] = Wf::makeDefaultStates();
 
@@ -689,7 +700,12 @@ public:
             setupButton (button,
                          "State " + juce::String (i + 1),
                          i == 0 ? green() : blue(),
-                         [this, i] { selectViewedTopLevelState (i); });
+                         [this, i]
+                         {
+                             selectViewedTopLevelState (i);
+                             grabKeyboardFocus();
+                         });
+            button.setWantsKeyboardFocus (false);
 
             if (! isTopLevelStatePopulated (i))
                 styleEmptyStateButton (button);
@@ -698,6 +714,7 @@ public:
         setupButton (runScriptButton, running ? "Stop" : "Play", amber(), [this] { toggleMainTransport(); });
         setupButton (newStateButton, "New", blue(), [this] { createTopLevelState(); });
         setupButton (duplicateStateButton, "Duplicate", amber(), [this] { duplicateViewedTopLevelState(); });
+        setupButton (deleteStateButton, "Delete", coral(), [this] { deleteViewedTopLevelState(); });
 
         globalScriptEditor.setMultiLine (true);
         globalScriptEditor.setReturnKeyStartsNewLine (true);
@@ -849,6 +866,19 @@ public:
         audioDeviceManager.removeAudioCallback (&audioCallback);
     }
 
+    bool keyPressed (const juce::KeyPress& key) override
+    {
+        const auto keyCode = key.getKeyCode();
+        if ((keyCode == juce::KeyPress::backspaceKey || keyCode == juce::KeyPress::deleteKey)
+            && ! isInlineTextEditorFocused())
+        {
+            deleteViewedTopLevelState();
+            return true;
+        }
+
+        return false;
+    }
+
     void paint (juce::Graphics& g) override
     {
         g.fillAll (juce::Colour (0xff0c100e));
@@ -954,8 +984,9 @@ public:
         timeSigDenominatorBox.setBounds (timeSigRow.removeFromLeft (78));
         right.removeFromTop (8);
         auto stateActionRow = right.removeFromTop (34);
-        newStateButton.setBounds (stateActionRow.removeFromLeft (82).reduced (0, 3));
-        duplicateStateButton.setBounds (stateActionRow.removeFromLeft (122).reduced (8, 3));
+        newStateButton.setBounds (stateActionRow.removeFromLeft (66).reduced (0, 3));
+        duplicateStateButton.setBounds (stateActionRow.removeFromLeft (112).reduced (6, 3));
+        deleteStateButton.setBounds (stateActionRow.removeFromLeft (82).reduced (6, 3));
         right.removeFromTop (10);
         selectedLabel.setBounds (right.removeFromTop (34));
         laneHeader.setBounds (right.removeFromTop (28));
@@ -1056,6 +1087,15 @@ private:
         return -1;
     }
 
+    int firstPopulatedTopLevelState() const
+    {
+        for (int i = 0; i < maxTopLevelStates; ++i)
+            if (isTopLevelStatePopulated (i))
+                return i;
+
+        return -1;
+    }
+
     void createTopLevelState()
     {
         auto target = viewedTopLevelState;
@@ -1093,6 +1133,52 @@ private:
         topLevelTimeSigNumerators[static_cast<size_t> (target)] = topLevelTimeSigNumerators[source];
         topLevelTimeSigDenominators[static_cast<size_t> (target)] = topLevelTimeSigDenominators[source];
         selectViewedTopLevelState (target);
+    }
+
+    void deleteViewedTopLevelState()
+    {
+        const auto target = viewedTopLevelState;
+        if (! isTopLevelStatePopulated (target))
+            return;
+
+        const auto deletingPerformingState = target == performingTopLevelState;
+        if (deletingPerformingState)
+        {
+            scriptRunning = false;
+            running = false;
+            syncTransportButtons();
+            applyCurrentAudioControls();
+        }
+
+        topLevelStates[static_cast<size_t> (target)].reset();
+        topLevelTemposBpm[static_cast<size_t> (target)] = 88.0f;
+        topLevelTimeSigNumerators[static_cast<size_t> (target)] = 4;
+        topLevelTimeSigDenominators[static_cast<size_t> (target)] = 4;
+        selectedState = 0;
+        selectedLane = 0;
+
+        if (deletingPerformingState)
+        {
+            const auto replacement = firstPopulatedTopLevelState();
+            performingTopLevelState = replacement >= 0 ? replacement : target;
+            performingTrackIndex = 0;
+            trackElapsedBars = 0.0;
+            nextBarTransitionCheck = 1.0;
+            orbitPhase = 0.0f;
+        }
+
+        refreshLabels();
+        grabKeyboardFocus();
+    }
+
+    bool isInlineTextEditorFocused() const
+    {
+        return globalScriptEditor.hasKeyboardFocus (true)
+            || laneCodeEditor.hasKeyboardFocus (true)
+            || trackNameEditor.hasKeyboardFocus (true)
+            || trackDurationEditor.hasKeyboardFocus (true)
+            || laneNameEditor.hasKeyboardFocus (true)
+            || orbitCanvas.isEditingTransitionProbability();
     }
 
     struct GlobalScriptStep
@@ -1326,6 +1412,7 @@ private:
         const auto hasEmptyStateSlot = firstEmptyTopLevelState() >= 0;
         newStateButton.setEnabled (hasEmptyStateSlot);
         duplicateStateButton.setEnabled (hasEmptyStateSlot && isTopLevelStatePopulated (viewedTopLevelState));
+        deleteStateButton.setEnabled (isTopLevelStatePopulated (viewedTopLevelState));
 
         const auto* viewedTracks = getViewedTracks();
         if (viewedTracks == nullptr || viewedTracks->empty())
@@ -2052,6 +2139,7 @@ private:
     juce::TextButton runScriptButton;
     juce::TextButton newStateButton;
     juce::TextButton duplicateStateButton;
+    juce::TextButton deleteStateButton;
     juce::TextButton playButton;
     juce::TextButton previousButton;
     juce::TextButton nextButton;
