@@ -25,6 +25,9 @@ constexpr int maxStateTracks = 16;
 constexpr int maxTrackLanes = 8;
 constexpr int maxTrackEffectSlots = 3;
 constexpr int maxGraphTransitions = 32;
+constexpr int arrangementLeftPaneWidth = 304;
+constexpr int arrangementRightPaneWidth = 274;
+constexpr int arrangementPaneGap = 16;
 constexpr float defaultPlaybackRate = 1.0f;
 constexpr float defaultIntensity = 0.58f;
 constexpr float defaultBrightness = 0.48f;
@@ -33,8 +36,8 @@ constexpr auto laneControlMarker = "// wf::control";
 
 juce::Colour ink() { return juce::Colour (0xfff2f4ef); }
 juce::Colour mutedInk() { return juce::Colour (0xff9aa29c); }
-juce::Colour panel() { return juce::Colour (0xff111512); }
-juce::Colour panelSoft() { return juce::Colour (0xff1a201c); }
+juce::Colour panel() { return juce::Colour (0xff0f1310); }
+juce::Colour panelSoft() { return juce::Colour (0xff171c18); }
 juce::Colour green() { return juce::Colour (0xff8adf9a); }
 juce::Colour amber() { return juce::Colour (0xffd6b15f); }
 juce::Colour coral() { return juce::Colour (0xffd27a70); }
@@ -52,19 +55,20 @@ void clearOutputs (float* const* outputChannelData, int numOutputChannels, int n
 
 void styleButton (juce::TextButton& button, juce::Colour colour)
 {
-    button.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff171d19));
-    button.setColour (juce::TextButton::buttonOnColourId, colour.withAlpha (0.22f));
-    button.setColour (juce::TextButton::textColourOffId, ink().withAlpha (0.88f));
+    button.setColour (juce::TextButton::buttonColourId, panelSoft().withAlpha (0.72f));
+    button.setColour (juce::TextButton::buttonOnColourId, colour.withAlpha (0.24f));
+    button.setColour (juce::TextButton::textColourOffId, ink().withAlpha (0.82f));
     button.setColour (juce::TextButton::textColourOnId, ink());
     button.setMouseCursor (juce::MouseCursor::PointingHandCursor);
 }
 
 void styleEmptyStateButton (juce::TextButton& button)
 {
-    button.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff141815));
-    button.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff141815));
-    button.setColour (juce::TextButton::textColourOffId, mutedInk().withAlpha (0.32f));
-    button.setColour (juce::TextButton::textColourOnId, mutedInk().withAlpha (0.32f));
+    button.setColour (juce::TextButton::buttonColourId, panel().withAlpha (0.54f));
+    button.setColour (juce::TextButton::buttonOnColourId, panel().withAlpha (0.54f));
+    button.setColour (juce::TextButton::textColourOffId, mutedInk().withAlpha (0.25f));
+    button.setColour (juce::TextButton::textColourOnId, mutedInk().withAlpha (0.25f));
+    button.setMouseCursor (juce::MouseCursor::PointingHandCursor);
 }
 
 void styleSlider (juce::Slider& slider, juce::Colour colour)
@@ -80,10 +84,10 @@ void styleSlider (juce::Slider& slider, juce::Colour colour)
 
 void styleComboBox (juce::ComboBox& comboBox)
 {
-    comboBox.setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xff151a17));
+    comboBox.setColour (juce::ComboBox::backgroundColourId, panelSoft().withAlpha (0.60f));
     comboBox.setColour (juce::ComboBox::textColourId, ink());
-    comboBox.setColour (juce::ComboBox::outlineColourId, mutedInk().withAlpha (0.18f));
-    comboBox.setColour (juce::ComboBox::arrowColourId, ink());
+    comboBox.setColour (juce::ComboBox::outlineColourId, mutedInk().withAlpha (0.12f));
+    comboBox.setColour (juce::ComboBox::arrowColourId, mutedInk().withAlpha (0.78f));
 }
 
 void styleLabel (juce::Label& label, float alpha = 1.0f)
@@ -96,6 +100,145 @@ juce::String trackDisplayName (const juce::String& name)
 {
     return name.toUpperCase();
 }
+
+class MinimalLookAndFeel final : public juce::LookAndFeel_V4
+{
+public:
+    MinimalLookAndFeel()
+    {
+        setColour (juce::CaretComponent::caretColourId, ink());
+    }
+
+    void drawButtonBackground (juce::Graphics& g,
+                               juce::Button& button,
+                               const juce::Colour& backgroundColour,
+                               bool shouldDrawButtonAsHighlighted,
+                               bool shouldDrawButtonAsDown) override
+    {
+        auto bounds = button.getLocalBounds().toFloat().reduced (0.5f);
+        const auto enabled = button.isEnabled();
+        const auto toggled = button.getToggleState();
+        auto fill = toggled ? button.findColour (juce::TextButton::buttonOnColourId) : backgroundColour;
+
+        if (shouldDrawButtonAsDown)
+            fill = fill.brighter (0.08f);
+        else if (shouldDrawButtonAsHighlighted)
+            fill = fill.brighter (0.05f);
+
+        if (! enabled)
+            fill = panel().withAlpha (0.36f);
+
+        g.setColour (fill);
+        g.fillRoundedRectangle (bounds, 5.0f);
+
+        const auto lineColour = toggled ? button.findColour (juce::TextButton::buttonOnColourId).withAlpha (enabled ? 0.42f : 0.12f)
+                                        : mutedInk().withAlpha (enabled ? 0.16f : 0.07f);
+        g.setColour (lineColour);
+        g.drawRoundedRectangle (bounds, 5.0f, toggled ? 1.1f : 0.8f);
+    }
+
+    void drawButtonText (juce::Graphics& g,
+                         juce::TextButton& button,
+                         bool,
+                         bool) override
+    {
+        const auto enabled = button.isEnabled();
+        const auto textColour = button.findColour (button.getToggleState()
+                                                       ? juce::TextButton::textColourOnId
+                                                       : juce::TextButton::textColourOffId);
+        g.setColour (enabled ? textColour : textColour.withAlpha (0.28f));
+        g.setFont (juce::FontOptions (juce::jlimit (11.0f, 14.0f, static_cast<float> (button.getHeight()) * 0.38f),
+                                      juce::Font::bold));
+        g.drawFittedText (button.getButtonText(),
+                          button.getLocalBounds().reduced (6, 2),
+                          juce::Justification::centred,
+                          1);
+    }
+
+    void fillTextEditorBackground (juce::Graphics& g,
+                                   int width,
+                                   int height,
+                                   juce::TextEditor& editor) override
+    {
+        g.setColour (editor.findColour (juce::TextEditor::backgroundColourId));
+        g.fillRoundedRectangle (juce::Rectangle<float> (0.5f, 0.5f, static_cast<float> (width) - 1.0f, static_cast<float> (height) - 1.0f),
+                                3.0f);
+    }
+
+    void drawTextEditorOutline (juce::Graphics& g,
+                                int width,
+                                int height,
+                                juce::TextEditor& editor) override
+    {
+        const auto focused = editor.hasKeyboardFocus (true);
+        g.setColour (editor.findColour (focused ? juce::TextEditor::focusedOutlineColourId
+                                                : juce::TextEditor::outlineColourId));
+        g.drawRoundedRectangle (juce::Rectangle<float> (0.5f, 0.5f, static_cast<float> (width) - 1.0f, static_cast<float> (height) - 1.0f),
+                                3.0f,
+                                focused ? 1.1f : 0.7f);
+    }
+
+    void drawComboBox (juce::Graphics& g,
+                       int width,
+                       int height,
+                       bool isButtonDown,
+                       int,
+                       int,
+                       int,
+                       int,
+                       juce::ComboBox& box) override
+    {
+        auto bounds = juce::Rectangle<float> (0.5f, 0.5f, static_cast<float> (width) - 1.0f, static_cast<float> (height) - 1.0f);
+        g.setColour (box.findColour (juce::ComboBox::backgroundColourId).brighter (isButtonDown ? 0.05f : 0.0f));
+        g.fillRoundedRectangle (bounds, 4.0f);
+        g.setColour (box.findColour (juce::ComboBox::outlineColourId));
+        g.drawRoundedRectangle (bounds, 4.0f, 0.8f);
+
+        const auto cx = static_cast<float> (width - 17);
+        const auto cy = static_cast<float> (height) * 0.52f;
+        juce::Path arrow;
+        arrow.startNewSubPath (cx - 4.0f, cy - 2.0f);
+        arrow.lineTo (cx, cy + 2.5f);
+        arrow.lineTo (cx + 4.0f, cy - 2.0f);
+        g.setColour (box.findColour (juce::ComboBox::arrowColourId));
+        g.strokePath (arrow, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+
+    void drawLinearSlider (juce::Graphics& g,
+                           int x,
+                           int y,
+                           int width,
+                           int height,
+                           float sliderPos,
+                           float minSliderPos,
+                           float maxSliderPos,
+                           const juce::Slider::SliderStyle style,
+                           juce::Slider& slider) override
+    {
+        if (style != juce::Slider::LinearHorizontal && style != juce::Slider::LinearBar)
+        {
+            juce::LookAndFeel_V4::drawLinearSlider (g, x, y, width, height, sliderPos, minSliderPos, maxSliderPos, style, slider);
+            return;
+        }
+
+        auto bounds = juce::Rectangle<float> (static_cast<float> (x),
+                                             static_cast<float> (y),
+                                             static_cast<float> (width),
+                                             static_cast<float> (height)).reduced (2.0f, 0.0f);
+        auto track = bounds.withHeight (4.0f).withCentre ({ bounds.getCentreX(), bounds.getCentreY() });
+        sliderPos = juce::jlimit (track.getX(), track.getRight(), sliderPos);
+
+        g.setColour (slider.findColour (juce::Slider::backgroundColourId));
+        g.fillRoundedRectangle (track, 2.0f);
+
+        auto active = track.withRight (sliderPos);
+        g.setColour (slider.findColour (juce::Slider::trackColourId));
+        g.fillRoundedRectangle (active, 2.0f);
+
+        g.setColour (slider.findColour (juce::Slider::thumbColourId));
+        g.fillEllipse (sliderPos - 5.0f, track.getCentreY() - 5.0f, 10.0f, 10.0f);
+    }
+};
 }
 
 class WfAudioCallback final : public juce::AudioIODeviceCallback
@@ -1244,6 +1387,7 @@ class MainComponent final : public juce::Component,
 public:
     MainComponent()
     {
+        setLookAndFeel (&minimalLookAndFeel);
         setWantsKeyboardFocus (true);
         juce::addDefaultFormatsToManager (pluginFormatManager);
 
@@ -1292,12 +1436,12 @@ public:
         globalScriptEditor.setMultiLine (true);
         globalScriptEditor.setReturnKeyStartsNewLine (true);
         globalScriptEditor.setText ("tempo(88); timeSig(4, 4); playState(1, 8);\ntempo(44); playState(2, 4);\nstop();", juce::dontSendNotification);
-        globalScriptEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff111612));
+        globalScriptEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff0c100d));
         globalScriptEditor.setColour (juce::TextEditor::textColourId, ink());
-        globalScriptEditor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.12f));
-        globalScriptEditor.setColour (juce::TextEditor::focusedOutlineColourId, amber().withAlpha (0.42f));
+        globalScriptEditor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.07f));
+        globalScriptEditor.setColour (juce::TextEditor::focusedOutlineColourId, amber().withAlpha (0.34f));
         globalScriptEditor.setColour (juce::TextEditor::highlightColourId, amber().withAlpha (0.24f));
-        globalScriptEditor.setFont (juce::FontOptions (14.0f));
+        globalScriptEditor.setFont (juce::FontOptions (13.0f));
         addAndMakeVisible (globalScriptEditor);
 
         laneCodeHeader.setText ("lane code", juce::dontSendNotification);
@@ -1332,12 +1476,12 @@ public:
         laneCodeEditor.setMultiLine (true);
         laneCodeEditor.setReturnKeyStartsNewLine (true);
         laneCodeEditor.setReadOnly (false);
-        laneCodeEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff0b0f0c));
+        laneCodeEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff090d0a));
         laneCodeEditor.setColour (juce::TextEditor::textColourId, ink());
-        laneCodeEditor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.12f));
-        laneCodeEditor.setColour (juce::TextEditor::focusedOutlineColourId, mutedInk().withAlpha (0.24f));
+        laneCodeEditor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.08f));
+        laneCodeEditor.setColour (juce::TextEditor::focusedOutlineColourId, blue().withAlpha (0.30f));
         laneCodeEditor.setColour (juce::TextEditor::highlightColourId, blue().withAlpha (0.24f));
-        laneCodeEditor.setFont (juce::FontOptions (12.0f));
+        laneCodeEditor.setFont (juce::FontOptions (11.5f));
         laneCodeEditor.onTextChange = [this] { markLaneCodeEdited(); };
         addAndMakeVisible (laneCodeEditor);
 
@@ -1473,6 +1617,7 @@ public:
     ~MainComponent() override
     {
         audioDeviceManager.removeAudioCallback (&audioCallback);
+        setLookAndFeel (nullptr);
     }
 
     bool keyPressed (const juce::KeyPress& key) override
@@ -1490,27 +1635,27 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (juce::Colour (0xff090c0a));
+        g.fillAll (juce::Colour (0xff070a08));
 
         auto area = getLocalBounds().reduced (18);
         g.setColour (panel());
-        g.fillRoundedRectangle (area.toFloat(), 6.0f);
+        g.fillRoundedRectangle (area.toFloat(), 7.0f);
 
-        g.setColour (mutedInk().withAlpha (0.10f));
-        g.drawRoundedRectangle (area.toFloat(), 6.0f, 1.0f);
+        g.setColour (mutedInk().withAlpha (0.06f));
+        g.drawRoundedRectangle (area.toFloat(), 7.0f, 1.0f);
 
         auto content = area.reduced (18);
         auto top = content.removeFromTop (48);
-        auto navigation = content.removeFromBottom (52);
+        auto navigation = content.removeFromBottom (48);
 
-        g.setColour (mutedInk().withAlpha (0.11f));
+        g.setColour (mutedInk().withAlpha (0.07f));
         g.drawLine (static_cast<float> (content.getX()),
                     static_cast<float> (top.getBottom()),
                     static_cast<float> (content.getRight()),
                     static_cast<float> (top.getBottom()),
                     1.0f);
 
-        g.setColour (mutedInk().withAlpha (0.08f));
+        g.setColour (mutedInk().withAlpha (0.06f));
         g.drawLine (static_cast<float> (navigation.getX()),
                     static_cast<float> (navigation.getY()),
                     static_cast<float> (navigation.getRight()),
@@ -1523,19 +1668,19 @@ public:
             auto scriptRow = content.removeFromTop (70);
             auto body = content;
             body.removeFromTop (12);
-            auto leftPane = body.removeFromLeft (280);
-            body.removeFromLeft (18);
-            auto rightPane = body.removeFromRight (260);
+            auto leftPane = body.removeFromLeft (arrangementLeftPaneWidth);
+            body.removeFromLeft (arrangementPaneGap);
+            auto rightPane = body.removeFromRight (arrangementRightPaneWidth);
 
-            g.setColour (juce::Colour (0xff0d110e).withAlpha (0.58f));
+            g.setColour (juce::Colour (0xff0b0f0c).withAlpha (0.42f));
             g.fillRoundedRectangle (leftPane.toFloat(), 3.0f);
             g.fillRoundedRectangle (rightPane.toFloat(), 3.0f);
 
-            g.setColour (mutedInk().withAlpha (0.055f));
+            g.setColour (mutedInk().withAlpha (0.035f));
             g.drawRoundedRectangle (leftPane.toFloat(), 3.0f, 1.0f);
             g.drawRoundedRectangle (rightPane.toFloat(), 3.0f, 1.0f);
 
-            g.setColour (mutedInk().withAlpha (0.11f));
+            g.setColour (mutedInk().withAlpha (0.07f));
             g.drawLine (static_cast<float> (stateRow.getX()),
                         static_cast<float> (stateRow.getBottom()),
                         static_cast<float> (stateRow.getRight()),
@@ -1554,21 +1699,21 @@ public:
             content.removeFromTop (16);
             auto laneCodePane = content;
 
-            g.setColour (juce::Colour (0xff0d110e).withAlpha (0.58f));
+            g.setColour (juce::Colour (0xff0b0f0c).withAlpha (0.42f));
             g.fillRoundedRectangle (stateCodePane.toFloat(), 3.0f);
             g.fillRoundedRectangle (laneCodePane.toFloat(), 3.0f);
 
-            g.setColour (mutedInk().withAlpha (0.055f));
+            g.setColour (mutedInk().withAlpha (0.035f));
             g.drawRoundedRectangle (stateCodePane.toFloat(), 3.0f, 1.0f);
             g.drawRoundedRectangle (laneCodePane.toFloat(), 3.0f, 1.0f);
         }
         else
         {
             content.removeFromTop (12);
-            g.setColour (juce::Colour (0xff0d110e).withAlpha (0.58f));
+            g.setColour (juce::Colour (0xff0b0f0c).withAlpha (0.42f));
             g.fillRoundedRectangle (content.toFloat(), 3.0f);
 
-            g.setColour (mutedInk().withAlpha (0.055f));
+            g.setColour (mutedInk().withAlpha (0.035f));
             g.drawRoundedRectangle (content.toFloat(), 3.0f, 1.0f);
         }
     }
@@ -1584,12 +1729,12 @@ public:
         gainSlider.setBounds (volumeArea.reduced (0, 7));
         statusLabel.setBounds (header);
 
-        auto navigation = area.removeFromBottom (52);
-        navigation.removeFromTop (8);
-        auto viewButtons = navigation.removeFromTop (42);
-        arrangementButton.setBounds (viewButtons.removeFromLeft (126).reduced (0, 4));
-        codeViewButton.setBounds (viewButtons.removeFromLeft (86).reduced (6, 4));
-        mixerViewButton.setBounds (viewButtons.removeFromLeft (92).reduced (6, 4));
+        auto navigation = area.removeFromBottom (48);
+        navigation.removeFromTop (10);
+        auto viewButtons = navigation.removeFromTop (34);
+        arrangementButton.setBounds (viewButtons.removeFromLeft (118).reduced (0, 2));
+        codeViewButton.setBounds (viewButtons.removeFromLeft (78).reduced (6, 2));
+        mixerViewButton.setBounds (viewButtons.removeFromLeft (84).reduced (6, 2));
 
         if (mainView == MainView::code)
         {
@@ -1637,10 +1782,10 @@ public:
         scriptRow.removeFromLeft (10);
         globalScriptEditor.setBounds (scriptRow.reduced (0, 8));
         area.removeFromTop (12);
-        auto codePane = area.removeFromLeft (280);
-        area.removeFromLeft (18);
-        auto right = area.removeFromRight (260);
-        area.removeFromRight (18);
+        auto codePane = area.removeFromLeft (arrangementLeftPaneWidth);
+        area.removeFromLeft (arrangementPaneGap);
+        auto right = area.removeFromRight (arrangementRightPaneWidth);
+        area.removeFromRight (arrangementPaneGap);
 
         auto trackNameRow = codePane.removeFromTop (30);
         trackNameLabel.setBounds (trackNameRow.removeFromLeft (74).reduced (0, 2));
@@ -1714,10 +1859,10 @@ private:
     void setupTextEditor (juce::TextEditor& editor, const juce::String& emptyText)
     {
         editor.setTextToShowWhenEmpty (emptyText, mutedInk().withAlpha (0.66f));
-        editor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff151a17));
+        editor.setColour (juce::TextEditor::backgroundColourId, panelSoft().withAlpha (0.50f));
         editor.setColour (juce::TextEditor::textColourId, ink());
-        editor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.12f));
-        editor.setColour (juce::TextEditor::focusedOutlineColourId, blue().withAlpha (0.36f));
+        editor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.07f));
+        editor.setColour (juce::TextEditor::focusedOutlineColourId, blue().withAlpha (0.30f));
         editor.setColour (juce::TextEditor::highlightColourId, blue().withAlpha (0.24f));
         editor.setFont (juce::FontOptions (13.0f));
         addAndMakeVisible (editor);
@@ -3166,6 +3311,7 @@ private:
                                    orbitPhase);
     }
 
+    MinimalLookAndFeel minimalLookAndFeel;
     WfAudioCallback audioCallback;
     juce::AudioDeviceManager audioDeviceManager;
     juce::AudioPluginFormatManager pluginFormatManager;
