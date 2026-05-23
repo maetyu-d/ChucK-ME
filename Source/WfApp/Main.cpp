@@ -28,6 +28,8 @@ constexpr int maxGraphTransitions = 32;
 constexpr int arrangementLeftPaneWidth = 304;
 constexpr int arrangementRightPaneWidth = 274;
 constexpr int arrangementPaneGap = 16;
+constexpr int trackFocusCodePaneWidth = 390;
+constexpr int trackFocusPaneGap = 16;
 constexpr float defaultPlaybackRate = 1.0f;
 constexpr float defaultIntensity = 0.58f;
 constexpr float defaultBrightness = 0.48f;
@@ -952,6 +954,11 @@ private:
 class TrackFocusCanvas final : public juce::Component
 {
 public:
+    TrackFocusCanvas()
+    {
+        setWantsKeyboardFocus (true);
+    }
+
     std::function<void (int)> onLaneSelected;
 
     void setTrack (const Wf::StateSpec* trackToUse, int selectedLaneToUse, float phaseToUse, bool runningToUse)
@@ -1035,6 +1042,8 @@ public:
 
     void mouseDown (const juce::MouseEvent& event) override
     {
+        grabKeyboardFocus();
+
         if (onLaneSelected == nullptr)
             return;
 
@@ -1687,6 +1696,11 @@ public:
         laneCodeEditor.setColour (juce::TextEditor::highlightColourId, blue().withAlpha (0.24f));
         laneCodeEditor.setFont (juce::FontOptions (11.5f));
         laneCodeEditor.onTextChange = [this] { markLaneCodeEdited(); };
+        laneCodeEditor.onEscapeKey = [this]
+        {
+            if (mainView == MainView::track)
+                setMainView (MainView::arrangement);
+        };
         addAndMakeVisible (laneCodeEditor);
 
         setupButton (laneCodeRunButton, "Run", green(), [this] { applyLaneCodeEdit(); });
@@ -1921,6 +1935,21 @@ public:
             g.drawRoundedRectangle (stateCodePane.toFloat(), 3.0f, 1.0f);
             g.drawRoundedRectangle (laneCodePane.toFloat(), 3.0f, 1.0f);
         }
+        else if (mainView == MainView::track)
+        {
+            content.removeFromTop (12);
+            auto codePane = content.removeFromRight (trackFocusCodePaneWidth);
+            content.removeFromRight (trackFocusPaneGap);
+            auto trackPane = content;
+
+            g.setColour (juce::Colour (0xff0b0f0c).withAlpha (0.42f));
+            g.fillRoundedRectangle (trackPane.toFloat(), 3.0f);
+            g.fillRoundedRectangle (codePane.toFloat(), 3.0f);
+
+            g.setColour (mutedInk().withAlpha (0.035f));
+            g.drawRoundedRectangle (trackPane.toFloat(), 3.0f, 1.0f);
+            g.drawRoundedRectangle (codePane.toFloat(), 3.0f, 1.0f);
+        }
         else
         {
             content.removeFromTop (12);
@@ -1988,7 +2017,14 @@ public:
         if (mainView == MainView::track)
         {
             area.removeFromTop (12);
+            auto codePane = area.removeFromRight (trackFocusCodePaneWidth);
+            area.removeFromRight (trackFocusPaneGap);
             trackFocusCanvas.setBounds (area.reduced (8, 0));
+
+            auto laneCodeHeaderRow = codePane.removeFromTop (32);
+            laneCodeRunButton.setBounds (laneCodeHeaderRow.removeFromRight (68).reduced (0, 3));
+            laneCodeHeader.setBounds (laneCodeHeaderRow.reduced (8, 2));
+            laneCodeEditor.setBounds (codePane.reduced (8, 0));
             return;
         }
 
@@ -2163,9 +2199,9 @@ private:
         for (auto& button : laneButtons)
             button.setVisible (arrangement && button.isEnabled());
 
-        laneCodeHeader.setVisible (arrangement || code);
-        laneCodeEditor.setVisible (arrangement || code);
-        laneCodeRunButton.setVisible (arrangement || code);
+        laneCodeHeader.setVisible (arrangement || track || code);
+        laneCodeEditor.setVisible (arrangement || track || code);
+        laneCodeRunButton.setVisible (arrangement || track || code);
         stateCodeHeader.setVisible (code);
         mixerViewport.setVisible (mixer);
 
@@ -2730,6 +2766,7 @@ private:
         selectState (index);
         focusedTrackIndex = selectedState;
         setMainView (MainView::track);
+        trackFocusCanvas.grabKeyboardFocus();
     }
 
     void selectFocusedLane (int index)
