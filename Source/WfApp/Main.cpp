@@ -999,13 +999,6 @@ public:
         g.setColour (mutedInk().withAlpha (0.09f));
         g.drawEllipse (centre.x - ringRadius, centre.y - ringRadius, ringRadius * 2.0f, ringRadius * 2.0f, 1.0f);
 
-        const auto selected = running;
-        g.setColour ((selected ? green() : blue()).withAlpha (selected ? 0.20f : 0.14f));
-        g.fillEllipse (centre.x - nodeRadius, centre.y - nodeRadius, nodeRadius * 2.0f, nodeRadius * 2.0f);
-
-        g.setColour ((selected ? green() : blue()).withAlpha (selected ? 0.96f : 0.70f));
-        g.drawEllipse (centre.x - nodeRadius, centre.y - nodeRadius, nodeRadius * 2.0f, nodeRadius * 2.0f, selected ? 2.0f : 1.3f);
-
         g.setColour (ink());
         g.setFont (juce::FontOptions (31.0f, juce::Font::bold));
         g.drawFittedText (trackDisplayName (track->name),
@@ -1032,8 +1025,8 @@ public:
         if (running)
         {
             const auto angle = juce::MathConstants<float>::twoPi * phase - juce::MathConstants<float>::halfPi;
-            const juce::Point<float> marker { centre.x + std::cos (angle) * (nodeRadius + 8.0f),
-                                              centre.y + std::sin (angle) * (nodeRadius + 8.0f) };
+            const juce::Point<float> marker { centre.x + std::cos (angle) * ringRadius,
+                                              centre.y + std::sin (angle) * ringRadius };
 
             g.setColour (amber());
             g.fillEllipse (marker.x - 5.0f, marker.y - 5.0f, 10.0f, 10.0f);
@@ -1049,7 +1042,7 @@ public:
 
         for (int i = 0; i < static_cast<int> (laneCentres.size()); ++i)
         {
-            if (event.position.getDistanceFrom (laneCentres[static_cast<size_t> (i)]) < 22.0f)
+            if (event.position.getDistanceFrom (laneCentres[static_cast<size_t> (i)]) < 34.0f)
             {
                 onLaneSelected (i);
                 return;
@@ -1106,7 +1099,7 @@ private:
             const auto laneIsSelected = i == selectedLane;
             const auto& lane = track->lanes[static_cast<size_t> (i)];
             const auto colour = laneDotColour (i);
-            const auto dotRadius = laneIsSelected ? 8.0f : 6.2f;
+            const auto dotRadius = laneIsSelected ? 18.0f : 14.5f;
             const auto distanceFromCentre = point.getDistanceFrom (centre);
             const juce::Point<float> lineStart { centre.x + (point.x - centre.x) * (nodeRadius / distanceFromCentre),
                                                  centre.y + (point.y - centre.y) * (nodeRadius / distanceFromCentre) };
@@ -1123,10 +1116,10 @@ private:
             g.setColour (colour.withAlpha (laneIsSelected ? 0.98f : 0.70f));
             g.fillEllipse (point.x - dotRadius, point.y - dotRadius, dotRadius * 2.0f, dotRadius * 2.0f);
             g.setColour ((laneIsSelected ? ink() : mutedInk()).withAlpha (laneIsSelected ? 0.52f : 0.24f));
-            g.drawEllipse (point.x - dotRadius, point.y - dotRadius, dotRadius * 2.0f, dotRadius * 2.0f, 0.9f);
+            g.drawEllipse (point.x - dotRadius, point.y - dotRadius, dotRadius * 2.0f, dotRadius * 2.0f, laneIsSelected ? 1.4f : 1.0f);
 
             auto labelBounds = juce::Rectangle<int> (180, 24).withCentre ({ static_cast<int> (point.x),
-                                                                           static_cast<int> (point.y + (point.y < centre.y ? -30.0f : 30.0f)) });
+                                                                           static_cast<int> (point.y + (point.y < centre.y ? -48.0f : 48.0f)) });
             const auto labelAlpha = lane.muted ? 0.42f : (laneIsSelected ? 0.96f : 0.72f);
             g.setColour ((laneIsSelected ? ink() : mutedInk()).withAlpha (labelAlpha));
             g.setFont (juce::FontOptions (laneIsSelected ? 13.5f : 12.0f, juce::Font::bold));
