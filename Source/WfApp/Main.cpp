@@ -1578,6 +1578,7 @@ public:
         auto area = getLocalBounds().reduced (34);
         auto header = area.removeFromTop (44);
         titleLabel.setBounds (header.removeFromLeft (260));
+        runScriptButton.setBounds (header.removeFromRight (88).reduced (8, 7));
         auto volumeArea = header.removeFromRight (270);
         volumeLabel.setBounds (volumeArea.removeFromLeft (66).reduced (0, 11));
         gainSlider.setBounds (volumeArea.reduced (0, 7));
@@ -1598,7 +1599,6 @@ public:
             auto laneCodePane = area;
 
             auto stateCodeHeaderRow = stateCodePane.removeFromTop (32);
-            runScriptButton.setBounds (stateCodeHeaderRow.removeFromRight (68).reduced (0, 3));
             stateCodeHeader.setBounds (stateCodeHeaderRow.reduced (8, 2));
             globalScriptEditor.setBounds (stateCodePane.reduced (8, 0));
 
@@ -1635,7 +1635,6 @@ public:
 
         auto scriptRow = area.removeFromTop (70);
         scriptRow.removeFromLeft (10);
-        runScriptButton.setBounds (scriptRow.removeFromRight (86).reduced (8, 16));
         globalScriptEditor.setBounds (scriptRow.reduced (0, 8));
         area.removeFromTop (12);
         auto codePane = area.removeFromLeft (280);
@@ -1751,7 +1750,7 @@ private:
             button.setVisible (arrangement);
 
         globalScriptEditor.setVisible (arrangement || code);
-        runScriptButton.setVisible (arrangement || code);
+        runScriptButton.setVisible (true);
         trackNameLabel.setVisible (arrangement);
         trackNameEditor.setVisible (arrangement);
         trackDurationLabel.setVisible (arrangement);
