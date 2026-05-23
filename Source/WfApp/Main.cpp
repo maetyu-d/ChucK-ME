@@ -1831,6 +1831,12 @@ public:
     bool keyPressed (const juce::KeyPress& key) override
     {
         const auto keyCode = key.getKeyCode();
+        if (keyCode == juce::KeyPress::escapeKey && mainView == MainView::track)
+        {
+            setMainView (MainView::arrangement);
+            return true;
+        }
+
         if ((keyCode == juce::KeyPress::backspaceKey || keyCode == juce::KeyPress::deleteKey)
             && ! isInlineTextEditorFocused())
         {
