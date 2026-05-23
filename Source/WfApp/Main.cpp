@@ -1021,16 +1021,6 @@ public:
 
         rebuildLaneCentres();
         drawLanes (g, centre, nodeRadius);
-
-        if (running)
-        {
-            const auto angle = juce::MathConstants<float>::twoPi * phase - juce::MathConstants<float>::halfPi;
-            const juce::Point<float> marker { centre.x + std::cos (angle) * ringRadius,
-                                              centre.y + std::sin (angle) * ringRadius };
-
-            g.setColour (amber());
-            g.fillEllipse (marker.x - 5.0f, marker.y - 5.0f, 10.0f, 10.0f);
-        }
     }
 
     void mouseDown (const juce::MouseEvent& event) override
@@ -1122,6 +1112,9 @@ private:
                            (dotRadius - 8.0f) * 2.0f,
                            laneIsSelected ? 1.6f : 1.0f);
 
+            if (running)
+                drawLanePlayhead (g, point, dotRadius, lane, i);
+
             auto labelBounds = juce::Rectangle<int> (180, 24).withCentre ({ static_cast<int> (point.x),
                                                                            static_cast<int> (point.y + (point.y < centre.y ? -82.0f : 82.0f)) });
             const auto labelAlpha = lane.muted ? 0.42f : (laneIsSelected ? 0.96f : 0.72f);
@@ -1129,6 +1122,23 @@ private:
             g.setFont (juce::FontOptions (laneIsSelected ? 13.5f : 12.0f, juce::Font::bold));
             g.drawFittedText (lane.name, labelBounds, juce::Justification::centred, 1);
         }
+    }
+
+    void drawLanePlayhead (juce::Graphics& g, juce::Point<float> laneCentre, float ringRadius, const Wf::LaneSpec& lane, int laneIndex)
+    {
+        const auto pulseTicks = juce::jmax (1, lane.pulseTicks);
+        const auto laneRate = 96.0f / static_cast<float> (pulseTicks);
+        const auto lanePhase = std::fmod (phase * laneRate + static_cast<float> (laneIndex) * 0.071f, 1.0f);
+        const auto angle = juce::MathConstants<float>::twoPi * lanePhase - juce::MathConstants<float>::halfPi;
+        const auto markerRadius = ringRadius + 1.0f;
+        const juce::Point<float> marker { laneCentre.x + std::cos (angle) * markerRadius,
+                                          laneCentre.y + std::sin (angle) * markerRadius };
+        const auto alpha = lane.muted ? 0.34f : 0.96f;
+
+        g.setColour (juce::Colour (0xff0b0f0c).withAlpha (0.92f));
+        g.fillEllipse (marker.x - 7.0f, marker.y - 7.0f, 14.0f, 14.0f);
+        g.setColour (amber().withAlpha (alpha));
+        g.fillEllipse (marker.x - 4.5f, marker.y - 4.5f, 9.0f, 9.0f);
     }
 
     const Wf::StateSpec* track = nullptr;
