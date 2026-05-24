@@ -1587,6 +1587,25 @@ public:
         return importedPlaying.load (std::memory_order_acquire);
     }
 
+    double getImportedPlaybackPositionSeconds() const noexcept
+    {
+        const auto sampleRate = lastSampleRate.load (std::memory_order_relaxed);
+        if (sampleRate <= 0.0)
+            return 0.0;
+
+        return static_cast<double> (importedPositionSamples.load (std::memory_order_acquire)) / sampleRate;
+    }
+
+    void setImportedPlaybackPositionSeconds (double seconds)
+    {
+        const auto sampleRate = lastSampleRate.load (std::memory_order_relaxed);
+        if (sampleRate <= 0.0)
+            return;
+
+        const auto sample = static_cast<int64_t> (std::round (juce::jmax (0.0, seconds) * sampleRate));
+        importedPositionSamples.store (juce::jmax<int64_t> (0, sample), std::memory_order_release);
+    }
+
     void useChucKPlayback()
     {
         importedPlaying.store (false, std::memory_order_release);
@@ -2858,7 +2877,7 @@ public:
 
     std::optional<juce::Range<int>> getPlayingChannelRange() const
     {
-        if (! running)
+        if (! running || arrangementPlus)
             return {};
 
         auto first = -1;
@@ -2913,12 +2932,12 @@ public:
                 continue;
 
             const auto& channel = channels[static_cast<size_t> (i)];
-            const auto selected = ! channel.isStereoOutput
+            const auto selected = ! arrangementPlus
+                               && ! channel.isStereoOutput
                                && channel.stateIndex == viewedState
                                && channel.trackIndex == selectedTrack
                                && channel.laneIndex == selectedLane;
-            const auto playing = channel.isStereoOutput ? arrangementPlus && running
-                                                        : isPlayingChannel (channel);
+            const auto playing = ! arrangementPlus && ! channel.isStereoOutput && isPlayingChannel (channel);
             const auto accent = channelAccentColour (channel);
 
             if (channel.isStereoOutput)
@@ -3281,7 +3300,8 @@ private:
 
     bool isPlayingChannel (const Channel& channel) const noexcept
     {
-        return running
+        return ! arrangementPlus
+            && running
             && channel.stateIndex == playingState
             && channel.trackIndex == playingTrack;
     }
@@ -4522,7 +4542,7 @@ private:
 
     double currentPlayheadSeconds() const
     {
-        if (! running)
+        if (arrangementPlus || ! running)
             return editPlayheadSeconds;
 
         auto seconds = 0.0;
@@ -4997,6 +5017,7 @@ class MainComponent final : public juce::Component,
         menuSaveProject,
         menuSaveProjectAs,
         menuScanPlugins,
+        menuRenderLanesAndImport,
         menuRenderLanes,
         menuRenderWav,
         menuRemoveRenderedAudio,
@@ -5520,7 +5541,8 @@ public:
                           getScannedEffectPlugins().isEmpty() ? "Scan AU/VST3 Plugins..." : "Rescan AU/VST3 Plugins...",
                           ! pluginScanInProgress);
             menu.addSeparator();
-            menu.addItem (menuRenderLanes, "Render Lanes...");
+            menu.addItem (menuRenderLanesAndImport, "Render lanes and import");
+            menu.addItem (menuRenderLanes, "Render lanes");
             menu.addItem (menuRenderWav, arrangementPlusMode ? "Render WAV+..." : "Render WAV...");
             menu.addItem (menuRemoveRenderedAudio, "Remove Rendered Audio", arrangementPlusMode);
         }
@@ -5547,7 +5569,8 @@ public:
             case menuSaveProject: saveProject(); break;
             case menuSaveProjectAs: saveProjectAs(); break;
             case menuScanPlugins: scanOrRescanEffectPlugins(); break;
-            case menuRenderLanes: confirmPendingLaneCodeThen ([this] { chooseArrangementLaneRenderDirectory(); }); break;
+            case menuRenderLanesAndImport: confirmPendingLaneCodeThen ([this] { chooseArrangementLaneRenderDirectory (true); }); break;
+            case menuRenderLanes: confirmPendingLaneCodeThen ([this] { chooseArrangementLaneRenderDirectory (false); }); break;
             case menuRenderWav: confirmPendingLaneCodeThen ([this] { chooseArrangementRenderFile(); }); break;
             case menuRemoveRenderedAudio: removeRenderedAudioAndReturnToCodePlayback(); break;
             case menuUndo: performUndo(); break;
@@ -6223,6 +6246,10 @@ private:
         if (steps.empty() && isTopLevelStatePopulated (viewedTopLevelState))
             steps.push_back ({ viewedTopLevelState, 4.0, {}, {}, {} });
 
+        const auto visibleArrangementPlayheadSeconds = running && isUsingImportedAudioPlayback()
+            ? audioCallback.getImportedPlaybackPositionSeconds()
+            : arrangementEditPlayheadSeconds;
+
         arrangementTimelineCanvas.setProject (&topLevelStates,
                                               std::move (steps),
                                               performingTopLevelState,
@@ -6237,7 +6264,7 @@ private:
                                               &topLevelTimeSigDenominators,
                                               selectedImportedRegion,
                                               selectedImportedRegions,
-                                              arrangementEditPlayheadSeconds,
+                                              visibleArrangementPlayheadSeconds,
                                               arrangementAudioTool);
         arrangementTimelineCanvas.setZoom (arrangementHorizontalZoom, arrangementVerticalZoom);
         resizeArrangementTimelineCanvas();
@@ -6342,7 +6369,7 @@ private:
                                     });
     }
 
-    void chooseArrangementLaneRenderDirectory()
+    void chooseArrangementLaneRenderDirectory (bool importAfterRender)
     {
         if (! globalScriptHasStop())
         {
@@ -6355,13 +6382,13 @@ private:
                                                              juce::String());
         renderChooser->launchAsync (juce::FileBrowserComponent::openMode
                                         | juce::FileBrowserComponent::canSelectDirectories,
-                                    [this] (const juce::FileChooser& chooser)
+                                    [this, importAfterRender] (const juce::FileChooser& chooser)
                                     {
                                         const auto directory = chooser.getResult();
                                         if (directory == juce::File())
                                             return;
 
-                                        renderArrangementLanesToDirectory (directory);
+                                        renderArrangementLanesToDirectory (directory, importAfterRender);
                                     });
     }
 
@@ -7967,7 +7994,7 @@ private:
         return RenderResult::success;
     }
 
-    void renderArrangementLanesToDirectory (const juce::File& directory)
+    void renderArrangementLanesToDirectory (const juce::File& directory, bool importAfterRender)
     {
         const auto steps = parseGlobalScript();
         if (steps.empty())
@@ -8012,28 +8039,12 @@ private:
                 return;
         }
 
-        statusLabel.setText ("rendered " + juce::String (renderedCount) + " lane WAVs"
-                                + (skippedSilentCount > 0 ? " (" + juce::String (skippedSilentCount) + " silent skipped)" : juce::String()),
-                            juce::dontSendNotification);
+        const auto renderMessage = "rendered " + juce::String (renderedCount) + " lane WAVs"
+                                 + (skippedSilentCount > 0 ? " (" + juce::String (skippedSilentCount) + " silent skipped)" : juce::String());
+        statusLabel.setText (renderMessage, juce::dontSendNotification);
 
-        if (! renderedClips.empty())
-            askToReimportRenderedLanes (std::move (renderedClips));
-    }
-
-    void askToReimportRenderedLanes (std::vector<ImportedLaneAudioClip> renderedClips)
-    {
-        juce::AlertWindow::showAsync (juce::MessageBoxOptions()
-                                        .withIconType (juce::MessageBoxIconType::QuestionIcon)
-                                        .withTitle ("Reimport rendered lanes?")
-                                        .withMessage ("Place the rendered WAV files back into the Arrangement view as audio clips?")
-                                        .withButton ("Reimport")
-                                        .withButton ("Not now")
-                                        .withAssociatedComponent (this),
-                                      [this, clips = std::move (renderedClips)] (int result) mutable
-                                      {
-                                          if (result == 1)
-                                              importRenderedLaneFiles (std::move (clips));
-                                      });
+        if (importAfterRender && ! renderedClips.empty())
+            importRenderedLaneFiles (std::move (renderedClips));
     }
 
     void populateImportedClipWaveform (ImportedLaneAudioClip& clip)
@@ -9036,6 +9047,8 @@ private:
     void setArrangementEditPlayheadSeconds (double seconds)
     {
         arrangementEditPlayheadSeconds = juce::jmax (0.0, seconds);
+        if (running && isUsingImportedAudioPlayback())
+            audioCallback.setImportedPlaybackPositionSeconds (arrangementEditPlayheadSeconds);
         syncViewButtons();
     }
 
@@ -9828,7 +9841,11 @@ private:
         running = false;
         syncTransportButtons();
         if (isUsingImportedAudioPlayback())
+        {
             audioCallback.stopImportedAudioPlayback();
+            arrangementEditPlayheadSeconds = 0.0;
+            syncArrangementTimelineView();
+        }
         else
             applyCurrentAudioControls();
         refreshLabels();
