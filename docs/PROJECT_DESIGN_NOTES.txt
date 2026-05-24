@@ -1,0 +1,775 @@
+ChucK-ME project design notes
+Generated: 2026-05-24
+
+
+1. Project identity
+
+ChucK-ME is a JUCE application built around an in-process embedded ChucK
+runtime. The original goal was explicitly not to build a bridge to an external
+audio client or server. The design instead compiles ChucK into the application
+and advances the ChucK virtual machine from JUCE-owned audio callbacks.
+
+The repository contains three related layers:
+
+- third_party/chuck/src/core: a vendored ChucK core source tree.
+- Source/WeldChucK: the reusable embedded engine boundary.
+- Source/WfApp: the ChucK-ME creative application using that engine.
+
+There is also a console harness in Source/Main.cpp. That executable is kept as
+a host/test harness, not as the reusable product boundary. The reusable boundary
+is the CMake target WeldChucK::Engine.
+
+
+2. Major design decisions
+
+The most important decisions are:
+
+- ChucK is embedded in-process. There is no separate chuck executable, no OSC or
+  network control server, no SuperCollider-style client/server split, and no
+  audio bridge.
+
+- JUCE owns the audio device. ChucK does not open its own RtAudio/CoreAudio
+  stream. The JUCE AudioDeviceManager owns device setup and invokes the app's
+  AudioIODeviceCallback.
+
+- The ChucK VM is advanced directly from the audio callback via ChucK::run().
+  The callback supplies interleaved input and output buffers to ChucK, then
+  copies the rendered interleaved output back into JUCE channel buffers.
+
+- The ChucK core is compiled as a static library. CMake builds chuck_core from
+  third_party/chuck/src/core and then links it into weld_chuck_engine.
+
+- Non-essential ChucK runtime systems are disabled at compile time to keep the
+  embedded runtime tight. The CMake definitions disable HID, MIDI, serial,
+  shell, on-the-fly server, network, keyboard hit, and prompter support. The
+  compiled ChucK runtime still includes the VM, compiler, scheduler, language,
+  standard UGens, oscillator/filter/STK-related core code, and audio synthesis.
+
+- The engine boundary is reusable. CMake exposes WeldChucK::Engine as an alias
+  for the weld_chuck_engine static library, with JUCE audio_basics/core link
+  requirements attached to the target. The GUI app and test harness consume that
+  boundary instead of depending on each other.
+
+- Program loading is transactional. New ChucK programs are compiled into a
+  separate candidate ChucK instance. Only after successful init, start, compile,
+  and global binding does the engine briefly lock and swap the candidate VM into
+  the live engine. A failed program never destroys the currently playing VM.
+
+- Program loading can be asynchronous. Rapid UI reloads can queue ChucK program
+  changes to a background loader thread. Pending requests are coalesced: if a
+  newer request arrives before an older one compiles, the older pending request
+  is dropped.
+
+- The live state/track transition model keeps old audio tails alive. ChucK-ME
+  uses two embedded ChucK engine slots and crossfades between them. The incoming
+  slot is compiled and started, then its target gain rises while the previous
+  slot fades down. The old slot remains in use until its gain reaches silence.
+
+- Arrangement+ is a second playback mode. Once rendered lane WAVs are imported,
+  playback switches from live ChucK code to a sample/region timeline played by
+  the same JUCE callback. That mode has its own timeline position, clip regions,
+  fades, gain, pan, track FX groups, and master FX group.
+
+- Mixer+ is intentionally separate from Mixer. The ordinary Mixer adjusts live
+  lane/track ChucK generation. Mixer+ mixes imported Arrangement+ audio regions
+  and enables AU/VST3 processing on imported audio tracks and the master output.
+
+- Project saving is manual. There is no autosave by design. File > New creates
+  an empty project; Load, Save, and Save As are explicit user actions.
+
+
+3. Build and target structure
+
+CMake builds these core targets:
+
+- chuck_core: the vendored ChucK C/C++ runtime as a static library.
+- weld_chuck_engine: the reusable C++ engine wrapper.
+- WeldChucK::Engine: public alias target for consumers.
+- WeldChucK: console host and test harness.
+- wf: the ChucK-ME GUI app bundle.
+- WeldChucKEngineBoundaryTest and WfProgramTest: direct tests around the engine
+  boundary and generated wf programs.
+
+The GUI app links:
+
+- WeldChucK::Engine
+- juce_audio_devices
+- juce_audio_formats
+- juce_audio_processors
+- juce_gui_extra
+- CoreAudioKit on Apple platforms
+
+The app enables AU and VST3 hosting for ChucK-ME with JUCE_PLUGINHOST_AU=1 and
+JUCE_PLUGINHOST_VST3=1. VST2, LADSPA, and LV2 are disabled.
+
+The check target builds the app and runs the test suite:
+
+- WeldChucKSelfTest
+- WeldChucKStressTest
+- WeldChucKCallbackTest
+- WeldChucKFuzzTest
+- WeldChucKProgramTest
+- WeldChucKParameterTest
+- WeldChucKAsyncProgramTest
+- WeldChucKBoundaryTest
+- WeldChucKConcurrencyTest
+- WeldChucKEngineBoundaryTest
+- WfProgramTest
+
+
+4. EmbeddedChucKEngine
+
+The reusable low-level engine is EmbeddedChucKEngine in
+Source/WeldChucK/EmbeddedChucKEngine.h/.cpp.
+
+Public responsibilities:
+
+- prepare(sampleRate, maximumBlockSize, inputChannels, outputChannels)
+- release()
+- loadProgram(programBody)
+- loadProgram(programBody, parameterBindings)
+- loadProgramAsync(...)
+- waitForAsyncProgramLoads(...)
+- process(inputBuffer, outputBuffer)
+- set/get parameter values by index or name
+- report diagnostic counters
+
+Important fixed limits:
+
+- maximumBlockSizeLimit = 65536
+- maximumChannelLimit = 64
+- maximumParameterCount = 32
+
+The ChucK engine owns:
+
+- std::unique_ptr<ChucK> chuck
+- interleavedInput and interleavedOutput scratch vectors
+- a JUCE CriticalSection engineLock
+- a fixed array of ParameterSlot objects
+- an async program loader thread
+- atomic readiness and diagnostic counters
+
+Prepare path:
+
+1. The engine takes engineLock and releases any previous VM.
+2. It validates sample rate, block size, and channel counts.
+3. It sizes interleaved input/output scratch buffers for maxBlockSize times
+   channel count.
+4. It creates a CandidateProgram containing a new ChucK instance.
+5. The ChucK instance receives sample rate, input channel count, output channel
+   count, realtime audio hint, chugin disable, and VM halt parameters.
+6. The ChucK instance is initialised and started.
+7. A default program is compiled.
+8. Host parameter globals are created/bound.
+9. The candidate VM becomes the live VM.
+10. Parameter slots are populated and globals are pushed.
+11. ready becomes true.
+
+Program transaction path:
+
+loadProgram() validates bindings first. It then snapshots the currently prepared
+audio configuration and existing parameter values under the lock. Compilation
+then happens outside the live lock in a candidate ChucK instance. When the
+candidate is ready, the engine briefly locks again and checks that the live
+engine generation and channel configuration are still the same. If they are, it
+swaps the candidate into place, transfers parameter slots, increments the engine
+generation, and destroys the old ChucK instance outside the locked live path.
+
+Async program path:
+
+loadProgramAsync() validates the request and stores only the latest pending
+program in a mutex-protected queue. A background thread waits on a condition
+variable, takes the newest request, calls loadProgram(), then marks the queue
+idle. If a pending request is replaced before compilation starts, the dropped
+request counter is incremented.
+
+Parameter binding design:
+
+The engine injects `global float` declarations before the user program body.
+For example, the wf app uses:
+
+- hostMasterGain
+- hostTempoHz
+- hostIntensity
+- hostBrightness
+- hostOrbitPhase
+
+After compiling, the engine asks the ChucK globals table for pointers to these
+global floats. On every audio render, pushGlobals() copies the current atomic
+parameter values directly into the ChucK global memory before ChucK::run().
+
+This avoids message queues, OSC, string lookup, heap allocation, or UI locks
+inside the per-block control path. Indexed parameter writes are bounded and use
+atomics. Name-based writes exist for non-real-time callers.
+
+Sample safety and diagnostics:
+
+The engine clears output before processing. It tries to take engineLock with a
+ScopedTryLock; if the lock is busy because a program swap is occurring, the
+block is silent rather than blocking the audio thread. It rejects oversized
+blocks, invalid prepared state, and invalid channel configurations. It sanitises
+non-finite and too-large samples, clamps output to a safety limit, catches
+render exceptions, and mutes/disables the engine on unrecoverable render errors.
+
+Diagnostic counters include:
+
+- silent process count
+- oversized block count
+- render exception count
+- sanitised sample count
+- sanitised control count
+- internal error count
+- rendered block count
+- rendered frame count
+- program load success/failure counts
+- async queued/completed/dropped counts
+
+
+5. Low-level audio callback architecture in ChucK-ME
+
+The GUI app uses WfAudioCallback in Source/WfApp/Main.cpp. It implements
+juce::AudioIODeviceCallback.
+
+The callback has two playback modes:
+
+- chuckEngine: live embedded ChucK slots render generated code.
+- importedAudio: Arrangement+ plays imported/rendered WAV regions.
+
+audioDeviceAboutToStart(device):
+
+- Reads the current sample rate from the JUCE device, or uses 44100 Hz fallback
+  if no device is present.
+- Reads the current device block size.
+- Calls prepare(sampleRate, reportedBlockSize).
+
+prepare(sampleRate, reportedBlockSize):
+
+- Marks the callback not ready.
+- Chooses a prepared block size using max(reportedBlockSize * 4, fallbackBlockSize)
+  clamped between 64 and EmbeddedChucKEngine::maximumBlockSizeLimit.
+- Stores sample rate, reported block size, and prepared block size atomically.
+- Prepares each live ChucK engine slot for 0 inputs and stereo output.
+- Allocates each slot's JUCE output buffer to maxHostChannels by prepared block
+  size.
+- Clears active slot and imported playback position.
+- Marks ready if every slot prepared successfully.
+
+audioDeviceStopped():
+
+- Marks the callback not ready.
+- Stops imported playback.
+- Disables each live engine slot.
+- Releases each embedded ChucK engine.
+- Clears per-slot output buffers.
+
+audioDeviceIOCallbackWithContext(...):
+
+1. Clears all output buffers immediately.
+2. Rejects invalid state: callback not ready, null outputs, non-positive block,
+   block larger than preparedBlockSize, invalid channel count.
+3. Enables ScopedNoDenormals.
+4. If playbackMode is importedAudio, delegates to processImportedAudio().
+5. Otherwise iterates all live ChucK engine slots.
+
+For each live slot:
+
+- Skip if the slot is not in use, the embedded engine is not ready, the output
+  buffer is too small, or channel count is unsupported.
+- Clear the slot's scratch output for this block.
+- Create a JUCE AudioBuffer view over the slot output.
+- Call slot.engine.process(emptyInput, slotView).
+- Smoothly move slot.gain toward slot.targetGain over tailFadeSeconds.
+- Add the slot output into the host output with a per-sample gain ramp.
+- If an outgoing slot reaches silence and is not active, mark it unused.
+
+This is the click-avoidance and tail-preservation strategy. State/track changes
+do not hard-kill the old ChucK VM. They start a new VM in the other slot, fade
+it in, and fade the old one out.
+
+
+6. Live ChucK state/track playback
+
+The wf app's musical model is:
+
+- top-level states
+- each state contains tracks
+- each track contains lanes
+
+This naming was carefully corrected during development:
+
+- A state is a collection of tracks.
+- A track is a node in the main circular state view.
+- A lane is one sound/program layer inside a track.
+
+The default demo has multiple states. State 1 and State 2 are populated, and
+the app supports up to 16 states. States can contain up to 16 tracks. Tracks can
+contain up to 8 lanes.
+
+The generated live ChucK program for a track is built in
+Source/WfApp/WfChucKPrograms.h.
+
+LaneSpec includes:
+
+- lane name
+- role
+- base frequency
+- volume
+- pan
+- pulse/open tick values
+- phase offset in bars
+- optional lane tempo override
+- optional lane duration
+- mute/solo
+- optional custom declaration code
+- optional custom control code
+
+StateSpec represents a track and includes:
+
+- name
+- tempo
+- lanes
+- optional track duration
+- optional transition probability
+- clock time-signature fields
+- three effect slot specs
+
+The app builds a single ChucK program for the selected track. That generated
+program includes lane declarations, master gain, lane activation, lane timing,
+phase offset, optional lane BPM/duration behaviour, and role-specific synthesis.
+
+Built-in lane roles include drum/snare, bass, chord, arp/pulse/air-like voices.
+The drum path generates 808-style kicks, sub, click, snare body/snap/drive,
+noise/clap, and hat noise. Melodic lanes use oscillator/filter chains and simple
+generated sequences.
+
+The user can edit generated lane code. The editor keeps generated metadata
+separate from editable code so user code remains clean. Edited lane code is not
+applied until Run is clicked.
+
+
+7. Conductor DSL and state sequencing
+
+The top state script is a small conductor DSL rather than raw general-purpose
+ChucK. It supports comments using `//`.
+
+The script can express:
+
+- tempo(...)
+- timeSig(...)
+- playState(...)
+- stop()
+
+It was designed to support a ChucK-like scripting feel while remaining a bounded
+host-side arrangement language. It controls high-level state sequencing and can
+change tempo and time signature. Example:
+
+tempo(88); timeSig(4, 4); playState(1, 8);
+tempo(44); playState(2, 4);
+stop();
+
+State buttons in the top row display/view states only. Clicking them does not
+switch live playback or interrupt a continuing scripted sequence.
+
+
+8. Main UI views
+
+The app currently has these major views:
+
+- Overall
+- MAIN
+- Code
+- Arrangement
+- Arrangement+
+- Mixer
+- Mixer+
+- Focused track view
+
+Overall:
+
+Shows up to 16 states on one screen, with populated/empty visual treatment.
+
+MAIN:
+
+Shows one state as a circular graph of tracks. Track circles have lane-colour
+dots around the edge. Connecting lines can carry transition probabilities. A
+probability on an outgoing connection disables that track's duration for that
+transition decision and allows end-of-bar probabilistic movement.
+
+The MAIN view has left-side editing controls for the selected track and lane,
+right-side state settings, track count, lane count, and lane list. Lane rows
+have S and M buttons for solo/mute.
+
+Focused track view:
+
+Double-clicking a track opens a focused view. This zooms into that track, shows
+the lanes as large rings, shows a track-level playhead and per-lane playheads,
+and lets the user edit lane code from a repositionable sidebar. Lane start
+points can be dragged to set phase offset so a lane can start later within the
+cycle. Beat markings are drawn on the rings.
+
+Code:
+
+Provides large state-code and lane-code editors. The divider is user-adjustable.
+The code editors support ChucK/conductor syntax highlighting, auto-indent,
+bracket matching, and matching bracket highlight.
+
+Arrangement:
+
+Shows the conductor script as a linear DAW-like representation: states across a
+timeline, tracks vertically, lanes inside tracks. This is still code/state based
+playback.
+
+Arrangement+:
+
+After lane rendering and import, the arrangement view becomes Arrangement+.
+It shows audio regions on lane rows, waveform previews, horizontal/vertical zoom,
+region selection, split, trim, fade, fade curves, region gain, copy/paste,
+duplicate, delete, undo/redo, grid snapping, readouts, and a selected-region
+inspector.
+
+Mixer:
+
+Shows channels for generated live lanes. Its faders reflect existing lane mixes.
+AU/VST3 slots are intentionally inactive in ordinary Mixer mode.
+
+Mixer+:
+
+Shows channels for imported Arrangement+ audio and a final stereo output strip.
+Mixer+ starts from flat/equal-gain faders because imported audio has already
+been mixed once during render. AU/VST3 slots are available in Mixer+ for track
+and master processing. Render WAV+ includes Mixer+ processing.
+
+
+9. Arrangement+ audio-region model
+
+Imported audio is represented by ImportedLaneAudioClip and ImportedAudioRegion.
+
+ImportedLaneAudioClip includes:
+
+- state index
+- track index
+- lane index
+- source WAV file
+- loaded audio buffer
+- waveform peaks
+- audio sample rate
+- source length
+- mix gain
+- mix pan
+- regions
+
+ImportedAudioRegion includes:
+
+- startSeconds on the arrangement timeline
+- sourceStartSeconds inside the source audio file
+- lengthSeconds
+- fadeInSeconds
+- fadeOutSeconds
+- region gain
+- fade-in curve
+- fade-out curve
+
+Arrangement+ editing operates on regions, not destructively on source WAVs.
+Splitting a region creates two region references into the same source buffer.
+Trimming changes the region's timeline start, source start, and/or duration.
+Fade handles alter fade times and curve types. Clip gain is per-region, while
+Mixer+ gain/pan is per imported lane audio clip.
+
+Overlapping regions in the same lane receive automatic crossfades. Region fade
+curves are rendered in the UI and used by playback/render gain calculation.
+
+The timeline supports:
+
+- click selection
+- shift-click additive selection
+- drag marquee selection
+- split at click point with scissors
+- split at playhead
+- left/right trim
+- fade handles
+- fade curve cycling
+- per-region gain
+- duplicate/copy/paste/delete
+- undo/redo
+- horizontal and vertical zoom
+- draggable Arrangement+ playhead
+- grid snapping with fine movement via Command-drag
+
+
+10. Arrangement+ audio callback path
+
+When Arrangement+ is active, WfAudioCallback switches playbackMode to
+importedAudio. Live ChucK slots are disabled and activeSlot becomes -1.
+
+loadImportedAudioClips() builds an ImportedPlaybackSet:
+
+- It skips clips with missing/empty audio buffers.
+- It sanitises each region against the source clip length.
+- It creates an ImportedPlaybackClip for each lane audio file.
+- It stores atomics for clip gain and pan so Mixer+ changes are cheap.
+- It creates or reuses a track effect group per state/track.
+- It optionally creates a master effect group.
+- It swaps the playback set under a SpinLock.
+- It either resets the playhead or preserves position depending on caller.
+- It sets playbackMode to importedAudio.
+
+processImportedAudio() is called directly from audioDeviceIOCallbackWithContext:
+
+1. Return if imported playback is not playing.
+2. Copy the shared ImportedPlaybackSet pointer under a SpinLock.
+3. Read the device sample rate and current timeline sample.
+4. Stop if the playhead is beyond the arrangement length.
+5. Clear each track effect group buffer for the current block.
+6. Clear the master effect group buffer if present.
+7. For every clip and every active region overlapping this block:
+   - compute the block-local sample range
+   - convert timeline time to source sample position
+   - read source audio with interpolation
+   - apply region fade/gain
+   - apply clip gain and pan
+   - add into that clip's track effect group buffer
+8. Process AU/VST3 effects per track group.
+9. Sum track groups either directly to output or into master group.
+10. Process master AU/VST3 effects if present.
+11. Apply master gain while adding to host outputs.
+12. Advance importedPositionSamples by numSamples.
+13. Stop playback at the end.
+
+The source sample position calculation accounts for source sample rate vs device
+sample rate. This avoids the earlier "churning/out of tune" style issue that can
+appear when rendered files are played as if their sample rate matches the device
+sample rate.
+
+
+11. Offline rendering
+
+There are two render families:
+
+- Render WAV: render the conductor/state/code arrangement to a single WAV.
+- Render lanes: render each lane separately.
+
+There are also Arrangement+ versions:
+
+- Render WAV+ renders imported Arrangement+ audio regions through Mixer+ and
+  master effects.
+- Render lanes and import renders lane WAVs and immediately switches the project
+  into Arrangement+.
+- Render lanes renders files without import.
+
+Render requirements and format:
+
+- The conductor script must contain stop() before rendering.
+- Render uses an offline path.
+- Output is 48 kHz, 24-bit WAV.
+- The user chooses the save location through a save dialog/folder dialog.
+
+Live-code rendering path:
+
+renderArrangementToWav() parses the conductor script, creates embedded ChucK
+engines, prepares them at 48 kHz, loads generated ChucK programs, advances the
+sequence offline, and writes a WAV. Lane stem rendering targets one state/track/
+lane and uses generated code for that lane.
+
+Arrangement+ rendering path:
+
+renderImportedArrangementToWav() iterates imported audio regions by timeline
+sample at 48 kHz, reads source audio with interpolation, applies region fades
+and gains, applies clip pan/gain, processes track effects, processes master
+effects, applies master gain, checks for non-silent output, and writes a 24-bit
+WAV. This is the offline equivalent of Mixer+ playback.
+
+
+12. AU/VST3 plugin handling
+
+The app can scan/rescan AU and VST3 plugins from the File menu. The scan result
+is remembered until the user rescans.
+
+Effect slots are represented by TrackEffectSlotSpec:
+
+- active
+- plugin name
+- plugin format name
+- plugin file or identifier
+- plugin identifier
+
+Ordinary Mixer mode does not use effect slots. Mixer+ uses up to three AU/VST3
+slots per imported audio track and up to three slots on the final stereo/master
+output. Realtime Mixer+ playback and offline Render WAV+ both process these
+effect chains.
+
+Effects are instantiated through JUCE AudioPluginFormatManager and
+KnownPluginList/PluginDescription lookup. Each effect receives stereo in/out
+configuration, prepareToPlay(sampleRate, blockSize), reset(), then processBlock()
+with an empty MidiBuffer.
+
+
+13. Project file and media handling
+
+Project files use the .chuckme extension and JSON content. The project stores:
+
+- format and version
+- state code / conductor DSL text
+- master volume
+- master effect slots
+- viewed state, selected track, selected lane
+- Arrangement+ mode flag
+- Arrangement view zooms
+- states, tracks, lanes, durations, probabilities, lane code overrides
+- imported audio clips and regions
+- imported audio mix gain/pan
+
+The current project format version is 4.
+
+There is no autosaving. The app tracks dirty state and prompts on destructive
+actions/quit when needed.
+
+When a project containing imported Arrangement+ audio is saved, imported WAVs
+are copied into a sibling media folder:
+
+<project name> Media/
+
+The project stores the full file path and, when applicable, the media filename.
+On load, if the full file path is unavailable, the loader checks the sibling
+media folder using the stored media filename. Missing imported audio is counted
+and reported in the status line.
+
+
+14. UI editing and undo/copy/paste
+
+The app has File and Edit menus.
+
+File:
+
+- New Project
+- Load Project
+- Save Project
+- Save Project As
+- Scan/Rescan AU/VST3 Plugins
+- Render lanes and import
+- Render lanes
+- Render WAV / Render WAV+
+- Remove Rendered Audio
+
+Edit:
+
+- Undo
+- Redo
+- Copy
+- Paste
+- Duplicate
+
+Undo snapshots store project vars. Arrangement+ region edits, state edits, lane
+edits, mixer changes, imports, removal of rendered audio, and project structure
+changes push snapshots. Code editors use text-edit snapshots and finish their
+undo grouping on focus loss.
+
+Copy/paste/duplicate is context-sensitive:
+
+- states in state/overall contexts
+- tracks in MAIN/focused contexts
+- lanes in lane contexts
+- audio regions in Arrangement+
+
+
+15. Error handling and robustness decisions
+
+The engine and app prefer fail-silent audio behaviour over hard failure inside
+the audio callback.
+
+Robustness decisions include:
+
+- Output buffers are cleared before any render path.
+- Null output pointers and invalid layouts are rejected.
+- Device block size is treated defensively: preparedBlockSize is larger than
+  the reported block size to absorb device variance.
+- Oversized blocks are rejected silently.
+- Denormals are suppressed in the audio callback.
+- ChucK render exceptions are caught and mute/disable the failing engine.
+- ChucK program load failures are transactional and leave current audio running.
+- Old live ChucK slots fade out instead of being abruptly cut.
+- Imported Arrangement+ playback keeps source audio in shared buffers and swaps
+  playback sets under a short SpinLock.
+- Mixer+ gain/pan controls are atomics on playback clips.
+- Region data is sanitised before playback/render.
+- Region fade/gain curves are applied in both realtime and offline paths.
+- Offline render rejects silent output.
+- Project loads report missing imported audio.
+
+
+16. Current conceptual state
+
+ChucK-ME is now a hybrid generative/audio DAW sketch:
+
+- Before rendering, it behaves like a state/track/lane generative ChucK
+  instrument with a conductor script.
+- After lane rendering/import, it behaves like a DAW-like arrangement editor
+  over concrete audio regions, with Mixer+ playback and rendering through AU/VST3
+  effects.
+
+The architectural through-line is that both modes are owned by the JUCE audio
+callback, and neither mode relies on a separate external sound server. The app
+can therefore move between code-driven performance and audio-region editing
+without changing the fundamental audio-hosting model.
+
+
+17. Important source files
+
+- CMakeLists.txt
+  Defines ChucK core, reusable engine library, console harness, GUI app, plugin
+  host support, signing, and tests.
+
+- Source/WeldChucK/EmbeddedChucKEngine.h
+  Public reusable engine API.
+
+- Source/WeldChucK/EmbeddedChucKEngine.cpp
+  ChucK VM lifecycle, transactional loading, async loader, parameter bindings,
+  audio processing, sanitising, diagnostics.
+
+- Source/Main.cpp
+  Console harness and low-level engine/callback tests.
+
+- Source/WfApp/Main.cpp
+  ChucK-ME app UI, audio callback, views, project format, file/edit menus,
+  Arrangement+, Mixer+, rendering, plugin hosting.
+
+- Source/WfApp/WfChucKPrograms.h
+  State/track/lane data model and generated ChucK program construction.
+
+- Tests/EngineBoundaryTest.cpp
+  Separate consumer test for the reusable engine boundary.
+
+- Tests/WfProgramTest.cpp
+  Generated wf program/project logic tests.
+
+- demos/ChucK-ME demo1.chuckme
+  Demo project file.
+
+
+18. Design tradeoffs and future pressure points
+
+- ChucK program compilation is deliberately kept out of the audio callback, but
+  committing a candidate VM still takes a short lock. The callback uses a try
+  lock and outputs silence if it collides with that swap.
+
+- The live slot crossfade is simple and robust, but it is gain-based rather than
+  sample-accurate graph migration. This is the right tradeoff for preserving
+  tails without trying to clone ChucK VM state.
+
+- Arrangement+ playback uses direct sample-region rendering instead of routing
+  imported audio back through ChucK. This keeps audio editing deterministic and
+  keeps Mixer+ rendering aligned with DAW expectations.
+
+- Imported audio buffers are currently loaded into memory. This is simple and
+  responsive for rendered lane stems, but very long projects may eventually need
+  streaming.
+
+- AU/VST3 plugin processing is supported in Mixer+ and offline Render WAV+.
+  Plugin UI/preset/state management could be expanded later.
+
+- Project media handling now copies imported WAVs into a sibling media folder on
+  save. A future enhancement would be a full relink browser for moved/missing
+  media.
+
+- The conductor DSL is intentionally bounded. It is easier to reason about and
+  render offline than arbitrary host-side scripting, but it may eventually need
+  named sections, loops, and higher-level arrangement macros.
