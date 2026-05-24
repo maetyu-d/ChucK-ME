@@ -5237,6 +5237,150 @@ private:
     static constexpr float fadeHandleHitWidth = 10.0f;
 };
 
+class WelcomeScreen final : public juce::Component
+{
+public:
+    WelcomeScreen()
+    {
+        setVisible (false);
+        setWantsKeyboardFocus (true);
+
+        title.setText ("ChucK-ME", juce::dontSendNotification);
+        title.setFont (juce::FontOptions (30.0f, juce::Font::bold));
+        title.setColour (juce::Label::textColourId, ink());
+        title.setJustificationType (juce::Justification::centredLeft);
+        addAndMakeVisible (title);
+
+        subtitle.setText ("Open a project or start with a blank one.", juce::dontSendNotification);
+        subtitle.setFont (juce::FontOptions (13.5f));
+        subtitle.setColour (juce::Label::textColourId, mutedInk());
+        subtitle.setJustificationType (juce::Justification::centredLeft);
+        addAndMakeVisible (subtitle);
+
+        demoTitle.setText ("Demo projects", juce::dontSendNotification);
+        demoTitle.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+        demoTitle.setColour (juce::Label::textColourId, mutedInk());
+        demoTitle.setJustificationType (juce::Justification::centredLeft);
+        addAndMakeVisible (demoTitle);
+
+        setupWelcomeButton (newProjectButton, "New Blank Project", blue(), true);
+        setupWelcomeButton (openProjectButton, "Open Project", cyan(), true);
+        setupWelcomeButton (continueButton, "Continue", amber(), false);
+
+        newProjectButton.onClick = [this] { if (onNewProject != nullptr) onNewProject(); };
+        openProjectButton.onClick = [this] { if (onOpenProject != nullptr) onOpenProject(); };
+        continueButton.onClick = [this] { if (onContinue != nullptr) onContinue(); };
+
+        static const std::array<juce::String, 3> demoNames
+        {
+            "Demo 1 - Chrome Avenue",
+            "Demo 2 - Melodic Breakbeat",
+            "Demo 3 - Abstract Soundscape"
+        };
+
+        for (int i = 0; i < static_cast<int> (demoButtons.size()); ++i)
+        {
+            setupWelcomeButton (demoButtons[static_cast<size_t> (i)], demoNames[static_cast<size_t> (i)], stateAccentForIndex (i), false);
+            demoButtons[static_cast<size_t> (i)].onClick = [this, i]
+            {
+                if (onDemoProject != nullptr)
+                    onDemoProject (i);
+            };
+        }
+    }
+
+    std::function<void()> onNewProject;
+    std::function<void()> onOpenProject;
+    std::function<void()> onContinue;
+    std::function<void(int)> onDemoProject;
+
+private:
+    void paint (juce::Graphics& g) override
+    {
+        g.fillAll (juce::Colours::black.withAlpha (0.58f));
+
+        const auto cardBoundsInt = cardBounds();
+        auto card = cardBoundsInt.toFloat();
+        g.setColour (juce::Colour (0xff111820).withAlpha (0.98f));
+        g.fillRoundedRectangle (card, 8.0f);
+
+        g.setColour (mutedInk().withAlpha (0.18f));
+        g.drawRoundedRectangle (card, 8.0f, 1.0f);
+
+        auto strip = card.removeFromTop (2.0f).reduced (1.0f, 0.0f);
+        juce::ColourGradient stripGradient (blue().withAlpha (0.90f), strip.getTopLeft(),
+                                            violet().withAlpha (0.90f), strip.getTopRight(), false);
+        stripGradient.addColour (0.25, cyan().withAlpha (0.90f));
+        stripGradient.addColour (0.50, amber().withAlpha (0.90f));
+        stripGradient.addColour (0.75, coral().withAlpha (0.90f));
+        g.setGradientFill (stripGradient);
+        g.fillRect (strip);
+    }
+
+    void resized() override
+    {
+        auto card = cardBounds().reduced (28, 26);
+
+        auto heading = card.removeFromTop (64);
+        title.setBounds (heading.removeFromTop (36));
+        subtitle.setBounds (heading.removeFromTop (24));
+
+        card.removeFromTop (12);
+        auto actions = card.removeFromTop (40);
+        const auto actionGap = 8;
+        const auto actionWidth = (actions.getWidth() - actionGap * 2) / 3;
+        newProjectButton.setBounds (actions.removeFromLeft (actionWidth).reduced (0, 2));
+        actions.removeFromLeft (actionGap);
+        openProjectButton.setBounds (actions.removeFromLeft (actionWidth).reduced (0, 2));
+        actions.removeFromLeft (actionGap);
+        continueButton.setBounds (actions.removeFromLeft (actionWidth).reduced (0, 2));
+
+        card.removeFromTop (20);
+        demoTitle.setBounds (card.removeFromTop (22));
+        for (auto& button : demoButtons)
+            button.setBounds (card.removeFromTop (28).reduced (0, 3));
+    }
+
+    bool keyPressed (const juce::KeyPress& key) override
+    {
+        if (key.getKeyCode() == juce::KeyPress::escapeKey)
+        {
+            if (onContinue != nullptr)
+                onContinue();
+
+            return true;
+        }
+
+        return false;
+    }
+
+    void setupWelcomeButton (juce::TextButton& button, const juce::String& text, juce::Colour colour, bool prominent)
+    {
+        button.setButtonText (text);
+        styleButton (button, colour);
+        button.setColour (juce::TextButton::buttonColourId, colour.withAlpha (prominent ? 0.085f : 0.045f));
+        button.setColour (juce::TextButton::buttonOnColourId, colour.withAlpha (prominent ? 0.24f : 0.15f));
+        button.setColour (juce::TextButton::textColourOffId, ink().withAlpha (prominent ? 0.84f : 0.72f));
+        addAndMakeVisible (button);
+    }
+
+    juce::Rectangle<int> cardBounds() const
+    {
+        auto bounds = getLocalBounds();
+        const auto width = juce::jlimit (360, 560, bounds.getWidth() - 56);
+        const auto height = juce::jlimit (300, 360, bounds.getHeight() - 56);
+        return juce::Rectangle<int> (width, height).withCentre (bounds.getCentre());
+    }
+
+    juce::Label title;
+    juce::Label subtitle;
+    juce::Label demoTitle;
+    juce::TextButton newProjectButton;
+    juce::TextButton openProjectButton;
+    juce::TextButton continueButton;
+    std::array<juce::TextButton, 3> demoButtons;
+};
+
 class MainComponent final : public juce::Component,
                             public juce::MenuBarModel,
                             private juce::Timer
@@ -5278,6 +5422,7 @@ class MainComponent final : public juce::Component,
     {
         menuNewProject = 1,
         menuLoadProject,
+        menuWelcome,
         menuSaveProject,
         menuSaveProjectAs,
         menuScanPlugins,
@@ -5806,6 +5951,8 @@ public:
             muteButton.setClickingTogglesState (false);
         }
 
+        configureWelcomeScreen();
+
         audioDeviceManager.initialiseWithDefaultDevices (0, 2);
         audioDeviceManager.addAudioCallback (&audioCallback);
 
@@ -5814,6 +5961,7 @@ public:
         refreshLabels();
         setMainView (MainView::arrangement);
         setSize (1240, 760);
+        showWelcomeScreen();
         startTimerHz (30);
     }
 
@@ -5850,6 +5998,7 @@ public:
         if (menuIndex == 0)
         {
             menu.addItem (menuNewProject, "New Project");
+            menu.addItem (menuWelcome, "Welcome");
             menu.addSeparator();
             menu.addItem (menuLoadProject, "Load Project...");
             menu.addItem (menuSaveProject, "Save Project", projectDirty || laneCodeDirty || currentProjectFile == juce::File());
@@ -5886,6 +6035,7 @@ public:
         {
             case menuNewProject: confirmUnsavedChangesThen ([this] { newProject(); }); break;
             case menuLoadProject: confirmUnsavedChangesThen ([this] { chooseProjectToLoad(); }); break;
+            case menuWelcome: showWelcomeScreen(); break;
             case menuSaveProject: saveProject(); break;
             case menuSaveProjectAs: saveProjectAs(); break;
             case menuScanPlugins: scanOrRescanEffectPlugins(); break;
@@ -5921,6 +6071,14 @@ public:
     {
         const auto keyCode = key.getKeyCode();
         const auto modifiers = key.getModifiers();
+        if (welcomeScreen.isVisible())
+        {
+            if (keyCode == juce::KeyPress::escapeKey)
+                hideWelcomeScreen();
+
+            return true;
+        }
+
         if (modifiers.isCommandDown())
         {
             if (keyCode == 'z' || keyCode == 'Z')
@@ -6086,6 +6244,10 @@ public:
 
     void resized() override
     {
+        welcomeScreen.setBounds (getLocalBounds());
+        if (welcomeScreen.isVisible())
+            welcomeScreen.toFront (false);
+
         auto area = getLocalBounds().reduced (34);
         const auto stateGridRight = stateButtonRowRightEdge (area);
         auto header = area.removeFromTop (44);
@@ -6452,6 +6614,94 @@ private:
         editor.setColour (juce::TextEditor::highlightColourId, blue().withAlpha (0.24f));
         editor.setFont (juce::FontOptions (13.0f));
         addAndMakeVisible (editor);
+    }
+
+    void configureWelcomeScreen()
+    {
+        welcomeScreen.onNewProject = [this]
+        {
+            confirmUnsavedChangesThen ([this] { newProject(); });
+        };
+
+        welcomeScreen.onOpenProject = [this]
+        {
+            confirmUnsavedChangesThen ([this] { chooseProjectToLoad(); });
+        };
+
+        welcomeScreen.onContinue = [this]
+        {
+            hideWelcomeScreen();
+        };
+
+        welcomeScreen.onDemoProject = [this] (int demoIndex)
+        {
+            confirmUnsavedChangesThen ([this, demoIndex]
+            {
+                const auto file = demoProjectFile (demoIndex);
+                if (! file.existsAsFile())
+                {
+                    juce::AlertWindow::showMessageBoxAsync (
+                        juce::AlertWindow::WarningIcon,
+                        "Demo project not found",
+                        "The demo project could not be found in the demos folder.",
+                        "OK");
+                    return;
+                }
+
+                loadProjectFromFile (file);
+            });
+        };
+
+        addAndMakeVisible (welcomeScreen);
+        welcomeScreen.setVisible (false);
+    }
+
+    void showWelcomeScreen()
+    {
+        welcomeScreen.setBounds (getLocalBounds());
+        welcomeScreen.setVisible (true);
+        welcomeScreen.toFront (false);
+        welcomeScreen.grabKeyboardFocus();
+        repaint();
+    }
+
+    void hideWelcomeScreen()
+    {
+        welcomeScreen.setVisible (false);
+        grabKeyboardFocus();
+        repaint();
+    }
+
+    static juce::File findDemoDirectory()
+    {
+        auto scanAncestors = [] (juce::File cursor) -> juce::File
+        {
+            for (int i = 0; i < 12 && cursor != juce::File(); ++i)
+            {
+                const auto candidate = cursor.getChildFile ("demos");
+                if (candidate.isDirectory())
+                    return candidate;
+
+                const auto parent = cursor.getParentDirectory();
+                if (parent == cursor)
+                    break;
+
+                cursor = parent;
+            }
+
+            return {};
+        };
+
+        const auto executableParent = juce::File::getSpecialLocation (juce::File::currentExecutableFile).getParentDirectory();
+        if (const auto fromExecutable = scanAncestors (executableParent); fromExecutable.isDirectory())
+            return fromExecutable;
+
+        return scanAncestors (juce::File::getCurrentWorkingDirectory());
+    }
+
+    static juce::File demoProjectFile (int demoIndex)
+    {
+        return findDemoDirectory().getChildFile ("ChucK-ME demo" + juce::String (demoIndex + 1) + ".chuckme");
     }
 
     void setMainView (MainView nextView)
@@ -7823,6 +8073,7 @@ private:
         clearUndoHistory();
         updateProjectDirtyState (false);
         statusLabel.setText ("new empty project", juce::dontSendNotification);
+        hideWelcomeScreen();
     }
 
     void chooseProjectToLoad()
@@ -7991,6 +8242,7 @@ private:
                                     ? " (" + juce::String (missingImportedAudioOnLastLoad) + " missing audio files skipped)"
                                     : juce::String()),
                              juce::dontSendNotification);
+        hideWelcomeScreen();
         return true;
     }
 
@@ -11987,6 +12239,7 @@ private:
     std::vector<ImportedLaneAudioClip> importedLaneAudioClips;
     std::mt19937 random { 0x5eed1234u };
 
+    WelcomeScreen welcomeScreen;
     juce::Label titleLabel;
     juce::Label statusLabel;
     juce::Label volumeLabel;
@@ -12141,7 +12394,7 @@ class WfApplication final : public juce::JUCEApplication
 {
 public:
     const juce::String getApplicationName() override { return "ChucK-ME"; }
-    const juce::String getApplicationVersion() override { return "0.1.12"; }
+    const juce::String getApplicationVersion() override { return "0.1.13"; }
     bool moreThanOneInstanceAllowed() override { return true; }
 
     void initialise (const juce::String&) override
