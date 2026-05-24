@@ -1347,6 +1347,7 @@ class WfAudioCallback final : public juce::AudioIODeviceCallback
     struct ImportedPlaybackSet
     {
         std::vector<ImportedPlaybackClip> clips;
+        std::vector<int> sourceToPlaybackClip;
         std::vector<std::unique_ptr<ImportedTrackEffectGroup>> trackEffectGroups;
         std::unique_ptr<ImportedTrackEffectGroup> masterEffectGroup;
         double lengthSeconds = 0.0;
@@ -1542,12 +1543,14 @@ public:
     {
         auto playbackSet = std::make_shared<ImportedPlaybackSet>();
         playbackSet->clips.reserve (clips.size());
+        playbackSet->sourceToPlaybackClip.assign (clips.size(), -1);
         const auto currentSampleRate = lastSampleRate.load (std::memory_order_relaxed);
         const auto sampleRate = currentSampleRate > 0.0 ? currentSampleRate : 48000.0;
         const auto blockSize = juce::jmax (fallbackBlockSize, preparedBlockSize.load (std::memory_order_relaxed));
 
-        for (const auto& clip : clips)
+        for (int sourceClipIndex = 0; sourceClipIndex < static_cast<int> (clips.size()); ++sourceClipIndex)
         {
+            const auto& clip = clips[static_cast<size_t> (sourceClipIndex)];
             if (clip.audioData == nullptr || clip.audioData->getNumSamples() <= 0)
                 continue;
 
@@ -1571,6 +1574,7 @@ public:
             playbackClip.pan = std::make_shared<std::atomic<float>> (clip.mixPan);
             for (const auto& region : playbackClip.regions)
                 playbackSet->lengthSeconds = juce::jmax (playbackSet->lengthSeconds, regionEndSeconds (region));
+            playbackSet->sourceToPlaybackClip[static_cast<size_t> (sourceClipIndex)] = static_cast<int> (playbackSet->clips.size());
             playbackSet->clips.push_back (std::move (playbackClip));
         }
 
@@ -1693,10 +1697,22 @@ public:
             playbackSet = importedPlaybackSet;
         }
 
-        if (playbackSet == nullptr || clipIndex < 0 || clipIndex >= static_cast<int> (playbackSet->clips.size()))
+        if (playbackSet == nullptr || clipIndex < 0)
             return;
 
-        auto& clip = playbackSet->clips[static_cast<size_t> (clipIndex)];
+        auto playbackClipIndex = clipIndex;
+        if (! playbackSet->sourceToPlaybackClip.empty())
+        {
+            if (clipIndex >= static_cast<int> (playbackSet->sourceToPlaybackClip.size()))
+                return;
+
+            playbackClipIndex = playbackSet->sourceToPlaybackClip[static_cast<size_t> (clipIndex)];
+        }
+
+        if (playbackClipIndex < 0 || playbackClipIndex >= static_cast<int> (playbackSet->clips.size()))
+            return;
+
+        auto& clip = playbackSet->clips[static_cast<size_t> (playbackClipIndex)];
         if (clip.gain != nullptr)
             clip.gain->store (gain, std::memory_order_release);
         if (clip.pan != nullptr)
@@ -5514,6 +5530,294 @@ private:
     std::array<juce::TextButton, 3> demoButtons;
 };
 
+struct MediaManagerItem
+{
+    int clipIndex = -1;
+    int stateIndex = 0;
+    int trackIndex = 0;
+    int laneIndex = 0;
+    juce::String target;
+    juce::String fileName;
+    juce::String path;
+    juce::String status;
+    juce::int64 fileSize = 0;
+    int regionCount = 0;
+    double lengthSeconds = 0.0;
+    bool exists = false;
+    bool loaded = false;
+    bool inProjectMedia = false;
+    bool unused = false;
+};
+
+class MediaManagerComponent final : public juce::Component,
+                                    private juce::ListBoxModel
+{
+public:
+    std::function<std::vector<MediaManagerItem>()> getItems;
+    std::function<void (int)> onRelink;
+    std::function<void (int)> onReveal;
+    std::function<void()> onCollect;
+    std::function<void()> onRemoveMissing;
+    std::function<void()> onRemoveUnused;
+    std::function<void()> onCompact;
+
+    MediaManagerComponent()
+    {
+        title.setText ("Media Manager", juce::dontSendNotification);
+        title.setFont (juce::FontOptions (21.0f, juce::Font::bold));
+        styleLabel (title, 0.92f);
+        addAndMakeVisible (title);
+
+        summary.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+        styleLabel (summary, 0.66f);
+        addAndMakeVisible (summary);
+
+        columnHeader.setText ("target                         status        regions   length      size        file",
+                              juce::dontSendNotification);
+        columnHeader.setFont (juce::FontOptions (10.8f, juce::Font::bold));
+        styleLabel (columnHeader, 0.44f);
+        addAndMakeVisible (columnHeader);
+
+        list.setModel (this);
+        list.setRowHeight (34);
+        list.setMultipleSelectionEnabled (false);
+        list.setColour (juce::ListBox::backgroundColourId, juce::Colours::transparentBlack);
+        list.setColour (juce::ListBox::outlineColourId, mutedInk().withAlpha (0.11f));
+        addAndMakeVisible (list);
+
+        setupFooterButton (relinkButton, "Relink", blue(), [this]
+        {
+            if (onRelink != nullptr)
+                onRelink (selectedClipIndex());
+        });
+        setupFooterButton (revealButton, "Reveal", cyan(), [this]
+        {
+            if (onReveal != nullptr)
+                onReveal (selectedClipIndex());
+        });
+        setupFooterButton (collectButton, "Collect", violet(), [this]
+        {
+            if (onCollect != nullptr)
+                onCollect();
+        });
+        setupFooterButton (removeMissingButton, "Remove missing", coral(), [this]
+        {
+            if (onRemoveMissing != nullptr)
+                onRemoveMissing();
+        });
+        setupFooterButton (removeUnusedButton, "Remove unused", amber(), [this]
+        {
+            if (onRemoveUnused != nullptr)
+                onRemoveUnused();
+        });
+        setupFooterButton (compactButton, "Compact", rose(), [this]
+        {
+            if (onCompact != nullptr)
+                onCompact();
+        });
+        setupFooterButton (closeButton, "Close", mutedInk(), [this]
+        {
+            if (auto* dialog = findParentComponentOfClass<juce::DialogWindow>())
+                dialog->exitModalState (0);
+        });
+
+        setSize (980, 560);
+        refresh();
+    }
+
+    void refresh()
+    {
+        items = getItems != nullptr ? getItems() : std::vector<MediaManagerItem>();
+        list.updateContent();
+
+        if (items.empty())
+        {
+            summary.setText ("No rendered or imported audio is attached to this project.", juce::dontSendNotification);
+        }
+        else
+        {
+            auto missing = 0;
+            auto external = 0;
+            auto unused = 0;
+            juce::int64 totalBytes = 0;
+            for (const auto& item : items)
+            {
+                if (! item.exists)
+                    ++missing;
+                if (item.exists && ! item.inProjectMedia)
+                    ++external;
+                if (item.unused)
+                    ++unused;
+                totalBytes += item.fileSize;
+            }
+
+            summary.setText (juce::String (static_cast<int> (items.size())) + " files"
+                                + "   " + humanFileSize (totalBytes)
+                                + "   " + juce::String (missing) + " missing"
+                                + "   " + juce::String (external) + " external"
+                                + "   " + juce::String (unused) + " unused",
+                             juce::dontSendNotification);
+        }
+
+        updateButtonState();
+        repaint();
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds().reduced (18);
+        title.setBounds (area.removeFromTop (32));
+        summary.setBounds (area.removeFromTop (24));
+        area.removeFromTop (8);
+        columnHeader.setBounds (area.removeFromTop (22).reduced (8, 0));
+        auto footer = area.removeFromBottom (42);
+        area.removeFromBottom (12);
+        list.setBounds (area);
+
+        auto place = [&footer] (juce::TextButton& button, int width)
+        {
+            button.setBounds (footer.removeFromLeft (width).reduced (0, 4));
+            footer.removeFromLeft (8);
+        };
+
+        place (relinkButton, 88);
+        place (revealButton, 88);
+        place (collectButton, 92);
+        place (removeMissingButton, 136);
+        place (removeUnusedButton, 132);
+        place (compactButton, 104);
+        closeButton.setBounds (footer.removeFromRight (92).reduced (0, 4));
+    }
+
+private:
+    int getNumRows() override
+    {
+        return static_cast<int> (items.size());
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        g.fillAll (juce::Colour (0xff0b1016));
+        g.setColour (panelSoft().withAlpha (0.46f));
+        g.fillRoundedRectangle (getLocalBounds().reduced (10).toFloat(), 4.0f);
+        g.setColour (mutedInk().withAlpha (0.12f));
+        g.drawRoundedRectangle (getLocalBounds().reduced (10).toFloat(), 4.0f, 1.0f);
+    }
+
+    void paintListBoxItem (int row,
+                           juce::Graphics& g,
+                           int width,
+                           int height,
+                           bool rowIsSelected) override
+    {
+        if (row < 0 || row >= static_cast<int> (items.size()))
+            return;
+
+        const auto& item = items[static_cast<size_t> (row)];
+        auto bounds = juce::Rectangle<int> (0, 0, width, height).reduced (4, 3);
+        const auto accent = item.exists ? (item.unused ? amber() : (item.inProjectMedia ? cyan() : blue())) : coral();
+
+        g.setColour (rowIsSelected ? accent.withAlpha (0.18f)
+                                   : (row % 2 == 0 ? panel().withAlpha (0.72f) : panelSoft().withAlpha (0.38f)));
+        g.fillRoundedRectangle (bounds.toFloat(), 3.0f);
+        g.setColour (accent.withAlpha (rowIsSelected ? 0.72f : 0.28f));
+        g.drawRoundedRectangle (bounds.toFloat(), 3.0f, rowIsSelected ? 1.2f : 0.75f);
+
+        auto rowArea = bounds.reduced (8, 0);
+        auto targetArea = rowArea.removeFromLeft (220);
+        auto statusArea = rowArea.removeFromLeft (92);
+        auto regionArea = rowArea.removeFromLeft (62);
+        auto lengthArea = rowArea.removeFromLeft (76);
+        auto sizeArea = rowArea.removeFromLeft (76);
+        rowArea.removeFromLeft (6);
+
+        g.setFont (juce::FontOptions (11.2f, juce::Font::bold));
+        g.setColour (ink().withAlpha (item.exists ? 0.86f : 0.58f));
+        g.drawFittedText (item.target, targetArea, juce::Justification::centredLeft, 1);
+
+        g.setColour (accent.withAlpha (item.exists ? 0.88f : 0.95f));
+        g.drawFittedText (item.status, statusArea, juce::Justification::centredLeft, 1);
+
+        g.setColour (mutedInk().withAlpha (0.72f));
+        g.drawFittedText (juce::String (item.regionCount), regionArea, juce::Justification::centredLeft, 1);
+        g.drawFittedText (item.lengthSeconds > 0.0 ? juce::String (item.lengthSeconds, 1) + "s" : "-", lengthArea, juce::Justification::centredLeft, 1);
+        g.drawFittedText (humanFileSize (item.fileSize), sizeArea, juce::Justification::centredLeft, 1);
+
+        g.setColour (mutedInk().withAlpha (item.exists ? 0.58f : 0.36f));
+        g.drawFittedText (item.path.isNotEmpty() ? item.path : item.fileName, rowArea, juce::Justification::centredLeft, 1);
+    }
+
+    void selectedRowsChanged (int) override
+    {
+        updateButtonState();
+    }
+
+    int selectedClipIndex() const
+    {
+        const auto row = list.getSelectedRow();
+        if (row < 0 || row >= static_cast<int> (items.size()))
+            return -1;
+
+        return items[static_cast<size_t> (row)].clipIndex;
+    }
+
+    void setupFooterButton (juce::TextButton& button, const juce::String& text, juce::Colour colour, std::function<void()> action)
+    {
+        button.setButtonText (text);
+        styleButton (button, colour);
+        button.onClick = std::move (action);
+        addAndMakeVisible (button);
+    }
+
+    void updateButtonState()
+    {
+        const auto hasSelection = selectedClipIndex() >= 0;
+        relinkButton.setEnabled (hasSelection);
+        revealButton.setEnabled (hasSelection);
+        collectButton.setEnabled (! items.empty());
+        compactButton.setEnabled (! items.empty());
+
+        auto hasMissing = false;
+        auto hasUnused = false;
+        for (const auto& item : items)
+        {
+            hasMissing = hasMissing || ! item.exists;
+            hasUnused = hasUnused || item.unused;
+        }
+
+        removeMissingButton.setEnabled (hasMissing);
+        removeUnusedButton.setEnabled (hasUnused);
+    }
+
+    static juce::String humanFileSize (juce::int64 bytes)
+    {
+        if (bytes <= 0)
+            return "-";
+
+        const auto mb = static_cast<double> (bytes) / (1024.0 * 1024.0);
+        if (mb >= 1024.0)
+            return juce::String (mb / 1024.0, 2) + " GB";
+
+        if (mb >= 1.0)
+            return juce::String (mb, 1) + " MB";
+
+        return juce::String (static_cast<double> (bytes) / 1024.0, 1) + " KB";
+    }
+
+    juce::Label title;
+    juce::Label summary;
+    juce::Label columnHeader;
+    juce::ListBox list;
+    juce::TextButton relinkButton;
+    juce::TextButton revealButton;
+    juce::TextButton collectButton;
+    juce::TextButton removeMissingButton;
+    juce::TextButton removeUnusedButton;
+    juce::TextButton compactButton;
+    juce::TextButton closeButton;
+    std::vector<MediaManagerItem> items;
+};
+
 class MainComponent final : public juce::Component,
                             public juce::MenuBarModel,
                             private juce::Timer
@@ -5551,6 +5855,17 @@ class MainComponent final : public juce::Component,
         juce::String label;
     };
 
+    struct ProjectMediaSaveSummary
+    {
+        int external = 0;
+        int missing = 0;
+
+        bool needsAttention() const noexcept
+        {
+            return external > 0 || missing > 0;
+        }
+    };
+
     enum MenuIds
     {
         menuNewProject = 1,
@@ -5558,11 +5873,13 @@ class MainComponent final : public juce::Component,
         menuWelcome,
         menuSaveProject,
         menuSaveProjectAs,
+        menuCollectProjectAs,
         menuScanPlugins,
         menuRenderLanesAndImport,
         menuRenderLanes,
         menuRenderWav,
         menuRemoveRenderedAudio,
+        menuMediaManager,
         menuAbout,
         menuUndo,
         menuRedo,
@@ -6134,8 +6451,13 @@ public:
             menu.addItem (menuWelcome, "Welcome");
             menu.addSeparator();
             menu.addItem (menuLoadProject, "Load Project...");
-            menu.addItem (menuSaveProject, "Save Project", projectDirty || laneCodeDirty || currentProjectFile == juce::File());
+            const auto saveNeedsMediaAttention = currentProjectFile != juce::File()
+                && mediaSaveSummaryFor (currentProjectFile).needsAttention();
+            menu.addItem (menuSaveProject,
+                          "Save Project",
+                          projectDirty || laneCodeDirty || currentProjectFile == juce::File() || saveNeedsMediaAttention);
             menu.addItem (menuSaveProjectAs, "Save Project As...");
+            menu.addItem (menuCollectProjectAs, "Collect Project As...");
             menu.addSeparator();
             menu.addItem (menuScanPlugins,
                           getScannedEffectPlugins().isEmpty() ? "Scan AU/VST3 Plugins..." : "Rescan AU/VST3 Plugins...",
@@ -6145,6 +6467,7 @@ public:
             menu.addItem (menuRenderLanes, "Render lanes");
             menu.addItem (menuRenderWav, arrangementPlusMode ? "Render WAV+..." : "Render WAV...");
             menu.addItem (menuRemoveRenderedAudio, "Remove Rendered Audio", arrangementPlusMode);
+            menu.addItem (menuMediaManager, "Media Manager...");
             menu.addSeparator();
             menu.addItem (menuAbout, "About ChucK-ME");
         }
@@ -6171,11 +6494,13 @@ public:
             case menuWelcome: showWelcomeScreen(); break;
             case menuSaveProject: saveProject(); break;
             case menuSaveProjectAs: saveProjectAs(); break;
+            case menuCollectProjectAs: collectProjectAs(); break;
             case menuScanPlugins: scanOrRescanEffectPlugins(); break;
             case menuRenderLanesAndImport: confirmPendingLaneCodeThen ([this] { chooseArrangementLaneRenderDirectory (true); }); break;
             case menuRenderLanes: confirmPendingLaneCodeThen ([this] { chooseArrangementLaneRenderDirectory (false); }); break;
             case menuRenderWav: confirmPendingLaneCodeThen ([this] { chooseArrangementRenderFile(); }); break;
             case menuRemoveRenderedAudio: removeRenderedAudioAndReturnToCodePlayback(); break;
+            case menuMediaManager: showMediaManager(); break;
             case menuAbout: showAboutDialog(); break;
             case menuUndo: performUndo(); break;
             case menuRedo: performRedo(); break;
@@ -7622,9 +7947,11 @@ private:
                     if (clip.trackIndex >= 0
                         && clip.trackIndex < static_cast<int> (tracks.size())
                         && clip.laneIndex >= 0
-                        && clip.laneIndex < static_cast<int> (tracks[static_cast<size_t> (clip.trackIndex)].lanes.size())
-                        && clip.file.existsAsFile())
+                        && clip.laneIndex < static_cast<int> (tracks[static_cast<size_t> (clip.trackIndex)].lanes.size()))
                     {
+                        if (! clip.file.existsAsFile())
+                            ++missingImportedAudioOnLastLoad;
+
                         loadedClips.push_back (std::move (clip));
                         continue;
                     }
@@ -7640,7 +7967,7 @@ private:
         syncMixerView();
 
         if (boolFromJson (*object, "arrangementPlusMode", false) && ! loadedClips.empty())
-            importRenderedLaneFiles (std::move (loadedClips), false, false);
+            loadImportedAudioClipsFromProject (std::move (loadedClips));
         else
             setMainView (MainView::arrangement);
 
@@ -8152,9 +8479,7 @@ private:
             return;
         }
 
-        const auto saved = saveProjectToFile (currentProjectFile);
-        if (afterSave != nullptr)
-            afterSave (saved);
+        saveProjectWithMediaCheck (currentProjectFile, std::move (afterSave));
     }
 
     void confirmUnsavedChangesThen (std::function<void()> continueAction)
@@ -8248,9 +8573,7 @@ private:
                                               return;
                                           }
 
-                                          const auto saved = saveProjectToFile (withProjectExtension (file));
-                                          if (saveCallback != nullptr)
-                                              saveCallback (saved);
+                                          saveProjectWithMediaCheck (withProjectExtension (file), std::move (saveCallback));
                                       });
     }
 
@@ -8268,12 +8591,509 @@ private:
             return;
         }
 
-        saveProjectToFile (currentProjectFile);
+        saveProjectWithMediaCheck (currentProjectFile);
     }
 
     void saveProjectAs()
     {
         confirmPendingLaneCodeThen ([this] { chooseProjectSaveFile(); });
+    }
+
+    void collectProjectAs()
+    {
+        confirmPendingLaneCodeThen ([this] { chooseCollectProjectAsDirectory(); });
+    }
+
+    ProjectMediaSaveSummary mediaSaveSummaryFor (const juce::File& projectFile) const
+    {
+        ProjectMediaSaveSummary summary;
+        if (importedLaneAudioClips.empty())
+            return summary;
+
+        const auto mediaDirectory = projectFile != juce::File()
+            ? projectMediaDirectoryFor (projectFile)
+            : juce::File();
+
+        for (const auto& clip : importedLaneAudioClips)
+        {
+            if (! clip.file.existsAsFile())
+            {
+                ++summary.missing;
+                continue;
+            }
+
+            if (mediaDirectory != juce::File() && clip.file.getParentDirectory() != mediaDirectory)
+                ++summary.external;
+        }
+
+        return summary;
+    }
+
+    void saveProjectWithMediaCheck (const juce::File& rawFile, std::function<void (bool)> afterSave = {})
+    {
+        const auto file = withProjectExtension (rawFile);
+        const auto summary = mediaSaveSummaryFor (file);
+        if (! summary.needsAttention())
+        {
+            const auto saved = saveProjectToFile (file, false);
+            if (afterSave != nullptr)
+                afterSave (saved);
+            return;
+        }
+
+        if (summary.external > 0)
+        {
+            juce::String message = juce::String (summary.external) + " audio file"
+                                 + (summary.external == 1 ? " is" : "s are")
+                                 + " outside this project. Collecting copies them into the project Media folder so the project can move cleanly.";
+            if (summary.missing > 0)
+                message << "\n\n" << juce::String (summary.missing) << " media reference"
+                        << (summary.missing == 1 ? " is" : "s are") << " also missing; save will keep the reference so it can be relinked in Media Manager.";
+
+            juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                            .withIconType (juce::MessageBoxIconType::WarningIcon)
+                                            .withTitle ("Project media")
+                                            .withMessage (message)
+                                            .withButton ("Collect Media")
+                                            .withButton ("Save Without Collecting")
+                                            .withButton ("Cancel")
+                                            .withAssociatedComponent (this),
+                                          [this, file, saveCallback = std::move (afterSave)] (int result) mutable
+                                          {
+                                              if (result == 1 || result == 2)
+                                              {
+                                                  const auto saved = saveProjectToFile (file, result == 1);
+                                                  if (saveCallback != nullptr)
+                                                      saveCallback (saved);
+                                              }
+                                              else if (saveCallback != nullptr)
+                                              {
+                                                  saveCallback (false);
+                                              }
+                                          });
+            return;
+        }
+
+        juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                        .withIconType (juce::MessageBoxIconType::WarningIcon)
+                                        .withTitle ("Missing media")
+                                        .withMessage (juce::String (summary.missing) + " media reference"
+                                                      + (summary.missing == 1 ? " is" : "s are")
+                                                      + " missing. Save can keep the reference, or you can open Media Manager to relink or remove it first.")
+                                        .withButton ("Open Media Manager")
+                                        .withButton ("Save Anyway")
+                                        .withButton ("Cancel")
+                                        .withAssociatedComponent (this),
+                                      [this, file, saveCallback = std::move (afterSave)] (int result) mutable
+                                      {
+                                          if (result == 1)
+                                          {
+                                              showMediaManager();
+                                              if (saveCallback != nullptr)
+                                                  saveCallback (false);
+                                          }
+                                          else if (result == 2)
+                                          {
+                                              const auto saved = saveProjectToFile (file, false);
+                                              if (saveCallback != nullptr)
+                                                  saveCallback (saved);
+                                          }
+                                          else if (saveCallback != nullptr)
+                                          {
+                                              saveCallback (false);
+                                          }
+                                      });
+    }
+
+    void chooseCollectProjectAsDirectory()
+    {
+        const auto defaultDirectory = currentProjectFile == juce::File()
+            ? juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
+            : currentProjectFile.getParentDirectory();
+
+        projectChooser = std::make_unique<juce::FileChooser> ("Collect Project As",
+                                                              defaultDirectory,
+                                                              "*");
+        projectChooser->launchAsync (juce::FileBrowserComponent::saveMode
+                                        | juce::FileBrowserComponent::canSelectDirectories,
+                                      [this] (const juce::FileChooser& chooser)
+                                      {
+                                          auto directory = chooser.getResult();
+                                          if (directory == juce::File())
+                                              return;
+
+                                          collectProjectIntoDirectory (directory);
+                                      });
+    }
+
+    void collectProjectIntoDirectory (juce::File directory)
+    {
+        if (! directory.createDirectory())
+        {
+            statusLabel.setText ("could not create project folder", juce::dontSendNotification);
+            return;
+        }
+
+        const auto projectName = directory.getFileName().isNotEmpty() ? directory.getFileName() : "ChucK-ME project";
+        const auto projectFile = directory.getChildFile (projectName).withFileExtension ("chuckme");
+
+        if (projectFile.existsAsFile())
+        {
+            juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                            .withIconType (juce::MessageBoxIconType::WarningIcon)
+                                            .withTitle ("Replace collected project?")
+                                            .withMessage (projectFile.getFileName() + " already exists in this folder.")
+                                            .withButton ("Replace")
+                                            .withButton ("Cancel")
+                                            .withAssociatedComponent (this),
+                                          [this, projectFile] (int result)
+                                          {
+                                              if (result == 1)
+                                                  collectProjectToFile (projectFile);
+                                          });
+            return;
+        }
+
+        collectProjectToFile (projectFile);
+    }
+
+    void collectProjectToFile (const juce::File& projectFile)
+    {
+        const auto saved = saveProjectToFile (projectFile, true);
+        if (saved)
+            statusLabel.setText ("collected project as " + projectFile.getFileName(), juce::dontSendNotification);
+    }
+
+    void showMediaManager()
+    {
+        auto manager = std::make_unique<MediaManagerComponent>();
+        manager->getItems = [this] { return buildMediaManagerItems(); };
+        manager->onRelink = [this] (int clipIndex) { relinkImportedMediaClip (clipIndex); };
+        manager->onReveal = [this] (int clipIndex) { revealImportedMediaClip (clipIndex); };
+        manager->onCollect = [this] { collectImportedMediaIntoProjectFolder(); };
+        manager->onRemoveMissing = [this] { removeMissingImportedMediaClips(); };
+        manager->onRemoveUnused = [this] { removeUnusedImportedMediaClips(); };
+        manager->onCompact = [this] { compactProjectMediaWithPrompt(); };
+        manager->refresh();
+
+        mediaManagerView = manager.get();
+
+        juce::DialogWindow::LaunchOptions options;
+        options.content.setOwned (manager.release());
+        options.dialogTitle = "Media Manager";
+        options.dialogBackgroundColour = juce::Colour (0xff0b1016);
+        options.escapeKeyTriggersCloseButton = true;
+        options.useNativeTitleBar = true;
+        options.resizable = true;
+        options.componentToCentreAround = this;
+        options.launchAsync();
+    }
+
+    void refreshMediaManagerView()
+    {
+        if (mediaManagerView != nullptr)
+            mediaManagerView->refresh();
+    }
+
+    bool importedClipTargetsExistingLane (const ImportedLaneAudioClip& clip) const
+    {
+        if (! isTopLevelStatePopulated (clip.stateIndex))
+            return false;
+
+        const auto& tracks = *topLevelStates[static_cast<size_t> (clip.stateIndex)];
+        return clip.trackIndex >= 0
+            && clip.trackIndex < static_cast<int> (tracks.size())
+            && clip.laneIndex >= 0
+            && clip.laneIndex < static_cast<int> (tracks[static_cast<size_t> (clip.trackIndex)].lanes.size());
+    }
+
+    bool importedClipIsUnused (const ImportedLaneAudioClip& clip) const
+    {
+        return clip.regions.empty() || ! importedClipTargetsExistingLane (clip);
+    }
+
+    std::vector<MediaManagerItem> buildMediaManagerItems() const
+    {
+        std::vector<MediaManagerItem> items;
+        items.reserve (importedLaneAudioClips.size());
+
+        const auto mediaDirectory = currentProjectFile != juce::File()
+            ? projectMediaDirectoryFor (currentProjectFile)
+            : juce::File();
+
+        for (int clipIndex = 0; clipIndex < static_cast<int> (importedLaneAudioClips.size()); ++clipIndex)
+        {
+            const auto& clip = importedLaneAudioClips[static_cast<size_t> (clipIndex)];
+            MediaManagerItem item;
+            item.clipIndex = clipIndex;
+            item.stateIndex = clip.stateIndex;
+            item.trackIndex = clip.trackIndex;
+            item.laneIndex = clip.laneIndex;
+            item.fileName = clip.file.getFileName();
+            item.path = clip.file.getFullPathName();
+            item.exists = clip.file.existsAsFile();
+            item.loaded = clip.audioData != nullptr && clip.audioData->getNumSamples() > 0;
+            item.fileSize = item.exists ? clip.file.getSize() : 0;
+            item.regionCount = static_cast<int> (clip.regions.size());
+            item.lengthSeconds = clip.lengthSeconds;
+            item.inProjectMedia = mediaDirectory != juce::File() && clip.file.getParentDirectory() == mediaDirectory;
+            item.unused = importedClipIsUnused (clip);
+
+            auto trackName = "Track " + juce::String (clip.trackIndex + 1);
+            auto laneName = "Lane " + juce::String (clip.laneIndex + 1);
+            if (isTopLevelStatePopulated (clip.stateIndex))
+            {
+                const auto& tracks = *topLevelStates[static_cast<size_t> (clip.stateIndex)];
+                if (clip.trackIndex >= 0 && clip.trackIndex < static_cast<int> (tracks.size()))
+                {
+                    const auto& track = tracks[static_cast<size_t> (clip.trackIndex)];
+                    trackName = trackDisplayName (track.name);
+                    if (clip.laneIndex >= 0 && clip.laneIndex < static_cast<int> (track.lanes.size()))
+                        laneName = track.lanes[static_cast<size_t> (clip.laneIndex)].name;
+                }
+            }
+
+            item.target = "S" + juce::String (clip.stateIndex + 1)
+                        + " T" + juce::String (clip.trackIndex + 1)
+                        + " L" + juce::String (clip.laneIndex + 1)
+                        + "  " + trackName + " / " + laneName;
+
+            if (! item.exists)
+                item.status = "missing";
+            else if (item.unused)
+                item.status = "unused";
+            else if (! item.loaded)
+                item.status = "unreadable";
+            else if (item.inProjectMedia)
+                item.status = "collected";
+            else
+                item.status = "external";
+
+            items.push_back (std::move (item));
+        }
+
+        return items;
+    }
+
+    void relinkImportedMediaClip (int clipIndex)
+    {
+        if (clipIndex < 0 || clipIndex >= static_cast<int> (importedLaneAudioClips.size()))
+            return;
+
+        const auto& clip = importedLaneAudioClips[static_cast<size_t> (clipIndex)];
+        const auto start = clip.file.existsAsFile()
+            ? clip.file.getParentDirectory()
+            : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
+
+        mediaChooser = std::make_unique<juce::FileChooser> ("Relink audio file",
+                                                            start,
+                                                            "*.wav;*.aif;*.aiff");
+        mediaChooser->launchAsync (juce::FileBrowserComponent::openMode
+                                    | juce::FileBrowserComponent::canSelectFiles,
+                                    [this, clipIndex] (const juce::FileChooser& chooser)
+                                    {
+                                        const auto file = chooser.getResult();
+                                        if (file == juce::File())
+                                            return;
+
+                                        if (clipIndex < 0 || clipIndex >= static_cast<int> (importedLaneAudioClips.size()))
+                                            return;
+
+                                        pushUndoSnapshot ("relink media");
+                                        auto& targetClip = importedLaneAudioClips[static_cast<size_t> (clipIndex)];
+                                        auto previous = targetClip;
+                                        targetClip.file = file;
+                                        populateImportedClipWaveform (targetClip);
+
+                                        if (targetClip.audioData == nullptr || targetClip.audioData->getNumSamples() <= 0)
+                                        {
+                                            targetClip = std::move (previous);
+                                            statusLabel.setText ("relink failed: file could not be read", juce::dontSendNotification);
+                                            refreshMediaManagerView();
+                                            return;
+                                        }
+
+                                        refreshAfterImportedAudioEdit ("relinked " + file.getFileName());
+                                        refreshMediaManagerView();
+                                    });
+    }
+
+    void revealImportedMediaClip (int clipIndex)
+    {
+        if (clipIndex < 0 || clipIndex >= static_cast<int> (importedLaneAudioClips.size()))
+            return;
+
+        const auto file = importedLaneAudioClips[static_cast<size_t> (clipIndex)].file;
+        if (file.existsAsFile())
+            file.revealToUser();
+        else
+            statusLabel.setText ("media file is missing: " + file.getFileName(), juce::dontSendNotification);
+    }
+
+    void collectImportedMediaIntoProjectFolder()
+    {
+        if (importedLaneAudioClips.empty())
+        {
+            statusLabel.setText ("no media to collect", juce::dontSendNotification);
+            return;
+        }
+
+        if (currentProjectFile == juce::File())
+        {
+            statusLabel.setText ("save the project before collecting media", juce::dontSendNotification);
+            return;
+        }
+
+        pushUndoSnapshot ("collect media");
+        const auto copied = copyImportedAudioToProjectMedia (currentProjectFile);
+        if (copied > 0)
+            refreshAfterImportedAudioEdit ("collected " + juce::String (copied) + " media file" + (copied == 1 ? "" : "s"));
+        else
+            statusLabel.setText ("media already collected, or source files are missing", juce::dontSendNotification);
+
+        refreshMediaManagerView();
+    }
+
+    int removeImportedMediaClipsMatching (std::function<bool (const ImportedLaneAudioClip&)> shouldRemove)
+    {
+        const auto before = static_cast<int> (importedLaneAudioClips.size());
+        importedLaneAudioClips.erase (std::remove_if (importedLaneAudioClips.begin(),
+                                                      importedLaneAudioClips.end(),
+                                                      [&shouldRemove] (const ImportedLaneAudioClip& clip)
+                                                      {
+                                                          return shouldRemove != nullptr && shouldRemove (clip);
+                                                      }),
+                                      importedLaneAudioClips.end());
+        selectedImportedRegion = {};
+        selectedImportedRegions.clear();
+        return before - static_cast<int> (importedLaneAudioClips.size());
+    }
+
+    void removeMissingImportedMediaClips()
+    {
+        if (importedLaneAudioClips.empty())
+            return;
+
+        pushUndoSnapshot ("remove missing media");
+        const auto removed = removeImportedMediaClipsMatching ([] (const ImportedLaneAudioClip& clip)
+        {
+            return ! clip.file.existsAsFile();
+        });
+
+        if (removed > 0)
+            refreshAfterImportedAudioEdit ("removed " + juce::String (removed) + " missing media reference" + (removed == 1 ? "" : "s"));
+        else
+            statusLabel.setText ("no missing media references", juce::dontSendNotification);
+
+        refreshMediaManagerView();
+    }
+
+    void removeUnusedImportedMediaClips()
+    {
+        if (importedLaneAudioClips.empty())
+            return;
+
+        pushUndoSnapshot ("remove unused media");
+        const auto removed = removeImportedMediaClipsMatching ([this] (const ImportedLaneAudioClip& clip)
+        {
+            return importedClipIsUnused (clip);
+        });
+
+        if (removed > 0)
+            refreshAfterImportedAudioEdit ("removed " + juce::String (removed) + " unused media reference" + (removed == 1 ? "" : "s"));
+        else
+            statusLabel.setText ("no unused media references", juce::dontSendNotification);
+
+        refreshMediaManagerView();
+    }
+
+    void compactProjectMediaWithPrompt()
+    {
+        if (currentProjectFile == juce::File())
+        {
+            statusLabel.setText ("save the project before compacting media", juce::dontSendNotification);
+            return;
+        }
+
+        juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                        .withIconType (juce::MessageBoxIconType::WarningIcon)
+                                        .withTitle ("Compact project media")
+                                        .withMessage ("Collect referenced audio into the project Media folder, remove broken or unused references, and move unreferenced audio files in that Media folder to the Trash?")
+                                        .withButton ("Compact")
+                                        .withButton ("Cancel")
+                                        .withAssociatedComponent (this),
+                                      [this] (int result)
+                                      {
+                                          if (result == 1)
+                                              compactProjectMedia();
+                                      });
+    }
+
+    void compactProjectMedia()
+    {
+        if (currentProjectFile == juce::File())
+            return;
+
+        pushUndoSnapshot ("compact media");
+        const auto removedMissing = removeImportedMediaClipsMatching ([] (const ImportedLaneAudioClip& clip)
+        {
+            return ! clip.file.existsAsFile();
+        });
+        const auto removedUnused = removeImportedMediaClipsMatching ([this] (const ImportedLaneAudioClip& clip)
+        {
+            return importedClipIsUnused (clip);
+        });
+        const auto copied = copyImportedAudioToProjectMedia (currentProjectFile);
+        const auto trashed = trashUnreferencedProjectMediaFiles();
+        const auto changed = removedMissing + removedUnused + copied + trashed;
+
+        if (changed > 0)
+        {
+            refreshAfterImportedAudioEdit ("compacted media: "
+                                           + juce::String (copied) + " collected, "
+                                           + juce::String (removedMissing + removedUnused) + " references removed, "
+                                           + juce::String (trashed) + " orphan files trashed");
+        }
+        else
+        {
+            statusLabel.setText ("project media already compact", juce::dontSendNotification);
+        }
+
+        refreshMediaManagerView();
+    }
+
+    int trashUnreferencedProjectMediaFiles()
+    {
+        if (currentProjectFile == juce::File())
+            return 0;
+
+        const auto mediaDirectory = projectMediaDirectoryFor (currentProjectFile);
+        if (! mediaDirectory.isDirectory())
+            return 0;
+
+        juce::StringArray referencedPaths;
+        for (const auto& clip : importedLaneAudioClips)
+            if (clip.file.existsAsFile())
+                referencedPaths.add (clip.file.getFullPathName());
+
+        juce::Array<juce::File> files;
+        mediaDirectory.findChildFiles (files, juce::File::findFiles, false);
+
+        auto trashed = 0;
+        for (const auto& file : files)
+        {
+            const auto extension = file.getFileExtension();
+            const auto isAudio = extension.equalsIgnoreCase (".wav")
+                              || extension.equalsIgnoreCase (".aif")
+                              || extension.equalsIgnoreCase (".aiff");
+            if (! isAudio || referencedPaths.contains (file.getFullPathName()))
+                continue;
+
+            if (file.moveToTrash())
+                ++trashed;
+        }
+
+        return trashed;
     }
 
     static juce::File projectMediaDirectoryFor (const juce::File& projectFile)
@@ -8328,15 +9148,18 @@ private:
         return copiedCount;
     }
 
-    bool saveProjectToFile (const juce::File& file)
+    bool saveProjectToFile (const juce::File& file, bool collectMedia)
     {
         const auto previousProjectFile = currentProjectFile;
+        const auto previousImportedClips = collectMedia ? importedLaneAudioClips : std::vector<ImportedLaneAudioClip>();
         currentProjectFile = file;
-        const auto copiedMediaCount = copyImportedAudioToProjectMedia (file);
+        const auto copiedMediaCount = collectMedia ? copyImportedAudioToProjectMedia (file) : 0;
         const auto projectText = juce::JSON::toString (projectToVar(), false);
         if (projectText.isEmpty() || ! file.replaceWithText (projectText, false, false, "\n"))
         {
             currentProjectFile = previousProjectFile;
+            if (collectMedia)
+                importedLaneAudioClips = previousImportedClips;
             statusLabel.setText ("project save failed", juce::dontSendNotification);
             return false;
         }
@@ -8372,11 +9195,32 @@ private:
         updateProjectDirtyState (false);
         statusLabel.setText ("loaded " + file.getFileName()
                                 + (missingImportedAudioOnLastLoad > 0
-                                    ? " (" + juce::String (missingImportedAudioOnLastLoad) + " missing audio files skipped)"
+                                    ? " (" + juce::String (missingImportedAudioOnLastLoad) + " media file"
+                                        + (missingImportedAudioOnLastLoad == 1 ? " needs" : "s need") + " attention)"
                                     : juce::String()),
                              juce::dontSendNotification);
         hideWelcomeScreen();
+        if (missingImportedAudioOnLastLoad > 0)
+            showMissingMediaAfterLoadPrompt (missingImportedAudioOnLastLoad);
         return true;
+    }
+
+    void showMissingMediaAfterLoadPrompt (int missingCount)
+    {
+        juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                        .withIconType (juce::MessageBoxIconType::WarningIcon)
+                                        .withTitle ("Missing media")
+                                        .withMessage (juce::String (missingCount) + " media file"
+                                                      + (missingCount == 1 ? " is" : "s are")
+                                                      + " missing. Open Media Manager to relink, collect, or remove the broken reference.")
+                                        .withButton ("Open Media Manager")
+                                        .withButton ("OK")
+                                        .withAssociatedComponent (this),
+                                      [this] (int result)
+                                      {
+                                          if (result == 1)
+                                              showMediaManager();
+                                      });
     }
 
     struct RenderStemTarget
@@ -9069,6 +9913,50 @@ private:
         if (previewPeak > 0.000001f)
             for (auto& peak : clip.waveformPeaks)
                 peak = juce::jlimit (0.0f, 1.0f, peak / previewPeak);
+    }
+
+    void loadImportedAudioClipsFromProject (std::vector<ImportedLaneAudioClip> loadedClips)
+    {
+        loadedClips.erase (std::remove_if (loadedClips.begin(), loadedClips.end(), [this] (const ImportedLaneAudioClip& clip)
+        {
+            return ! importedClipTargetsExistingLane (clip);
+        }), loadedClips.end());
+
+        for (auto& clip : loadedClips)
+        {
+            if (clip.file.existsAsFile())
+                populateImportedClipWaveform (clip);
+        }
+
+        scriptRunning = false;
+        running = false;
+        audioCallback.clearImportedAudioPlayback();
+        importedLaneAudioClips = std::move (loadedClips);
+        arrangementPlusMode = ! importedLaneAudioClips.empty();
+        selectedImportedRegion = {};
+        selectedImportedRegions.clear();
+
+        for (int clipIndex = 0; clipIndex < static_cast<int> (importedLaneAudioClips.size()); ++clipIndex)
+        {
+            const auto& clip = importedLaneAudioClips[static_cast<size_t> (clipIndex)];
+            if (! clip.regions.empty())
+            {
+                selectedImportedRegion = { clipIndex, 0 };
+                selectedImportedRegions = { selectedImportedRegion };
+                break;
+            }
+        }
+
+        arrangementEditPlayheadSeconds = 0.0;
+        arrangementAudioTool = ArrangementAudioTool::pointer;
+        importedFadeDragUndoStarted = false;
+        importedTrimDragUndoStarted = false;
+        importedGainDragUndoStarted = false;
+
+        if (arrangementPlusMode)
+            static_cast<void> (audioCallback.loadImportedAudioClips (importedLaneAudioClips, &topLevelStates, true, &masterEffectSlots));
+
+        setMainView (arrangementPlusMode ? MainView::timeline : MainView::arrangement);
     }
 
     void importRenderedLaneFiles (std::vector<ImportedLaneAudioClip> renderedClips,
@@ -11064,7 +11952,14 @@ private:
         if (isUsingImportedAudioPlayback())
         {
             scriptRunning = false;
-            static_cast<void> (audioCallback.loadImportedAudioClips (importedLaneAudioClips, &topLevelStates, true, &masterEffectSlots));
+            if (! audioCallback.loadImportedAudioClips (importedLaneAudioClips, &topLevelStates, true, &masterEffectSlots))
+            {
+                running = false;
+                syncTransportButtons();
+                statusLabel.setText ("no readable imported audio to play", juce::dontSendNotification);
+                return;
+            }
+
             syncImportedPlaybackMix();
             audioCallback.startImportedAudioPlayback (getCurrentMasterGain());
             applyCurrentAudioControls();
@@ -12366,6 +13261,8 @@ private:
     std::atomic<bool> pluginScanAbortRequested { false };
     std::unique_ptr<juce::FileChooser> renderChooser;
     std::unique_ptr<juce::FileChooser> projectChooser;
+    std::unique_ptr<juce::FileChooser> mediaChooser;
+    juce::Component::SafePointer<MediaManagerComponent> mediaManagerView;
     juce::File currentProjectFile;
     juce::File loadingProjectFile;
     std::array<std::optional<std::vector<Wf::StateSpec>>, maxTopLevelStates> topLevelStates;
@@ -12528,7 +13425,7 @@ class WfApplication final : public juce::JUCEApplication
 {
 public:
     const juce::String getApplicationName() override { return "ChucK-ME"; }
-    const juce::String getApplicationVersion() override { return "0.1.14"; }
+    const juce::String getApplicationVersion() override { return "0.1.15"; }
     bool moreThanOneInstanceAllowed() override { return true; }
 
     void initialise (const juce::String&) override
