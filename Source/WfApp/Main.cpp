@@ -242,11 +242,11 @@ double sourceSamplePositionForRegionTime (const ImportedAudioRegion& region,
          + timelineSampleInRegion * (sourceSampleRate / timelineSampleRate);
 }
 
-juce::Colour ink() { return juce::Colour (0xfffbfff8); }
-juce::Colour mutedInk() { return juce::Colour (0xffb6c1bb); }
-juce::Colour panel() { return juce::Colour (0xff111813); }
-juce::Colour panelSoft() { return juce::Colour (0xff1d2520); }
-juce::Colour green() { return juce::Colour (0xff9cffae); }
+juce::Colour ink() { return juce::Colour (0xfff8fbff); }
+juce::Colour mutedInk() { return juce::Colour (0xffb9c1cb); }
+juce::Colour panel() { return juce::Colour (0xff10151b); }
+juce::Colour panelSoft() { return juce::Colour (0xff1a222b); }
+juce::Colour green() { return juce::Colour (0xff89f4ca); }
 juce::Colour amber() { return juce::Colour (0xffffcf70); }
 juce::Colour coral() { return juce::Colour (0xffff8e83); }
 juce::Colour blue() { return juce::Colour (0xff9bd0ff); }
@@ -259,14 +259,14 @@ juce::Colour accentColourForIndex (int index)
 {
     static const std::array<juce::Colour, 8> colours
     {
-        green(),
-        blue(),
-        amber(),
-        coral(),
         cyan(),
-        lime(),
+        amber(),
+        blue(),
+        coral(),
+        violet(),
         rose(),
-        violet()
+        lime(),
+        green()
     };
 
     const auto wrapped = ((index % static_cast<int> (colours.size())) + static_cast<int> (colours.size())) % static_cast<int> (colours.size());
@@ -282,14 +282,14 @@ juce::Colour stateAccentForIndex (int index)
 {
     static const std::array<juce::Colour, 8> colours
     {
-        green(),
         blue(),
+        rose(),
         cyan(),
-        amber(),
         coral(),
-        lime(),
+        amber(),
         violet(),
-        rose()
+        lime(),
+        green()
     };
 
     const auto wrapped = ((index % static_cast<int> (colours.size())) + static_cast<int> (colours.size())) % static_cast<int> (colours.size());
@@ -334,9 +334,9 @@ void clearOutputs (float* const* outputChannelData, int numOutputChannels, int n
 
 void styleButton (juce::TextButton& button, juce::Colour colour)
 {
-    button.setColour (juce::TextButton::buttonColourId, colour.withAlpha (0.085f));
-    button.setColour (juce::TextButton::buttonOnColourId, colour.withAlpha (0.36f));
-    button.setColour (juce::TextButton::textColourOffId, ink().withAlpha (0.84f));
+    button.setColour (juce::TextButton::buttonColourId, colour.withAlpha (0.095f));
+    button.setColour (juce::TextButton::buttonOnColourId, colour.withAlpha (0.34f));
+    button.setColour (juce::TextButton::textColourOffId, ink().withAlpha (0.82f));
     button.setColour (juce::TextButton::textColourOnId, ink());
     button.setMouseCursor (juce::MouseCursor::PointingHandCursor);
 }
@@ -347,6 +347,54 @@ void styleEmptyStateButton (juce::TextButton& button)
     button.setColour (juce::TextButton::buttonOnColourId, panel().withAlpha (0.54f));
     button.setColour (juce::TextButton::textColourOffId, mutedInk().withAlpha (0.25f));
     button.setColour (juce::TextButton::textColourOnId, mutedInk().withAlpha (0.25f));
+    button.setMouseCursor (juce::MouseCursor::PointingHandCursor);
+}
+
+void styleStateStripButton (juce::TextButton& button,
+                            int stateIndex,
+                            bool populated,
+                            bool viewed,
+                            bool playing)
+{
+    if (! populated)
+    {
+        styleEmptyStateButton (button);
+        button.setButtonText ("State " + juce::String (stateIndex + 1));
+        button.setTooltip ("Empty state");
+        return;
+    }
+
+    const auto stateColour = stateAccentForIndex (stateIndex);
+    const auto playColour = amber();
+
+    if (playing)
+    {
+        button.setColour (juce::TextButton::buttonColourId, playColour.withAlpha (0.16f));
+        button.setColour (juce::TextButton::buttonOnColourId, playColour.withAlpha (0.42f));
+        button.setColour (juce::TextButton::textColourOffId, ink());
+        button.setColour (juce::TextButton::textColourOnId, ink());
+        button.setButtonText ("State " + juce::String (stateIndex + 1) + "  PLAYING");
+        button.setTooltip (viewed ? "Currently playing and being viewed" : "Currently playing");
+    }
+    else if (viewed)
+    {
+        button.setColour (juce::TextButton::buttonColourId, stateColour.withAlpha (0.13f));
+        button.setColour (juce::TextButton::buttonOnColourId, stateColour.withAlpha (0.27f));
+        button.setColour (juce::TextButton::textColourOffId, ink().withAlpha (0.84f));
+        button.setColour (juce::TextButton::textColourOnId, ink().withAlpha (0.94f));
+        button.setButtonText ("State " + juce::String (stateIndex + 1) + "  VIEW");
+        button.setTooltip ("Being viewed, not currently playing");
+    }
+    else
+    {
+        button.setColour (juce::TextButton::buttonColourId, panelSoft().withAlpha (0.30f));
+        button.setColour (juce::TextButton::buttonOnColourId, stateColour.withAlpha (0.16f));
+        button.setColour (juce::TextButton::textColourOffId, mutedInk().withAlpha (0.50f));
+        button.setColour (juce::TextButton::textColourOnId, ink().withAlpha (0.78f));
+        button.setButtonText ("State " + juce::String (stateIndex + 1) + "  IDLE");
+        button.setTooltip ("Populated, not currently playing");
+    }
+
     button.setMouseCursor (juce::MouseCursor::PointingHandCursor);
 }
 
@@ -1139,7 +1187,7 @@ private:
         if (syntaxMode == SyntaxMode::conductor && isConductorWord (word))
             return word.equalsIgnoreCase ("bar") || word.equalsIgnoreCase ("bars")
                 ? amber().withAlpha (0.92f)
-                : green().withAlpha (0.96f);
+                : cyan().withAlpha (0.96f);
 
         if (syntaxMode == SyntaxMode::chuck)
         {
@@ -1154,7 +1202,7 @@ private:
         }
 
         if (nextNonWhitespace == '(')
-            return green().withAlpha (0.92f);
+            return blue().withAlpha (0.92f);
 
         return ink().withAlpha (0.90f);
     }
@@ -1184,7 +1232,7 @@ private:
     void drawLineNumberGutter (juce::Graphics& g)
     {
         const auto bounds = getLocalBounds();
-        g.setColour (juce::Colour (0xff0b120d).withAlpha (0.84f));
+        g.setColour (juce::Colour (0xff0b0f16).withAlpha (0.84f));
         g.fillRect (bounds.withWidth (gutterWidth));
 
         g.setColour (blue().withAlpha (0.18f));
@@ -1276,6 +1324,8 @@ class WfAudioCallback final : public juce::AudioIODeviceCallback
         juce::AudioBuffer<float> buffer;
         std::array<std::unique_ptr<juce::AudioPluginInstance>, maxTrackEffectSlots> effects;
         juce::MidiBuffer midi;
+        int tailBlocksAfterInput = 0;
+        int tailBlocksRemaining = 0;
 
         ~ImportedTrackEffectGroup()
         {
@@ -1746,6 +1796,34 @@ private:
         return sanitised;
     }
 
+    static bool bufferHasAudibleSignal (const juce::AudioBuffer<float>& buffer, int numSamples)
+    {
+        const auto samples = juce::jlimit (0, buffer.getNumSamples(), numSamples);
+        if (samples <= 0)
+            return false;
+
+        for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+            if (buffer.getMagnitude (channel, 0, samples) > 0.000001f)
+                return true;
+
+        return false;
+    }
+
+    static bool shouldProcessImportedEffectGroup (ImportedTrackEffectGroup& group, bool hasInput)
+    {
+        if (hasInput)
+        {
+            group.tailBlocksRemaining = group.tailBlocksAfterInput;
+            return true;
+        }
+
+        if (group.tailBlocksRemaining <= 0)
+            return false;
+
+        --group.tailBlocksRemaining;
+        return true;
+    }
+
     void processImportedAudio (float* const* outputChannelData, int numOutputChannels, int numSamples)
     {
         if (! importedPlaying.load (std::memory_order_acquire))
@@ -1857,7 +1935,13 @@ private:
                 juce::AudioBuffer<float> groupView (group->buffer.getArrayOfWritePointers(),
                                                     engineOutputChannels,
                                                     numSamples);
+                const auto hasInput = bufferHasAudibleSignal (groupView, numSamples);
+                if (! shouldProcessImportedEffectGroup (*group, hasInput))
+                    continue;
+
                 processImportedEffectChain (*group, groupView);
+                if (! bufferHasAudibleSignal (groupView, numSamples))
+                    continue;
 
                 if (masterGroup != nullptr)
                 {
@@ -1886,19 +1970,26 @@ private:
                 juce::AudioBuffer<float> masterView (masterGroup->buffer.getArrayOfWritePointers(),
                                                      engineOutputChannels,
                                                      numSamples);
-                processImportedEffectChain (*masterGroup, masterView);
-
-                if (numOutputChannels > 0 && outputChannelData[0] != nullptr)
-                    juce::FloatVectorOperations::addWithMultiply (outputChannelData[0], masterView.getReadPointer (0), masterGain, numSamples);
-                if (numOutputChannels > 1 && outputChannelData[1] != nullptr)
-                    juce::FloatVectorOperations::addWithMultiply (outputChannelData[1], masterView.getReadPointer (1), masterGain, numSamples);
-
-                for (int sample = 0; sample < numSamples && numOutputChannels > 2; ++sample)
+                const auto hasMasterInput = bufferHasAudibleSignal (masterView, numSamples);
+                if (shouldProcessImportedEffectGroup (*masterGroup, hasMasterInput))
                 {
-                    const auto mono = 0.5f * (masterView.getSample (0, sample) + masterView.getSample (1, sample)) * masterGain;
-                    for (int channel = 2; channel < numOutputChannels; ++channel)
-                        if (outputChannelData[channel] != nullptr)
-                            outputChannelData[channel][sample] += mono;
+                    processImportedEffectChain (*masterGroup, masterView);
+
+                    if (bufferHasAudibleSignal (masterView, numSamples))
+                    {
+                        if (numOutputChannels > 0 && outputChannelData[0] != nullptr)
+                            juce::FloatVectorOperations::addWithMultiply (outputChannelData[0], masterView.getReadPointer (0), masterGain, numSamples);
+                        if (numOutputChannels > 1 && outputChannelData[1] != nullptr)
+                            juce::FloatVectorOperations::addWithMultiply (outputChannelData[1], masterView.getReadPointer (1), masterGain, numSamples);
+
+                        for (int sample = 0; sample < numSamples && numOutputChannels > 2; ++sample)
+                        {
+                            const auto mono = 0.5f * (masterView.getSample (0, sample) + masterView.getSample (1, sample)) * masterGain;
+                            for (int channel = 2; channel < numOutputChannels; ++channel)
+                                if (outputChannelData[channel] != nullptr)
+                                    outputChannelData[channel][sample] += mono;
+                        }
+                    }
                 }
             }
         }
@@ -2048,6 +2139,9 @@ private:
                                   double sampleRate,
                                   int blockSize)
     {
+        auto longestTailSeconds = 0.0;
+        auto loadedEffectCount = 0;
+
         for (int effectIndex = 0; effectIndex < maxTrackEffectSlots; ++effectIndex)
         {
             const auto& spec = effectSlots[static_cast<size_t> (effectIndex)];
@@ -2064,9 +2158,25 @@ private:
                 plugin->setPlayConfigDetails (engineOutputChannels, engineOutputChannels, sampleRate, blockSize);
                 plugin->prepareToPlay (sampleRate, blockSize);
                 plugin->reset();
+                ++loadedEffectCount;
+
+                const auto reportedTail = plugin->getTailLengthSeconds();
+                if (std::isfinite (reportedTail) && reportedTail > 0.0)
+                    longestTailSeconds = juce::jmax (longestTailSeconds, reportedTail);
+
                 group.effects[static_cast<size_t> (effectIndex)] = std::move (plugin);
             }
         }
+
+        if (loadedEffectCount > 0)
+            longestTailSeconds = juce::jlimit (0.0,
+                                               maxImportedEffectTailSeconds,
+                                               juce::jmax (longestTailSeconds, fallbackImportedEffectTailSeconds));
+
+        group.tailBlocksAfterInput = blockSize > 0 && sampleRate > 0.0
+            ? static_cast<int> (std::ceil (longestTailSeconds * sampleRate / static_cast<double> (blockSize)))
+            : 0;
+        group.tailBlocksRemaining = 0;
     }
 
     static void processImportedEffectChain (ImportedTrackEffectGroup& group, juce::AudioBuffer<float>& buffer)
@@ -2117,6 +2227,8 @@ private:
     mutable juce::SpinLock importedPlaybackLock;
     std::shared_ptr<ImportedPlaybackSet> importedPlaybackSet;
     static constexpr double tailFadeSeconds = 0.42;
+    static constexpr double fallbackImportedEffectTailSeconds = 2.0;
+    static constexpr double maxImportedEffectTailSeconds = 8.0;
     std::atomic<bool> ready { false };
     std::atomic<int> playbackMode { PlaybackMode::chuckEngine };
     std::atomic<bool> importedPlaying { false };
@@ -2200,7 +2312,7 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (juce::Colour (0xff0a130e));
+        g.fillAll (juce::Colour (0xff080c12));
 
         auto area = getLocalBounds().toFloat().reduced (18.0f);
         const auto radius = juce::jmin (area.getWidth(), area.getHeight()) * 0.42f;
@@ -2431,7 +2543,7 @@ private:
                                                  centre.y + std::sin (angle) * dotOrbitRadius };
             const auto colour = laneDotColour (lane);
 
-            g.setColour (juce::Colour (0xff101412).withAlpha (0.92f));
+            g.setColour (juce::Colour (0xff101821).withAlpha (0.92f));
             g.fillEllipse (dotCentre.x - dotRadius - 1.5f,
                            dotCentre.y - dotRadius - 1.5f,
                            (dotRadius + 1.5f) * 2.0f,
@@ -2477,12 +2589,12 @@ private:
         const juce::Point<float> handEnd { centre.x + std::cos (angle) * length,
                                            centre.y + std::sin (angle) * length };
 
-        g.setColour (juce::Colour (0xff050806).withAlpha (0.70f));
+        g.setColour (juce::Colour (0xff05080d).withAlpha (0.70f));
         g.drawLine (juce::Line<float> (centre, handEnd), thickness + 2.0f);
         g.setColour (colour.withAlpha (alpha));
         g.drawLine (juce::Line<float> (centre, handEnd), thickness);
 
-        g.setColour (juce::Colour (0xff050806).withAlpha (0.92f));
+        g.setColour (juce::Colour (0xff05080d).withAlpha (0.92f));
         g.fillEllipse (centre.x - hubRadius - 1.3f,
                        centre.y - hubRadius - 1.3f,
                        (hubRadius + 1.3f) * 2.0f,
@@ -2538,7 +2650,7 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (juce::Colour (0xff0d1510));
+        g.fillAll (juce::Colour (0xff090d13));
 
         if (track == nullptr)
         {
@@ -2660,13 +2772,13 @@ private:
         const juce::Point<float> handEnd { centre.x + std::cos (angle) * length,
                                            centre.y + std::sin (angle) * length };
 
-        g.setColour (juce::Colour (0xff050806).withAlpha (0.72f));
+        g.setColour (juce::Colour (0xff05080d).withAlpha (0.72f));
         g.drawLine (juce::Line<float> (centre, handEnd), thickness + 2.0f);
 
         g.setColour (colour.withAlpha (alpha));
         g.drawLine (juce::Line<float> (centre, handEnd), thickness);
 
-        g.setColour (juce::Colour (0xff050806).withAlpha (0.92f));
+        g.setColour (juce::Colour (0xff05080d).withAlpha (0.92f));
         g.fillEllipse (centre.x - hubRadius - 1.4f,
                        centre.y - hubRadius - 1.4f,
                        (hubRadius + 1.4f) * 2.0f,
@@ -2718,7 +2830,7 @@ private:
             g.setColour (mutedInk().withAlpha (0.14f));
             g.drawLine (juce::Line<float> (lineStart, point), 1.0f);
 
-            g.setColour (juce::Colour (0xff0d1510).withAlpha (0.94f));
+            g.setColour (juce::Colour (0xff090d13).withAlpha (0.94f));
             g.fillEllipse (point.x - dotRadius - 2.5f,
                            point.y - dotRadius - 2.5f,
                            (dotRadius + 2.5f) * 2.0f,
@@ -2925,7 +3037,7 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (juce::Colour (0xff0d1510));
+        g.fillAll (juce::Colour (0xff090d13));
         drawMixerHeader (g);
 
         if (channels.empty())
@@ -3033,7 +3145,7 @@ public:
             g.fillRoundedRectangle (juce::Rectangle<float> (7.0f, fader.getBottom() - thumbY).withPosition (fader.getCentreX() - 3.5f, thumbY), 3.5f);
             g.setColour (ink());
             g.fillRoundedRectangle (fader.getCentreX() - 10.0f, thumbY - 7.0f, 20.0f, 14.0f, 7.0f);
-            g.setColour (juce::Colour (0xff07100a).withAlpha (0.36f));
+            g.setColour (juce::Colour (0xff071018).withAlpha (0.36f));
             g.drawHorizontalLine (static_cast<int> (std::round (thumbY)), fader.getCentreX() - 6.0f, fader.getCentreX() + 6.0f);
 
             g.setColour (ink().withAlpha (channel.isStereoOutput ? 0.92f : 0.84f));
@@ -3667,7 +3779,7 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (juce::Colour (0xff0a130e));
+        g.fillAll (juce::Colour (0xff080c12));
 
         if (states == nullptr)
             return;
@@ -3867,7 +3979,7 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (juce::Colour (0xff0d1510));
+        g.fillAll (juce::Colour (0xff090d13));
 
         if (states == nullptr)
             return;
@@ -4815,7 +4927,7 @@ private:
         }
 
         auto labelArea = laneArea.withWidth (juce::jmin (laneArea.getWidth(), 320.0f)).reduced (4.0f, 2.0f);
-        g.setColour (juce::Colour (0xff080c09).withAlpha (0.72f));
+        g.setColour (juce::Colour (0xff080b12).withAlpha (0.72f));
         g.fillRoundedRectangle (labelArea, 2.0f);
         g.setColour (ink().withAlpha (0.88f));
         g.setFont (juce::FontOptions (9.2f, juce::Font::bold));
@@ -4979,7 +5091,7 @@ private:
         if (readout.isEmpty())
             return;
 
-        g.setColour (juce::Colour (0xff050806).withAlpha (0.88f));
+        g.setColour (juce::Colour (0xff05080d).withAlpha (0.88f));
         g.fillRoundedRectangle (readout, 4.0f);
         g.setColour (cyan().withAlpha (0.62f));
         g.drawRoundedRectangle (readout, 4.0f, 1.0f);
@@ -5206,7 +5318,7 @@ public:
         styleLabel (volumeLabel, 0.78f);
         addAndMakeVisible (volumeLabel);
 
-        setupSlider (gainSlider, "Volume", 0.0, 0.8, 0.18, green());
+        setupSlider (gainSlider, "Volume", 0.0, 0.8, 0.18, cyan());
         gainSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 56, 22);
         gainSlider.onDragStart = [this] { pushUndoSnapshot ("change master volume"); };
         gainSlider.onValueChange = [this]
@@ -5243,7 +5355,7 @@ public:
         globalScriptEditor.setReturnKeyStartsNewLine (true);
         globalScriptEditor.setSyntaxMode (CodeTextEditor::SyntaxMode::conductor);
         globalScriptEditor.setText (defaultGlobalScriptText(), juce::dontSendNotification);
-        globalScriptEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff101812));
+        globalScriptEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff0d1219));
         globalScriptEditor.setColour (juce::TextEditor::textColourId, ink().withAlpha (0.28f));
         globalScriptEditor.refreshBaseTextColour();
         globalScriptEditor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.11f));
@@ -5373,7 +5485,7 @@ public:
         laneCodeEditor.setReturnKeyStartsNewLine (true);
         laneCodeEditor.setSyntaxMode (CodeTextEditor::SyntaxMode::chuck);
         laneCodeEditor.setReadOnly (false);
-        laneCodeEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff0d150f));
+        laneCodeEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff0b1017));
         laneCodeEditor.setColour (juce::TextEditor::textColourId, ink().withAlpha (0.28f));
         laneCodeEditor.refreshBaseTextColour();
         laneCodeEditor.setColour (juce::TextEditor::outlineColourId, mutedInk().withAlpha (0.12f));
@@ -5384,7 +5496,7 @@ public:
         laneCodeEditor.onEscapeKey = exitFocusedTrackView;
         addAndMakeVisible (laneCodeEditor);
 
-        setupButton (laneCodeRunButton, "Run", green(), [this] { applyLaneCodeEdit(); });
+        setupButton (laneCodeRunButton, "Run", cyan(), [this] { applyLaneCodeEdit(); });
         laneCodeRunButton.setEnabled (false);
 
         stateCodeHeader.setText ("state code", juce::dontSendNotification);
@@ -5591,9 +5703,9 @@ public:
         addAndMakeVisible (laneListViewport);
 
         setupButton (overallButton, "Overall", blue(), [this] { setMainView (MainView::overall); });
-        setupButton (arrangementButton, "MAIN", green(), [this] { setMainView (MainView::arrangement); });
+        setupButton (arrangementButton, "MAIN", blue(), [this] { setMainView (MainView::arrangement); });
         setupButton (codeViewButton, "Code", blue(), [this] { setMainView (MainView::code); });
-        setupButton (timelineViewButton, "Arrangement", green(), [this] { setMainView (MainView::timeline); });
+        setupButton (timelineViewButton, "Arrangement", violet(), [this] { setMainView (MainView::timeline); });
         setupButton (mixerViewButton, "Mixer", amber(), [this] { setMainView (MainView::mixer); });
         setupButton (removeRenderedAudioButton, "Remove audio", coral(), [this] { removeRenderedAudioAndReturnToCodePlayback(); });
         setupButton (arrangementPointerToolButton, "Pointer", blue(), [this] { setArrangementAudioTool (ArrangementAudioTool::pointer); });
@@ -5605,7 +5717,7 @@ public:
         arrangementHorizontalZoomLabel.setText ("H zoom", juce::dontSendNotification);
         styleLabel (arrangementHorizontalZoomLabel, 0.72f);
         addAndMakeVisible (arrangementHorizontalZoomLabel);
-        setupSlider (arrangementHorizontalZoomSlider, "Arrangement horizontal zoom", 0.35, 3.25, arrangementHorizontalZoom, green());
+        setupSlider (arrangementHorizontalZoomSlider, "Arrangement horizontal zoom", 0.35, 3.25, arrangementHorizontalZoom, cyan());
         arrangementHorizontalZoomSlider.setRange (0.35, 3.25, 0.01);
         arrangementHorizontalZoomSlider.setNumDecimalPlacesToDisplay (2);
         arrangementHorizontalZoomSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 44, 22);
@@ -5863,7 +5975,7 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (juce::Colour (0xff09110c));
+        g.fillAll (juce::Colour (0xff070a0f));
 
         auto area = getLocalBounds().reduced (18);
         g.setColour (panel());
@@ -6237,11 +6349,11 @@ private:
             case MainView::arrangement: return stateAccentForIndex (viewedTopLevelState);
             case MainView::code:        return blue();
             case MainView::track:       return laneAccentForIndex (selectedLane);
-            case MainView::timeline:    return arrangementPlusMode ? cyan() : green();
+            case MainView::timeline:    return arrangementPlusMode ? cyan() : violet();
             case MainView::mixer:       return arrangementPlusMode ? cyan() : amber();
         }
 
-        return green();
+        return blue();
     }
 
     static int stateButtonRowRightEdge (juce::Rectangle<int> area)
@@ -6497,7 +6609,11 @@ private:
 
     void syncOverallView()
     {
-        overallCanvas.setProject (&topLevelStates, viewedTopLevelState, performingTopLevelState, running);
+        const auto playingState = playingTopLevelStateForDisplay();
+        overallCanvas.setProject (&topLevelStates,
+                                  viewedTopLevelState,
+                                  playingState.value_or (performingTopLevelState),
+                                  playingState.has_value());
     }
 
     void syncArrangementTimelineView()
@@ -7141,7 +7257,7 @@ private:
         syncMixerView();
 
         if (boolFromJson (*object, "arrangementPlusMode", false) && ! loadedClips.empty())
-            importRenderedLaneFiles (std::move (loadedClips), false);
+            importRenderedLaneFiles (std::move (loadedClips), false, false);
         else
             setMainView (MainView::arrangement);
 
@@ -7885,6 +8001,72 @@ private:
         int laneIndex = 0;
     };
 
+    struct ArrangementStepWindow
+    {
+        int stateIndex = 0;
+        double startSeconds = 0.0;
+        double lengthSeconds = 0.0;
+    };
+
+    double durationSecondsForArrangementStep (const GlobalScriptStep& step) const
+    {
+        const auto tempoBpm = step.tempoBpm.value_or (
+            topLevelTemposBpm[static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, step.stateIndex))]);
+        const auto index = static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, step.stateIndex));
+        const auto numerator = static_cast<double> (step.timeSigNumerator.value_or (topLevelTimeSigNumerators[index]));
+        const auto denominator = static_cast<double> (juce::jmax (1, step.timeSigDenominator.value_or (topLevelTimeSigDenominators[index])));
+        const auto quarterNotesPerBar = numerator * 4.0 / denominator;
+        return juce::jmax (0.0, step.bars) * quarterNotesPerBar * 60.0 / juce::jmax (1.0f, tempoBpm);
+    }
+
+    std::vector<ArrangementStepWindow> buildArrangementStepWindows (const std::vector<GlobalScriptStep>& steps) const
+    {
+        std::vector<ArrangementStepWindow> windows;
+        windows.reserve (steps.size());
+
+        auto cursorSeconds = 0.0;
+        for (const auto& step : steps)
+        {
+            const auto lengthSeconds = durationSecondsForArrangementStep (step);
+            if (lengthSeconds > 0.0)
+                windows.push_back ({ step.stateIndex, cursorSeconds, lengthSeconds });
+
+            cursorSeconds += lengthSeconds;
+        }
+
+        return windows;
+    }
+
+    static void assignRenderedClipRegionsToArrangementWindows (ImportedLaneAudioClip& clip,
+                                                               const std::vector<ArrangementStepWindow>& windows)
+    {
+        constexpr double renderedLaneRegionTailSeconds = 1.0;
+        clip.regions.clear();
+
+        if (clip.lengthSeconds <= 0.0 || windows.empty())
+            return;
+
+        for (const auto& window : windows)
+        {
+            if (window.stateIndex != clip.stateIndex)
+                continue;
+
+            ImportedAudioRegion region;
+            region.startSeconds = window.startSeconds;
+            region.sourceStartSeconds = juce::jlimit (0.0, clip.lengthSeconds, window.startSeconds);
+            const auto requestedLength = window.lengthSeconds + renderedLaneRegionTailSeconds;
+            region.lengthSeconds = juce::jlimit (0.0, clip.lengthSeconds - region.sourceStartSeconds, requestedLength);
+            if (region.lengthSeconds > 0.000001)
+                clip.regions.push_back (region);
+        }
+
+        std::sort (clip.regions.begin(), clip.regions.end(), [] (const auto& a, const auto& b)
+        {
+            return a.startSeconds < b.startSeconds;
+        });
+        applyAutomaticCrossfades (clip.regions);
+    }
+
     static bool isLaneAudibleInTrack (const Wf::StateSpec& track, int laneIndex)
     {
         if (laneIndex < 0 || laneIndex >= static_cast<int> (track.lanes.size()))
@@ -7975,6 +8157,8 @@ private:
         juce::AudioBuffer<float> buffer;
         std::array<std::unique_ptr<juce::AudioPluginInstance>, maxTrackEffectSlots> effects;
         juce::MidiBuffer midi;
+        int tailBlocksAfterInput = 0;
+        int tailBlocksRemaining = 0;
 
         ~OfflineTrackMix()
         {
@@ -7992,6 +8176,9 @@ private:
             }
         }
     };
+
+    static constexpr double fallbackOfflineEffectTailSeconds = 2.0;
+    static constexpr double maxOfflineEffectTailSeconds = 8.0;
 
     OfflineTrackMix* findOfflineTrackMix (std::vector<std::unique_ptr<OfflineTrackMix>>& trackMixes,
                                           int stateIndex,
@@ -8051,6 +8238,9 @@ private:
                                  int blockSize,
                                  juce::String& error)
     {
+        auto longestTailSeconds = 0.0;
+        auto loadedEffectCount = 0;
+
         for (int effectIndex = 0; effectIndex < maxTrackEffectSlots; ++effectIndex)
         {
             const auto& spec = effectSlots[static_cast<size_t> (effectIndex)];
@@ -8075,9 +8265,52 @@ private:
             plugin->setPlayConfigDetails (2, 2, sampleRate, blockSize);
             plugin->prepareToPlay (sampleRate, blockSize);
             plugin->reset();
+            ++loadedEffectCount;
+
+            const auto reportedTail = plugin->getTailLengthSeconds();
+            if (std::isfinite (reportedTail) && reportedTail > 0.0)
+                longestTailSeconds = juce::jmax (longestTailSeconds, reportedTail);
+
             mix.effects[static_cast<size_t> (effectIndex)] = std::move (plugin);
         }
 
+        if (loadedEffectCount > 0)
+            longestTailSeconds = juce::jlimit (0.0,
+                                               maxOfflineEffectTailSeconds,
+                                               juce::jmax (longestTailSeconds, fallbackOfflineEffectTailSeconds));
+
+        mix.tailBlocksAfterInput = blockSize > 0 && sampleRate > 0.0
+            ? static_cast<int> (std::ceil (longestTailSeconds * sampleRate / static_cast<double> (blockSize)))
+            : 0;
+        mix.tailBlocksRemaining = 0;
+        return true;
+    }
+
+    static bool offlineBufferHasAudibleSignal (const juce::AudioBuffer<float>& buffer, int numSamples)
+    {
+        const auto samples = juce::jlimit (0, buffer.getNumSamples(), numSamples);
+        if (samples <= 0)
+            return false;
+
+        for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+            if (buffer.getMagnitude (channel, 0, samples) > 0.000001f)
+                return true;
+
+        return false;
+    }
+
+    static bool shouldProcessOfflineEffects (OfflineTrackMix& mix, bool hasInput)
+    {
+        if (hasInput)
+        {
+            mix.tailBlocksRemaining = mix.tailBlocksAfterInput;
+            return true;
+        }
+
+        if (mix.tailBlocksRemaining <= 0)
+            return false;
+
+        --mix.tailBlocksRemaining;
         return true;
     }
 
@@ -8284,7 +8517,13 @@ private:
                 juce::AudioBuffer<float> trackView (trackMix->buffer.getArrayOfWritePointers(),
                                                     renderChannels,
                                                     blockSamples);
+                const auto hasInput = offlineBufferHasAudibleSignal (trackView, blockSamples);
+                if (! shouldProcessOfflineEffects (*trackMix, hasInput))
+                    continue;
+
                 processOfflineTrackEffects (*trackMix, trackView);
+                if (! offlineBufferHasAudibleSignal (trackView, blockSamples))
+                    continue;
 
                 for (int channel = 0; channel < renderChannels; ++channel)
                     mixBuffer.addFrom (channel, 0, trackView, channel, 0, blockSamples);
@@ -8293,8 +8532,19 @@ private:
             juce::AudioBuffer<float> masterView (mixBuffer.getArrayOfWritePointers(),
                                                  renderChannels,
                                                  blockSamples);
-            processOfflineTrackEffects (masterMix, masterView);
-            mixBuffer.applyGain (0, blockSamples, renderMasterGain);
+            const auto hasMasterInput = offlineBufferHasAudibleSignal (masterView, blockSamples);
+            if (shouldProcessOfflineEffects (masterMix, hasMasterInput))
+            {
+                processOfflineTrackEffects (masterMix, masterView);
+                if (offlineBufferHasAudibleSignal (masterView, blockSamples))
+                    mixBuffer.applyGain (0, blockSamples, renderMasterGain);
+                else
+                    mixBuffer.clear (0, blockSamples);
+            }
+            else
+            {
+                mixBuffer.clear (0, blockSamples);
+            }
 
             for (int channel = 0; channel < renderChannels; ++channel)
             {
@@ -8436,14 +8686,24 @@ private:
                 peak = juce::jlimit (0.0f, 1.0f, peak / previewPeak);
     }
 
-    void importRenderedLaneFiles (std::vector<ImportedLaneAudioClip> renderedClips, bool markDirty = true)
+    void importRenderedLaneFiles (std::vector<ImportedLaneAudioClip> renderedClips,
+                                  bool markDirty = true,
+                                  bool remapRegionsToStateWindows = true)
     {
+        const auto arrangementWindows = remapRegionsToStateWindows
+            ? buildArrangementStepWindows (parseGlobalScript())
+            : std::vector<ArrangementStepWindow>();
+
         for (auto& clip : renderedClips)
+        {
             populateImportedClipWaveform (clip);
+            if (remapRegionsToStateWindows)
+                assignRenderedClipRegionsToArrangementWindows (clip, arrangementWindows);
+        }
 
         renderedClips.erase (std::remove_if (renderedClips.begin(), renderedClips.end(), [] (const ImportedLaneAudioClip& clip)
         {
-            return clip.audioData == nullptr || clip.audioData->getNumSamples() <= 0;
+            return clip.audioData == nullptr || clip.audioData->getNumSamples() <= 0 || clip.regions.empty();
         }), renderedClips.end());
 
         if (renderedClips.empty())
@@ -10554,21 +10814,65 @@ private:
         refreshLabels();
     }
 
-    void refreshLabels()
+    std::optional<int> topLevelStateAtArrangementTime (double seconds) const
     {
-        syncViewedStateControls();
+        const auto steps = globalScriptSteps.empty() ? parseGlobalScript() : globalScriptSteps;
+        auto cursorSeconds = 0.0;
+
+        for (const auto& step : steps)
+        {
+            const auto lengthSeconds = durationSecondsForArrangementStep (step);
+            const auto windowEnd = cursorSeconds + lengthSeconds;
+            if (lengthSeconds > 0.0 && seconds >= cursorSeconds && seconds < windowEnd)
+                return step.stateIndex;
+
+            cursorSeconds = windowEnd;
+        }
+
+        return {};
+    }
+
+    std::optional<int> playingTopLevelStateForDisplay() const
+    {
+        if (! running)
+            return {};
+
+        if (isUsingImportedAudioPlayback())
+            return topLevelStateAtArrangementTime (audioCallback.getImportedPlaybackPositionSeconds());
+
+        return isTopLevelStatePopulated (performingTopLevelState)
+            ? std::optional<int> (performingTopLevelState)
+            : std::optional<int>();
+    }
+
+    bool viewedStateCodeIsPerforming() const
+    {
+        return running
+            && ! isUsingImportedAudioPlayback()
+            && viewedTopLevelState == performingTopLevelState;
+    }
+
+    void refreshStateButtons()
+    {
+        const auto playingState = playingTopLevelStateForDisplay();
 
         for (int i = 0; i < maxTopLevelStates; ++i)
         {
             auto& button = stateButtons[static_cast<size_t> (i)];
-            if (isTopLevelStatePopulated (i))
-                styleButton (button, stateAccentForIndex (i));
-            else
-                styleEmptyStateButton (button);
+            const auto populated = isTopLevelStatePopulated (i);
+            const auto viewed = viewedTopLevelState == i;
+            const auto playing = playingState.has_value() && *playingState == i;
 
+            styleStateStripButton (button, i, populated, viewed, playing);
             button.setEnabled (true);
-            button.setToggleState (viewedTopLevelState == i, juce::dontSendNotification);
+            button.setToggleState (viewed || playing, juce::dontSendNotification);
         }
+    }
+
+    void refreshLabels()
+    {
+        syncViewedStateControls();
+        refreshStateButtons();
 
         const auto hasEmptyStateSlot = firstEmptyTopLevelState() >= 0;
         newStateButton.setEnabled (hasEmptyStateSlot);
@@ -10607,7 +10911,7 @@ private:
             updateLaneCodeMetadata (nullptr);
             laneCodeRunButton.setEnabled (false);
             setLaneCodeEditorText ("// Click New to create this state.");
-            orbitCanvas.setState (nullptr, 0, orbitPhase, running);
+            orbitCanvas.setState (nullptr, 0, orbitPhase, viewedStateCodeIsPerforming());
             syncOverallView();
             syncTrackFocusCanvas (nullptr);
             syncMixerView();
@@ -10664,7 +10968,7 @@ private:
 
         syncEditControls (&state, state.lanes.empty() ? nullptr : &state.lanes[static_cast<size_t> (selectedLane)]);
         updateLaneCode();
-        orbitCanvas.setState (viewedTracks, selectedState, orbitPhase, running);
+        orbitCanvas.setState (viewedTracks, selectedState, orbitPhase, viewedStateCodeIsPerforming());
         syncOverallView();
         syncTrackFocusCanvas (viewedTracks);
         syncMixerView();
@@ -11157,7 +11461,7 @@ private:
         {
             laneCodeDirty = false;
             laneCodeRunButton.setEnabled (false);
-            updateLaneCodeHeader ("lane code - live", green().withAlpha (0.58f));
+            updateLaneCodeHeader ("lane code - live", cyan().withAlpha (0.58f));
             refreshProjectDirtyIndicator();
             return;
         }
@@ -11167,7 +11471,7 @@ private:
         lane.customControlCode = parsed->control;
         laneCodeDirty = false;
         laneCodeRunButton.setEnabled (false);
-        updateLaneCodeHeader ("lane code - live", green().withAlpha (0.58f));
+        updateLaneCodeHeader ("lane code - live", cyan().withAlpha (0.58f));
         markProjectDirty();
         syncMixerView();
 
@@ -11328,7 +11632,13 @@ private:
         const auto* viewedTracks = getViewedTracks();
         const auto trackCount = viewedTracks == nullptr ? 0 : static_cast<int> (viewedTracks->size());
 
-        stateSettingsLabel.setText ("State " + juce::String (viewedTopLevelState + 1) + (populated ? " settings" : " empty"), juce::dontSendNotification);
+        auto settingsText = "State " + juce::String (viewedTopLevelState + 1) + (populated ? " settings" : " empty");
+        if (populated && running)
+        {
+            if (const auto playingState = playingTopLevelStateForDisplay())
+                settingsText += *playingState == viewedTopLevelState ? " - playing" : " - not playing";
+        }
+        stateSettingsLabel.setText (settingsText, juce::dontSendNotification);
         stateTempoLabel.setText ("Tempo  " + juce::String (tempoBpm, 1) + " bpm", juce::dontSendNotification);
         stateTimeSigLabel.setText ("Time signature  " + juce::String (numerator) + "/" + juce::String (denominator), juce::dontSendNotification);
         stateTrackCountEditor.setEnabled (populated);
@@ -11356,6 +11666,7 @@ private:
             {
                 running = false;
                 syncTransportButtons();
+                refreshStateButtons();
             }
         }
         else if (running)
@@ -11402,9 +11713,10 @@ private:
         applyCurrentAudioControls();
 
         statusLabel.setText (juce::String (running ? "running  " : "stopped  ") + audioCallback.diagnostics(), juce::dontSendNotification);
+        refreshStateButtons();
         if (const auto* viewedTracks = getViewedTracks())
         {
-            orbitCanvas.setState (viewedTracks, selectedState, orbitPhase, running);
+            orbitCanvas.setState (viewedTracks, selectedState, orbitPhase, viewedStateCodeIsPerforming());
             syncOverallView();
             syncTrackFocusCanvas (viewedTracks);
             syncArrangementTimelineView();
@@ -11829,7 +12141,7 @@ class WfApplication final : public juce::JUCEApplication
 {
 public:
     const juce::String getApplicationName() override { return "ChucK-ME"; }
-    const juce::String getApplicationVersion() override { return "0.1.11"; }
+    const juce::String getApplicationVersion() override { return "0.1.12"; }
     bool moreThanOneInstanceAllowed() override { return true; }
 
     void initialise (const juce::String&) override
@@ -11858,7 +12170,7 @@ private:
     {
     public:
         explicit MainWindow (juce::String name)
-            : DocumentWindow (std::move (name), juce::Colour (0xff101813), DocumentWindow::allButtons)
+            : DocumentWindow (std::move (name), juce::Colour (0xff10161d), DocumentWindow::allButtons)
         {
             setUsingNativeTitleBar (true);
             mainComponent = new MainComponent();

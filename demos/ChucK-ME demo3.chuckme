@@ -1,0 +1,1946 @@
+{
+  "format": "ChucK-ME Project",
+  "version": 4,
+  "stateCode": "// Demo 3 - Slow state changes, drifting tracks, sparse pulses, and glassy harmonic clouds\ntempo(64); timeSig(5, 4); playState(1, 8);\ntempo(52); timeSig(7, 4); playState(2, 8);\ntempo(72); timeSig(6, 4); playState(3, 8);\ntempo(44); timeSig(4, 4); playState(4, 8);\nstop();",
+  "masterVolume": 0.14,
+  "masterEffectSlots": [
+    {
+      "active": false,
+      "pluginName": "",
+      "pluginFormatName": "",
+      "pluginFileOrIdentifier": "",
+      "pluginIdentifier": ""
+    },
+    {
+      "active": false,
+      "pluginName": "",
+      "pluginFormatName": "",
+      "pluginFileOrIdentifier": "",
+      "pluginIdentifier": ""
+    },
+    {
+      "active": false,
+      "pluginName": "",
+      "pluginFormatName": "",
+      "pluginFileOrIdentifier": "",
+      "pluginIdentifier": ""
+    }
+  ],
+  "viewedState": 0,
+  "selectedTrack": 2,
+  "selectedLane": 0,
+  "arrangementPlusMode": false,
+  "arrangementHorizontalZoom": 1.0,
+  "arrangementVerticalZoom": 1.0,
+  "states": [
+    {
+      "tempoBpm": 64.0,
+      "timeSigNumerator": 5,
+      "timeSigDenominator": 4,
+      "tracks": [
+        {
+          "name": "GLASS FIELD",
+          "tempoBpm": 64.0,
+          "clockBeatsPerBar": 5,
+          "clockQuarterNotesPerBar": 5.0,
+          "duration": {
+            "bars": 2,
+            "beats": 0
+          },
+          "transitionProbabilityPercent": 28,
+          "lanes": [
+            {
+              "name": "green drone",
+              "role": "chord",
+              "baseHz": 98.0,
+              "volume": 0.119999997317791,
+              "pan": -0.180000007152557,
+              "pulseTicks": 24,
+              "openTicks": 20,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "thin partials",
+              "role": "air",
+              "baseHz": 1760.0,
+              "volume": 0.054999999701977,
+              "pan": 0.340000003576279,
+              "pulseTicks": 32,
+              "openTicks": 18,
+              "phaseOffsetBars": 0.180000007152557,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 48.0
+            },
+            {
+              "name": "low glass",
+              "role": "bass",
+              "baseHz": 49.0,
+              "volume": 0.109999999403954,
+              "pan": -0.050000000745058,
+              "pulseTicks": 18,
+              "openTicks": 12,
+              "phaseOffsetBars": 0.310000002384186,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "blue specks",
+              "role": "arp",
+              "baseHz": 392.0,
+              "volume": 0.064999997615814,
+              "pan": 0.479999989271164,
+              "pulseTicks": 12,
+              "openTicks": 3,
+              "phaseOffsetBars": 0.550000011920929,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 96.0
+            },
+            {
+              "name": "distant choir",
+              "role": "chord",
+              "baseHz": 146.830001831054688,
+              "volume": 0.075000002980232,
+              "pan": -0.419999986886978,
+              "pulseTicks": 40,
+              "openTicks": 24,
+              "phaseOffsetBars": 0.720000028610229,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "soft marker",
+              "role": "pulse",
+              "baseHz": 261.6300048828125,
+              "volume": 0.035000000149012,
+              "pan": 0.119999997317791,
+              "pulseTicks": 20,
+              "openTicks": 2,
+              "phaseOffsetBars": 0.839999973773956,
+              "muted": false,
+              "solo": false,
+              "duration": {
+                "bars": 1,
+                "beats": 0
+              }
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        },
+        {
+          "name": "SLOW AURORA",
+          "tempoBpm": 58.0,
+          "clockBeatsPerBar": 5,
+          "clockQuarterNotesPerBar": 5.0,
+          "duration": {
+            "bars": 3,
+            "beats": 0
+          },
+          "transitionProbabilityPercent": 18,
+          "lanes": [
+            {
+              "name": "aurora root",
+              "role": "chord",
+              "baseHz": 110.0,
+              "volume": 0.109999999403954,
+              "pan": 0.0,
+              "pulseTicks": 30,
+              "openTicks": 26,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "overhead arc",
+              "role": "air",
+              "baseHz": 2093.0,
+              "volume": 0.050000000745058,
+              "pan": 0.400000005960464,
+              "pulseTicks": 35,
+              "openTicks": 15,
+              "phaseOffsetBars": 0.150000005960464,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 44.0
+            },
+            {
+              "name": "warm undertow",
+              "role": "bass",
+              "baseHz": 55.0,
+              "volume": 0.100000001490116,
+              "pan": -0.219999998807907,
+              "pulseTicks": 20,
+              "openTicks": 14,
+              "phaseOffsetBars": 0.379999995231628,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "silver thread",
+              "role": "arp",
+              "baseHz": 329.6300048828125,
+              "volume": 0.059999998658895,
+              "pan": -0.5,
+              "pulseTicks": 14,
+              "openTicks": 4,
+              "phaseOffsetBars": 0.579999983310699,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 87.0
+            },
+            {
+              "name": "wide fifth",
+              "role": "chord",
+              "baseHz": 164.80999755859375,
+              "volume": 0.070000000298023,
+              "pan": 0.300000011920929,
+              "pulseTicks": 45,
+              "openTicks": 30,
+              "phaseOffsetBars": 0.660000026226044,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "slow glint",
+              "role": "pulse",
+              "baseHz": 493.8800048828125,
+              "volume": 0.029999999329448,
+              "pan": 0.050000000745058,
+              "pulseTicks": 25,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.920000016689301,
+              "muted": false,
+              "solo": false,
+              "duration": {
+                "bars": 1,
+                "beats": 2
+              }
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        },
+        {
+          "name": "FOG CIRCUIT",
+          "tempoBpm": 61.0,
+          "clockBeatsPerBar": 5,
+          "clockQuarterNotesPerBar": 5.0,
+          "duration": {
+            "bars": 2,
+            "beats": 2
+          },
+          "transitionProbabilityPercent": 34,
+          "lanes": [
+            {
+              "name": "fog motor",
+              "role": "bass",
+              "baseHz": 43.650001525878906,
+              "volume": 0.129999995231628,
+              "pan": -0.079999998211861,
+              "pulseTicks": 25,
+              "openTicks": 18,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "circuit chord",
+              "role": "chord",
+              "baseHz": 130.80999755859375,
+              "volume": 0.090000003576279,
+              "pan": 0.219999998807907,
+              "pulseTicks": 28,
+              "openTicks": 18,
+              "phaseOffsetBars": 0.219999998807907,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "signal insects",
+              "role": "arp",
+              "baseHz": 740.0,
+              "volume": 0.054999999701977,
+              "pan": 0.439999997615814,
+              "pulseTicks": 9,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.409999996423721,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 122.0
+            },
+            {
+              "name": "cold halo",
+              "role": "air",
+              "baseHz": 2489.0,
+              "volume": 0.045000001788139,
+              "pan": -0.360000014305115,
+              "pulseTicks": 36,
+              "openTicks": 20,
+              "phaseOffsetBars": 0.639999985694885,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 52.0
+            },
+            {
+              "name": "hidden third",
+              "role": "chord",
+              "baseHz": 155.55999755859375,
+              "volume": 0.064999997615814,
+              "pan": -0.180000007152557,
+              "pulseTicks": 32,
+              "openTicks": 14,
+              "phaseOffsetBars": 0.75,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "short star",
+              "role": "pulse",
+              "baseHz": 622.25,
+              "volume": 0.028000000864267,
+              "pan": 0.519999980926514,
+              "pulseTicks": 15,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.879999995231628,
+              "muted": false,
+              "solo": false,
+              "duration": {
+                "bars": 1,
+                "beats": 0
+              }
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        },
+        {
+          "name": "MELTED MAP",
+          "tempoBpm": 54.0,
+          "clockBeatsPerBar": 5,
+          "clockQuarterNotesPerBar": 5.0,
+          "duration": {
+            "bars": 2,
+            "beats": 0
+          },
+          "lanes": [
+            {
+              "name": "map bass",
+              "role": "bass",
+              "baseHz": 36.709999084472656,
+              "volume": 0.119999997317791,
+              "pan": 0.0,
+              "pulseTicks": 40,
+              "openTicks": 28,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "melted chord",
+              "role": "chord",
+              "baseHz": 123.470001220703125,
+              "volume": 0.100000001490116,
+              "pan": -0.259999990463257,
+              "pulseTicks": 35,
+              "openTicks": 22,
+              "phaseOffsetBars": 0.270000010728836,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "map dust",
+              "role": "air",
+              "baseHz": 1568.0,
+              "volume": 0.050000000745058,
+              "pan": 0.340000003576279,
+              "pulseTicks": 42,
+              "openTicks": 12,
+              "phaseOffsetBars": 0.490000009536743,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 41.0
+            },
+            {
+              "name": "soft coordinate",
+              "role": "arp",
+              "baseHz": 277.17999267578125,
+              "volume": 0.054999999701977,
+              "pan": 0.479999989271164,
+              "pulseTicks": 10,
+              "openTicks": 2,
+              "phaseOffsetBars": 0.610000014305115,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 108.0
+            },
+            {
+              "name": "open plain",
+              "role": "chord",
+              "baseHz": 185.0,
+              "volume": 0.059999998658895,
+              "pan": -0.439999997615814,
+              "pulseTicks": 50,
+              "openTicks": 35,
+              "phaseOffsetBars": 0.759999990463257,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "single light",
+              "role": "pulse",
+              "baseHz": 880.0,
+              "volume": 0.025000000372529,
+              "pan": 0.180000007152557,
+              "pulseTicks": 25,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.949999988079071,
+              "muted": false,
+              "solo": false,
+              "duration": {
+                "bars": 0,
+                "beats": 4
+              }
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tempoBpm": 52.0,
+      "timeSigNumerator": 7,
+      "timeSigDenominator": 4,
+      "tracks": [
+        {
+          "name": "DEEP LATTICE",
+          "tempoBpm": 52.0,
+          "clockBeatsPerBar": 7,
+          "clockQuarterNotesPerBar": 7.0,
+          "duration": {
+            "bars": 2,
+            "beats": 0
+          },
+          "transitionProbabilityPercent": 24,
+          "lanes": [
+            {
+              "name": "lattice floor",
+              "role": "bass",
+              "baseHz": 32.700000762939453,
+              "volume": 0.140000000596046,
+              "pan": -0.03999999910593,
+              "pulseTicks": 28,
+              "openTicks": 22,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "blue lattice",
+              "role": "chord",
+              "baseHz": 98.0,
+              "volume": 0.094999998807907,
+              "pan": 0.280000001192093,
+              "pulseTicks": 35,
+              "openTicks": 28,
+              "phaseOffsetBars": 0.119999997317791,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "narrow ray",
+              "role": "air",
+              "baseHz": 1975.5,
+              "volume": 0.050000000745058,
+              "pan": -0.419999986886978,
+              "pulseTicks": 49,
+              "openTicks": 20,
+              "phaseOffsetBars": 0.310000002384186,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 39.0
+            },
+            {
+              "name": "faint sequence",
+              "role": "arp",
+              "baseHz": 246.94000244140625,
+              "volume": 0.054999999701977,
+              "pan": 0.439999997615814,
+              "pulseTicks": 14,
+              "openTicks": 3,
+              "phaseOffsetBars": 0.519999980926514,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 78.0
+            },
+            {
+              "name": "subharmonic veil",
+              "role": "chord",
+              "baseHz": 116.540000915527344,
+              "volume": 0.070000000298023,
+              "pan": -0.219999998807907,
+              "pulseTicks": 42,
+              "openTicks": 30,
+              "phaseOffsetBars": 0.730000019073486,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "lattice tick",
+              "role": "pulse",
+              "baseHz": 369.989990234375,
+              "volume": 0.026000000536442,
+              "pan": 0.200000002980232,
+              "pulseTicks": 21,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.860000014305115,
+              "muted": false,
+              "solo": false,
+              "duration": {
+                "bars": 1,
+                "beats": 0
+              }
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        },
+        {
+          "name": "MINERAL SLEEP",
+          "tempoBpm": 48.0,
+          "clockBeatsPerBar": 7,
+          "clockQuarterNotesPerBar": 7.0,
+          "duration": {
+            "bars": 3,
+            "beats": 0
+          },
+          "transitionProbabilityPercent": 20,
+          "lanes": [
+            {
+              "name": "mineral root",
+              "role": "bass",
+              "baseHz": 41.200000762939453,
+              "volume": 0.109999999403954,
+              "pan": 0.0,
+              "pulseTicks": 56,
+              "openTicks": 40,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "sleep chord",
+              "role": "chord",
+              "baseHz": 103.830001831054688,
+              "volume": 0.100000001490116,
+              "pan": -0.300000011920929,
+              "pulseTicks": 42,
+              "openTicks": 36,
+              "phaseOffsetBars": 0.189999997615814,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "mica flecks",
+              "role": "air",
+              "baseHz": 2349.0,
+              "volume": 0.045000001788139,
+              "pan": 0.419999986886978,
+              "pulseTicks": 63,
+              "openTicks": 24,
+              "phaseOffsetBars": 0.360000014305115,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 36.0
+            },
+            {
+              "name": "sleep signal",
+              "role": "arp",
+              "baseHz": 311.1300048828125,
+              "volume": 0.052000001072884,
+              "pan": 0.180000007152557,
+              "pulseTicks": 14,
+              "openTicks": 2,
+              "phaseOffsetBars": 0.569999992847443,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 72.0
+            },
+            {
+              "name": "warm mineral",
+              "role": "chord",
+              "baseHz": 146.830001831054688,
+              "volume": 0.064999997615814,
+              "pan": -0.439999997615814,
+              "pulseTicks": 49,
+              "openTicks": 28,
+              "phaseOffsetBars": 0.689999997615814,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "quiet shard",
+              "role": "pulse",
+              "baseHz": 554.3699951171875,
+              "volume": 0.021999999880791,
+              "pan": 0.519999980926514,
+              "pulseTicks": 28,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.910000026226044,
+              "muted": false,
+              "solo": false,
+              "duration": {
+                "bars": 1,
+                "beats": 3
+              }
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        },
+        {
+          "name": "BLACK CURRENT",
+          "tempoBpm": 56.0,
+          "clockBeatsPerBar": 7,
+          "clockQuarterNotesPerBar": 7.0,
+          "duration": {
+            "bars": 2,
+            "beats": 4
+          },
+          "transitionProbabilityPercent": 32,
+          "lanes": [
+            {
+              "name": "black current",
+              "role": "bass",
+              "baseHz": 38.889999389648438,
+              "volume": 0.129999995231628,
+              "pan": -0.119999997317791,
+              "pulseTicks": 35,
+              "openTicks": 24,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "current chord",
+              "role": "chord",
+              "baseHz": 130.80999755859375,
+              "volume": 0.08500000089407,
+              "pan": 0.200000002980232,
+              "pulseTicks": 28,
+              "openTicks": 18,
+              "phaseOffsetBars": 0.209999993443489,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "surface line",
+              "role": "arp",
+              "baseHz": 415.29998779296875,
+              "volume": 0.054999999701977,
+              "pan": 0.419999986886978,
+              "pulseTicks": 7,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.439999997615814,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 84.0
+            },
+            {
+              "name": "pressure tone",
+              "role": "air",
+              "baseHz": 1318.5,
+              "volume": 0.052000001072884,
+              "pan": -0.379999995231628,
+              "pulseTicks": 56,
+              "openTicks": 36,
+              "phaseOffsetBars": 0.660000026226044,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 42.0
+            },
+            {
+              "name": "dull brass",
+              "role": "chord",
+              "baseHz": 174.610000610351562,
+              "volume": 0.059999998658895,
+              "pan": 0.340000003576279,
+              "pulseTicks": 49,
+              "openTicks": 21,
+              "phaseOffsetBars": 0.790000021457672,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "current ping",
+              "role": "pulse",
+              "baseHz": 659.25,
+              "volume": 0.024000000208616,
+              "pan": -0.519999980926514,
+              "pulseTicks": 14,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.930000007152557,
+              "muted": false,
+              "solo": false,
+              "duration": {
+                "bars": 0,
+                "beats": 5
+              }
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        },
+        {
+          "name": "REMOTE ORGAN",
+          "tempoBpm": 46.0,
+          "clockBeatsPerBar": 7,
+          "clockQuarterNotesPerBar": 7.0,
+          "duration": {
+            "bars": 2,
+            "beats": 0
+          },
+          "lanes": [
+            {
+              "name": "organ low",
+              "role": "bass",
+              "baseHz": 55.0,
+              "volume": 0.100000001490116,
+              "pan": 0.0,
+              "pulseTicks": 49,
+              "openTicks": 36,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "organ wide",
+              "role": "chord",
+              "baseHz": 110.0,
+              "volume": 0.104999996721745,
+              "pan": -0.239999994635582,
+              "pulseTicks": 56,
+              "openTicks": 44,
+              "phaseOffsetBars": 0.180000007152557,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "remote shimmer",
+              "role": "air",
+              "baseHz": 2637.0,
+              "volume": 0.03999999910593,
+              "pan": 0.479999989271164,
+              "pulseTicks": 70,
+              "openTicks": 28,
+              "phaseOffsetBars": 0.409999996423721,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 35.0
+            },
+            {
+              "name": "organ braid",
+              "role": "arp",
+              "baseHz": 329.6300048828125,
+              "volume": 0.050000000745058,
+              "pan": 0.219999998807907,
+              "pulseTicks": 14,
+              "openTicks": 2,
+              "phaseOffsetBars": 0.629999995231628,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 69.0
+            },
+            {
+              "name": "distant major",
+              "role": "chord",
+              "baseHz": 164.80999755859375,
+              "volume": 0.059999998658895,
+              "pan": -0.46000000834465,
+              "pulseTicks": 63,
+              "openTicks": 35,
+              "phaseOffsetBars": 0.759999990463257,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "organ key",
+              "role": "pulse",
+              "baseHz": 493.8800048828125,
+              "volume": 0.020999999716878,
+              "pan": 0.300000011920929,
+              "pulseTicks": 21,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.970000028610229,
+              "muted": false,
+              "solo": false,
+              "duration": {
+                "bars": 1,
+                "beats": 0
+              }
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tempoBpm": 72.0,
+      "timeSigNumerator": 6,
+      "timeSigDenominator": 4,
+      "tracks": [
+        {
+          "name": "NEON WEATHER",
+          "tempoBpm": 72.0,
+          "clockBeatsPerBar": 6,
+          "clockQuarterNotesPerBar": 6.0,
+          "duration": {
+            "bars": 2,
+            "beats": 0
+          },
+          "transitionProbabilityPercent": 36,
+          "lanes": [
+            {
+              "name": "weather bass",
+              "role": "bass",
+              "baseHz": 61.740001678466797,
+              "volume": 0.119999997317791,
+              "pan": -0.059999998658895,
+              "pulseTicks": 24,
+              "openTicks": 16,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "neon chord",
+              "role": "chord",
+              "baseHz": 123.470001220703125,
+              "volume": 0.094999998807907,
+              "pan": 0.239999994635582,
+              "pulseTicks": 30,
+              "openTicks": 22,
+              "phaseOffsetBars": 0.159999996423721,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "electric rain",
+              "role": "arp",
+              "baseHz": 622.25,
+              "volume": 0.064999997615814,
+              "pan": 0.46000000834465,
+              "pulseTicks": 6,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.360000014305115,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 144.0
+            },
+            {
+              "name": "bright static",
+              "role": "air",
+              "baseHz": 3136.0,
+              "volume": 0.045000001788139,
+              "pan": -0.360000014305115,
+              "pulseTicks": 36,
+              "openTicks": 18,
+              "phaseOffsetBars": 0.550000011920929,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 54.0
+            },
+            {
+              "name": "weather choir",
+              "role": "chord",
+              "baseHz": 185.0,
+              "volume": 0.064999997615814,
+              "pan": -0.280000001192093,
+              "pulseTicks": 42,
+              "openTicks": 24,
+              "phaseOffsetBars": 0.720000028610229,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "neon dot",
+              "role": "pulse",
+              "baseHz": 987.77001953125,
+              "volume": 0.027000000700355,
+              "pan": 0.100000001490116,
+              "pulseTicks": 12,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.899999976158142,
+              "muted": false,
+              "solo": false,
+              "duration": {
+                "bars": 1,
+                "beats": 0
+              }
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        },
+        {
+          "name": "PRISM ENGINE",
+          "tempoBpm": 68.0,
+          "clockBeatsPerBar": 6,
+          "clockQuarterNotesPerBar": 6.0,
+          "duration": {
+            "bars": 2,
+            "beats": 3
+          },
+          "transitionProbabilityPercent": 27,
+          "lanes": [
+            {
+              "name": "engine root",
+              "role": "bass",
+              "baseHz": 51.909999847412109,
+              "volume": 0.129999995231628,
+              "pan": 0.0,
+              "pulseTicks": 36,
+              "openTicks": 24,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "prism chord",
+              "role": "chord",
+              "baseHz": 138.589996337890625,
+              "volume": 0.090000003576279,
+              "pan": -0.219999998807907,
+              "pulseTicks": 30,
+              "openTicks": 18,
+              "phaseOffsetBars": 0.180000007152557,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "angled lights",
+              "role": "arp",
+              "baseHz": 466.160003662109375,
+              "volume": 0.059999998658895,
+              "pan": 0.400000005960464,
+              "pulseTicks": 8,
+              "openTicks": 2,
+              "phaseOffsetBars": 0.330000013113022,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 102.0
+            },
+            {
+              "name": "prism mist",
+              "role": "air",
+              "baseHz": 2217.0,
+              "volume": 0.048000000417233,
+              "pan": -0.46000000834465,
+              "pulseTicks": 48,
+              "openTicks": 20,
+              "phaseOffsetBars": 0.519999980926514,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 51.0
+            },
+            {
+              "name": "engine overtone",
+              "role": "chord",
+              "baseHz": 207.649993896484375,
+              "volume": 0.059999998658895,
+              "pan": 0.280000001192093,
+              "pulseTicks": 36,
+              "openTicks": 20,
+              "phaseOffsetBars": 0.699999988079071,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "small prism",
+              "role": "pulse",
+              "baseHz": 739.989990234375,
+              "volume": 0.024000000208616,
+              "pan": -0.119999997317791,
+              "pulseTicks": 18,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.860000014305115,
+              "muted": false,
+              "solo": false,
+              "duration": {
+                "bars": 0,
+                "beats": 4
+              }
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        },
+        {
+          "name": "LIQUID RELAY",
+          "tempoBpm": 76.0,
+          "clockBeatsPerBar": 6,
+          "clockQuarterNotesPerBar": 6.0,
+          "duration": {
+            "bars": 2,
+            "beats": 0
+          },
+          "transitionProbabilityPercent": 31,
+          "lanes": [
+            {
+              "name": "liquid root",
+              "role": "bass",
+              "baseHz": 58.270000457763672,
+              "volume": 0.119999997317791,
+              "pan": -0.100000001490116,
+              "pulseTicks": 24,
+              "openTicks": 14,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "relay chord",
+              "role": "chord",
+              "baseHz": 116.540000915527344,
+              "volume": 0.090000003576279,
+              "pan": 0.200000002980232,
+              "pulseTicks": 30,
+              "openTicks": 18,
+              "phaseOffsetBars": 0.209999993443489,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "liquid pearls",
+              "role": "arp",
+              "baseHz": 554.3699951171875,
+              "volume": 0.064999997615814,
+              "pan": 0.479999989271164,
+              "pulseTicks": 6,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.389999985694885,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 152.0
+            },
+            {
+              "name": "relay haze",
+              "role": "air",
+              "baseHz": 2794.0,
+              "volume": 0.046999998390675,
+              "pan": -0.400000005960464,
+              "pulseTicks": 54,
+              "openTicks": 24,
+              "phaseOffsetBars": 0.569999992847443,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 57.0
+            },
+            {
+              "name": "liquid choir",
+              "role": "chord",
+              "baseHz": 174.610000610351562,
+              "volume": 0.064999997615814,
+              "pan": -0.239999994635582,
+              "pulseTicks": 36,
+              "openTicks": 18,
+              "phaseOffsetBars": 0.730000019073486,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "relay pin",
+              "role": "pulse",
+              "baseHz": 830.6099853515625,
+              "volume": 0.026000000536442,
+              "pan": 0.180000007152557,
+              "pulseTicks": 12,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.920000016689301,
+              "muted": false,
+              "solo": false,
+              "duration": {
+                "bars": 1,
+                "beats": 1
+              }
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        },
+        {
+          "name": "THIN SUN",
+          "tempoBpm": 60.0,
+          "clockBeatsPerBar": 6,
+          "clockQuarterNotesPerBar": 6.0,
+          "duration": {
+            "bars": 3,
+            "beats": 0
+          },
+          "lanes": [
+            {
+              "name": "sun root",
+              "role": "bass",
+              "baseHz": 43.650001525878906,
+              "volume": 0.109999999403954,
+              "pan": 0.0,
+              "pulseTicks": 48,
+              "openTicks": 30,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "thin sun",
+              "role": "chord",
+              "baseHz": 130.80999755859375,
+              "volume": 0.100000001490116,
+              "pan": -0.300000011920929,
+              "pulseTicks": 42,
+              "openTicks": 32,
+              "phaseOffsetBars": 0.150000005960464,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "solar grains",
+              "role": "arp",
+              "baseHz": 493.8800048828125,
+              "volume": 0.054999999701977,
+              "pan": 0.419999986886978,
+              "pulseTicks": 12,
+              "openTicks": 2,
+              "phaseOffsetBars": 0.370000004768372,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 90.0
+            },
+            {
+              "name": "sun corona",
+              "role": "air",
+              "baseHz": 3520.0,
+              "volume": 0.041999999433756,
+              "pan": -0.46000000834465,
+              "pulseTicks": 60,
+              "openTicks": 26,
+              "phaseOffsetBars": 0.579999983310699,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 45.0
+            },
+            {
+              "name": "white horizon",
+              "role": "chord",
+              "baseHz": 196.0,
+              "volume": 0.054999999701977,
+              "pan": 0.259999990463257,
+              "pulseTicks": 54,
+              "openTicks": 30,
+              "phaseOffsetBars": 0.790000021457672,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "sun point",
+              "role": "pulse",
+              "baseHz": 1108.72998046875,
+              "volume": 0.021999999880791,
+              "pan": 0.050000000745058,
+              "pulseTicks": 24,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.959999978542328,
+              "muted": false,
+              "solo": false,
+              "duration": {
+                "bars": 0,
+                "beats": 5
+              }
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tempoBpm": 44.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4,
+      "tracks": [
+        {
+          "name": "AFTERIMAGE SEA",
+          "tempoBpm": 44.0,
+          "clockBeatsPerBar": 4,
+          "clockQuarterNotesPerBar": 4.0,
+          "duration": {
+            "bars": 3,
+            "beats": 0
+          },
+          "transitionProbabilityPercent": 15,
+          "lanes": [
+            {
+              "name": "sea root",
+              "role": "bass",
+              "baseHz": 32.700000762939453,
+              "volume": 0.119999997317791,
+              "pan": -0.059999998658895,
+              "pulseTicks": 32,
+              "openTicks": 28,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "afterimage chord",
+              "role": "chord",
+              "baseHz": 98.0,
+              "volume": 0.104999996721745,
+              "pan": 0.180000007152557,
+              "pulseTicks": 40,
+              "openTicks": 34,
+              "phaseOffsetBars": 0.200000002980232,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "sea glimmer",
+              "role": "air",
+              "baseHz": 1568.0,
+              "volume": 0.043999999761581,
+              "pan": 0.479999989271164,
+              "pulseTicks": 48,
+              "openTicks": 18,
+              "phaseOffsetBars": 0.419999986886978,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 33.0
+            },
+            {
+              "name": "small tide",
+              "role": "arp",
+              "baseHz": 246.94000244140625,
+              "volume": 0.052000001072884,
+              "pan": -0.340000003576279,
+              "pulseTicks": 8,
+              "openTicks": 2,
+              "phaseOffsetBars": 0.589999973773956,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 66.0
+            },
+            {
+              "name": "distant shore",
+              "role": "chord",
+              "baseHz": 146.830001831054688,
+              "volume": 0.059999998658895,
+              "pan": -0.46000000834465,
+              "pulseTicks": 56,
+              "openTicks": 40,
+              "phaseOffsetBars": 0.779999971389771,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "last buoy",
+              "role": "pulse",
+              "baseHz": 493.8800048828125,
+              "volume": 0.019999999552965,
+              "pan": 0.219999998807907,
+              "pulseTicks": 16,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.949999988079071,
+              "muted": false,
+              "solo": false,
+              "duration": {
+                "bars": 1,
+                "beats": 0
+              }
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        },
+        {
+          "name": "QUIET MACHINE",
+          "tempoBpm": 48.0,
+          "clockBeatsPerBar": 4,
+          "clockQuarterNotesPerBar": 4.0,
+          "duration": {
+            "bars": 2,
+            "beats": 0
+          },
+          "transitionProbabilityPercent": 25,
+          "lanes": [
+            {
+              "name": "machine floor",
+              "role": "bass",
+              "baseHz": 41.200000762939453,
+              "volume": 0.109999999403954,
+              "pan": 0.0,
+              "pulseTicks": 32,
+              "openTicks": 24,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "quiet body",
+              "role": "chord",
+              "baseHz": 123.470001220703125,
+              "volume": 0.090000003576279,
+              "pan": -0.219999998807907,
+              "pulseTicks": 36,
+              "openTicks": 26,
+              "phaseOffsetBars": 0.180000007152557,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "machine light",
+              "role": "arp",
+              "baseHz": 369.989990234375,
+              "volume": 0.050000000745058,
+              "pan": 0.400000005960464,
+              "pulseTicks": 8,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.389999985694885,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 72.0
+            },
+            {
+              "name": "fan halo",
+              "role": "air",
+              "baseHz": 2093.0,
+              "volume": 0.043999999761581,
+              "pan": -0.419999986886978,
+              "pulseTicks": 52,
+              "openTicks": 20,
+              "phaseOffsetBars": 0.610000014305115,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 36.0
+            },
+            {
+              "name": "sleep relay",
+              "role": "chord",
+              "baseHz": 164.80999755859375,
+              "volume": 0.054999999701977,
+              "pan": 0.300000011920929,
+              "pulseTicks": 44,
+              "openTicks": 22,
+              "phaseOffsetBars": 0.800000011920929,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "relay dot",
+              "role": "pulse",
+              "baseHz": 622.25,
+              "volume": 0.018999999389052,
+              "pan": -0.180000007152557,
+              "pulseTicks": 16,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.920000016689301,
+              "muted": false,
+              "solo": false,
+              "duration": {
+                "bars": 0,
+                "beats": 3
+              }
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        },
+        {
+          "name": "FADING ROOM",
+          "tempoBpm": 42.0,
+          "clockBeatsPerBar": 4,
+          "clockQuarterNotesPerBar": 4.0,
+          "duration": {
+            "bars": 3,
+            "beats": 0
+          },
+          "transitionProbabilityPercent": 12,
+          "lanes": [
+            {
+              "name": "room floor",
+              "role": "bass",
+              "baseHz": 36.709999084472656,
+              "volume": 0.100000001490116,
+              "pan": -0.03999999910593,
+              "pulseTicks": 48,
+              "openTicks": 36,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "fading wall",
+              "role": "chord",
+              "baseHz": 110.0,
+              "volume": 0.094999998807907,
+              "pan": 0.239999994635582,
+              "pulseTicks": 48,
+              "openTicks": 36,
+              "phaseOffsetBars": 0.239999994635582,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "ceiling shimmer",
+              "role": "air",
+              "baseHz": 2349.0,
+              "volume": 0.03999999910593,
+              "pan": 0.46000000834465,
+              "pulseTicks": 64,
+              "openTicks": 26,
+              "phaseOffsetBars": 0.430000007152557,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 31.5
+            },
+            {
+              "name": "small memory",
+              "role": "arp",
+              "baseHz": 329.6300048828125,
+              "volume": 0.048000000417233,
+              "pan": -0.340000003576279,
+              "pulseTicks": 8,
+              "openTicks": 2,
+              "phaseOffsetBars": 0.660000026226044,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 63.0
+            },
+            {
+              "name": "room bloom",
+              "role": "chord",
+              "baseHz": 146.830001831054688,
+              "volume": 0.054999999701977,
+              "pan": -0.479999989271164,
+              "pulseTicks": 56,
+              "openTicks": 42,
+              "phaseOffsetBars": 0.779999971389771,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "far click",
+              "role": "pulse",
+              "baseHz": 739.989990234375,
+              "volume": 0.01799999922514,
+              "pan": 0.100000001490116,
+              "pulseTicks": 16,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.939999997615814,
+              "muted": false,
+              "solo": false,
+              "duration": {
+                "bars": 0,
+                "beats": 2
+              }
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        },
+        {
+          "name": "LOW EXIT",
+          "tempoBpm": 40.0,
+          "clockBeatsPerBar": 4,
+          "clockQuarterNotesPerBar": 4.0,
+          "duration": {
+            "bars": 4,
+            "beats": 0
+          },
+          "lanes": [
+            {
+              "name": "exit root",
+              "role": "bass",
+              "baseHz": 30.870000839233398,
+              "volume": 0.119999997317791,
+              "pan": 0.0,
+              "pulseTicks": 64,
+              "openTicks": 52,
+              "phaseOffsetBars": 0.0,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "low exit",
+              "role": "chord",
+              "baseHz": 92.5,
+              "volume": 0.100000001490116,
+              "pan": -0.180000007152557,
+              "pulseTicks": 64,
+              "openTicks": 48,
+              "phaseOffsetBars": 0.200000002980232,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "exit shimmer",
+              "role": "air",
+              "baseHz": 1760.0,
+              "volume": 0.037999998778105,
+              "pan": 0.46000000834465,
+              "pulseTicks": 80,
+              "openTicks": 30,
+              "phaseOffsetBars": 0.419999986886978,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 30.0
+            },
+            {
+              "name": "last trace",
+              "role": "arp",
+              "baseHz": 277.17999267578125,
+              "volume": 0.045000001788139,
+              "pan": -0.319999992847443,
+              "pulseTicks": 16,
+              "openTicks": 2,
+              "phaseOffsetBars": 0.649999976158142,
+              "muted": false,
+              "solo": false,
+              "tempoBpm": 60.0
+            },
+            {
+              "name": "open dark",
+              "role": "chord",
+              "baseHz": 123.470001220703125,
+              "volume": 0.052000001072884,
+              "pan": 0.280000001192093,
+              "pulseTicks": 64,
+              "openTicks": 44,
+              "phaseOffsetBars": 0.819999992847443,
+              "muted": false,
+              "solo": false
+            },
+            {
+              "name": "final point",
+              "role": "pulse",
+              "baseHz": 880.0,
+              "volume": 0.016000000759959,
+              "pan": 0.0,
+              "pulseTicks": 32,
+              "openTicks": 1,
+              "phaseOffsetBars": 0.970000028610229,
+              "muted": false,
+              "solo": false,
+              "duration": {
+                "bars": 0,
+                "beats": 1
+              }
+            }
+          ],
+          "effectSlots": [
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            },
+            {
+              "active": false,
+              "pluginName": "",
+              "pluginFormatName": "",
+              "pluginFileOrIdentifier": "",
+              "pluginIdentifier": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    },
+    {
+      "tempoBpm": 88.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4
+    }
+  ],
+  "importedAudio": []
+}

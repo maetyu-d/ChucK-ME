@@ -1,0 +1,216 @@
+{
+  "format": "ChucK-ME Project",
+  "version": 4,
+  "stateCode": "// Original high-energy IDM / breakbeat system\n// Break edits with clearer melodic hooks and odd-bar tension\ntempo(176); timeSig(4, 4); playState(1, 8);\ntempo(188); timeSig(4, 4); playState(2, 8);\ntempo(164); timeSig(7, 8); playState(3, 8);\ntempo(196); timeSig(4, 4); playState(2, 4);\nstop();",
+  "masterVolume": 0.16,
+  "viewedState": 0,
+  "selectedTrack": 0,
+  "selectedLane": 0,
+  "arrangementPlusMode": false,
+  "arrangementHorizontalZoom": 1.0,
+  "arrangementVerticalZoom": 1.05,
+  "states": [
+    {
+      "tempoBpm": 176.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4,
+      "tracks": [
+        {
+          "name": "RUSHED AMEN",
+          "tempoBpm": 176.0,
+          "clockBeatsPerBar": 4,
+          "clockQuarterNotesPerBar": 4.0,
+          "transitionProbabilityPercent": 42,
+          "lanes": [
+            { "name": "kick fracture", "role": "drum", "baseHz": 48.0, "volume": 0.52, "pan": -0.08, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.0, "muted": false, "solo": false },
+            { "name": "snare glass", "role": "snare", "baseHz": 184.0, "volume": 0.40, "pan": 0.08, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.25, "muted": false, "solo": false },
+            { "name": "sub square", "role": "bass", "baseHz": 55.0, "volume": 0.34, "pan": -0.04, "pulseTicks": 2, "openTicks": 1, "phaseOffsetBars": 0.0, "muted": false, "solo": false },
+            { "name": "acid needle", "role": "arp", "baseHz": 440.0, "volume": 0.22, "pan": 0.22, "pulseTicks": 1, "openTicks": 1, "phaseOffsetBars": 0.125, "tempoBpm": 352.0, "muted": false, "solo": false },
+            { "name": "bell counter", "role": "arp", "baseHz": 329.63, "volume": 0.15, "pan": -0.32, "pulseTicks": 2, "openTicks": 1, "phaseOffsetBars": 0.0625, "tempoBpm": 352.0, "muted": false, "solo": false },
+            { "name": "minor answer", "role": "chord", "baseHz": 146.83, "volume": 0.13, "pan": 0.34, "pulseTicks": 8, "openTicks": 2, "phaseOffsetBars": 0.625, "duration": { "bars": 0, "beats": 2 }, "muted": false, "solo": false }
+          ]
+        },
+        {
+          "name": "DRILL FOLD",
+          "tempoBpm": 184.0,
+          "clockBeatsPerBar": 4,
+          "clockQuarterNotesPerBar": 4.0,
+          "transitionProbabilityPercent": 55,
+          "lanes": [
+            { "name": "break kick", "role": "drum", "baseHz": 50.0, "volume": 0.50, "pan": 0.0, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.0, "muted": false, "solo": false },
+            { "name": "foldback snare", "role": "snare", "baseHz": 210.0, "volume": 0.43, "pan": -0.16, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.375, "muted": false, "solo": false },
+            { "name": "rubber octave", "role": "bass", "baseHz": 61.74, "volume": 0.31, "pan": 0.02, "pulseTicks": 3, "openTicks": 1, "phaseOffsetBars": 0.0, "muted": false, "solo": false },
+            { "name": "metal zip", "role": "arp", "baseHz": 523.25, "volume": 0.22, "pan": 0.36, "pulseTicks": 1, "openTicks": 1, "phaseOffsetBars": 0.25, "tempoBpm": 368.0, "muted": false, "solo": false },
+            { "name": "glass answer", "role": "arp", "baseHz": 392.0, "volume": 0.14, "pan": -0.42, "pulseTicks": 3, "openTicks": 1, "phaseOffsetBars": 0.1875, "tempoBpm": 276.0, "muted": false, "solo": false },
+            { "name": "fifth stab", "role": "chord", "baseHz": 174.61, "volume": 0.12, "pan": 0.18, "pulseTicks": 4, "openTicks": 1, "phaseOffsetBars": 0.8125, "duration": { "bars": 0, "beats": 3 }, "muted": false, "solo": false }
+          ]
+        },
+        {
+          "name": "MICRO RAVE",
+          "tempoBpm": 192.0,
+          "clockBeatsPerBar": 4,
+          "clockQuarterNotesPerBar": 4.0,
+          "duration": { "bars": 0, "beats": 2 },
+          "lanes": [
+            { "name": "floor jab", "role": "drum", "baseHz": 54.0, "volume": 0.46, "pan": -0.05, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.0, "muted": false, "solo": false },
+            { "name": "hard rim", "role": "snare", "baseHz": 245.0, "volume": 0.36, "pan": 0.18, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.5, "muted": false, "solo": false },
+            { "name": "saw tooth", "role": "bass", "baseHz": 73.42, "volume": 0.28, "pan": -0.14, "pulseTicks": 1, "openTicks": 1, "phaseOffsetBars": 0.0, "muted": false, "solo": false },
+            { "name": "panic arp", "role": "arp", "baseHz": 659.25, "volume": 0.23, "pan": 0.42, "pulseTicks": 1, "openTicks": 1, "phaseOffsetBars": 0.0625, "tempoBpm": 384.0, "muted": false, "solo": false },
+            { "name": "rising hook", "role": "arp", "baseHz": 493.88, "volume": 0.15, "pan": -0.36, "pulseTicks": 1, "openTicks": 1, "phaseOffsetBars": 0.3125, "tempoBpm": 384.0, "muted": false, "solo": false },
+            { "name": "little chorus", "role": "chord", "baseHz": 196.0, "volume": 0.14, "pan": 0.0, "pulseTicks": 8, "openTicks": 2, "phaseOffsetBars": 0.5, "duration": { "bars": 0, "beats": 2 }, "muted": false, "solo": false }
+          ]
+        },
+        {
+          "name": "HALF SPEED MIRROR",
+          "tempoBpm": 88.0,
+          "clockBeatsPerBar": 4,
+          "clockQuarterNotesPerBar": 4.0,
+          "duration": { "bars": 2, "beats": 0 },
+          "lanes": [
+            { "name": "wide kick", "role": "drum", "baseHz": 44.0, "volume": 0.45, "pan": 0.0, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.0, "muted": false, "solo": false },
+            { "name": "backbeat tear", "role": "snare", "baseHz": 180.0, "volume": 0.34, "pan": -0.12, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.5, "muted": false, "solo": false },
+            { "name": "low mirror", "role": "bass", "baseHz": 41.2, "volume": 0.38, "pan": 0.0, "pulseTicks": 4, "openTicks": 2, "phaseOffsetBars": 0.0, "muted": false, "solo": false },
+            { "name": "slow shimmer", "role": "chord", "baseHz": 110.0, "volume": 0.16, "pan": 0.24, "pulseTicks": 8, "openTicks": 4, "phaseOffsetBars": 0.25, "muted": false, "solo": false },
+            { "name": "warm ninth", "role": "chord", "baseHz": 138.59, "volume": 0.12, "pan": -0.28, "pulseTicks": 6, "openTicks": 3, "phaseOffsetBars": 0.125, "tempoBpm": 176.0, "muted": false, "solo": false },
+            { "name": "edit return", "role": "arp", "baseHz": 329.63, "volume": 0.16, "pan": 0.32, "pulseTicks": 1, "openTicks": 1, "phaseOffsetBars": 0.75, "duration": { "bars": 1, "beats": 0 }, "muted": false, "solo": false }
+          ]
+        }
+      ]
+    },
+    {
+      "tempoBpm": 188.0,
+      "timeSigNumerator": 4,
+      "timeSigDenominator": 4,
+      "tracks": [
+        {
+          "name": "CAUSTIC LADDER",
+          "tempoBpm": 188.0,
+          "clockBeatsPerBar": 4,
+          "clockQuarterNotesPerBar": 4.0,
+          "transitionProbabilityPercent": 60,
+          "lanes": [
+            { "name": "ladder kick", "role": "drum", "baseHz": 49.5, "volume": 0.49, "pan": -0.04, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.0, "muted": false, "solo": false },
+            { "name": "acid snare", "role": "snare", "baseHz": 230.0, "volume": 0.42, "pan": 0.1, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.25, "muted": false, "solo": false },
+            { "name": "resin bass", "role": "bass", "baseHz": 58.27, "volume": 0.35, "pan": 0.0, "pulseTicks": 2, "openTicks": 1, "phaseOffsetBars": 0.0, "muted": false, "solo": false },
+            { "name": "ladder run", "role": "arp", "baseHz": 587.33, "volume": 0.23, "pan": 0.30, "pulseTicks": 1, "openTicks": 1, "phaseOffsetBars": 0.125, "tempoBpm": 376.0, "muted": false, "solo": false },
+            { "name": "bright hook", "role": "arp", "baseHz": 440.0, "volume": 0.15, "pan": -0.34, "pulseTicks": 2, "openTicks": 1, "phaseOffsetBars": 0.1875, "tempoBpm": 376.0, "muted": false, "solo": false },
+            { "name": "two beat chord", "role": "chord", "baseHz": 174.61, "volume": 0.12, "pan": 0.26, "pulseTicks": 8, "openTicks": 2, "phaseOffsetBars": 0.5625, "duration": { "bars": 0, "beats": 2 }, "muted": false, "solo": false }
+          ]
+        },
+        {
+          "name": "CYCLIC ERROR",
+          "tempoBpm": 196.0,
+          "clockBeatsPerBar": 4,
+          "clockQuarterNotesPerBar": 4.0,
+          "transitionProbabilityPercent": 35,
+          "lanes": [
+            { "name": "error break", "role": "drum", "baseHz": 47.0, "volume": 0.47, "pan": 0.06, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.0, "muted": false, "solo": false },
+            { "name": "ripped snare", "role": "snare", "baseHz": 260.0, "volume": 0.39, "pan": -0.18, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.375, "muted": false, "solo": false },
+            { "name": "octave teeth", "role": "bass", "baseHz": 82.41, "volume": 0.27, "pan": 0.0, "pulseTicks": 1, "openTicks": 1, "phaseOffsetBars": 0.0, "muted": false, "solo": false },
+            { "name": "laser beads", "role": "arp", "baseHz": 783.99, "volume": 0.21, "pan": 0.38, "pulseTicks": 1, "openTicks": 1, "phaseOffsetBars": 0.0625, "tempoBpm": 392.0, "muted": false, "solo": false },
+            { "name": "falling bell", "role": "arp", "baseHz": 587.33, "volume": 0.14, "pan": -0.38, "pulseTicks": 3, "openTicks": 1, "phaseOffsetBars": 0.3125, "tempoBpm": 294.0, "muted": false, "solo": false },
+            { "name": "grid chord", "role": "chord", "baseHz": 146.83, "volume": 0.13, "pan": 0.18, "pulseTicks": 4, "openTicks": 2, "phaseOffsetBars": 0.75, "duration": { "bars": 0, "beats": 3 }, "muted": false, "solo": false }
+          ]
+        },
+        {
+          "name": "TAPE REBOOT",
+          "tempoBpm": 170.0,
+          "clockBeatsPerBar": 4,
+          "clockQuarterNotesPerBar": 4.0,
+          "duration": { "bars": 1, "beats": 0 },
+          "lanes": [
+            { "name": "reboot kick", "role": "drum", "baseHz": 43.0, "volume": 0.44, "pan": 0.0, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.0, "muted": false, "solo": false },
+            { "name": "paper snare", "role": "snare", "baseHz": 190.0, "volume": 0.32, "pan": 0.14, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.5, "muted": false, "solo": false },
+            { "name": "detune belt", "role": "bass", "baseHz": 51.91, "volume": 0.31, "pan": -0.10, "pulseTicks": 3, "openTicks": 2, "phaseOffsetBars": 0.0, "muted": false, "solo": false },
+            { "name": "cassette arp", "role": "arp", "baseHz": 392.0, "volume": 0.19, "pan": 0.34, "pulseTicks": 1, "openTicks": 1, "phaseOffsetBars": 0.25, "tempoBpm": 340.0, "muted": false, "solo": false },
+            { "name": "tape melody", "role": "arp", "baseHz": 293.66, "volume": 0.14, "pan": -0.26, "pulseTicks": 5, "openTicks": 2, "phaseOffsetBars": 0.125, "muted": false, "solo": false },
+            { "name": "chorus stab", "role": "chord", "baseHz": 196.0, "volume": 0.12, "pan": 0.28, "pulseTicks": 8, "openTicks": 1, "phaseOffsetBars": 0.875, "duration": { "bars": 0, "beats": 1 }, "muted": false, "solo": false }
+          ]
+        },
+        {
+          "name": "DOUBLE IMAGE",
+          "tempoBpm": 188.0,
+          "clockBeatsPerBar": 4,
+          "clockQuarterNotesPerBar": 4.0,
+          "duration": { "bars": 2, "beats": 0 },
+          "lanes": [
+            { "name": "image kick", "role": "drum", "baseHz": 45.0, "volume": 0.45, "pan": -0.05, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.0, "muted": false, "solo": false },
+            { "name": "image snare", "role": "snare", "baseHz": 205.0, "volume": 0.34, "pan": 0.12, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.25, "muted": false, "solo": false },
+            { "name": "image sub", "role": "bass", "baseHz": 65.41, "volume": 0.29, "pan": 0.0, "pulseTicks": 2, "openTicks": 1, "phaseOffsetBars": 0.0, "muted": false, "solo": false },
+            { "name": "image arp", "role": "arp", "baseHz": 493.88, "volume": 0.20, "pan": 0.28, "pulseTicks": 1, "openTicks": 1, "phaseOffsetBars": 0.5, "tempoBpm": 376.0, "muted": false, "solo": false },
+            { "name": "image counter", "role": "arp", "baseHz": 369.99, "volume": 0.14, "pan": -0.30, "pulseTicks": 4, "openTicks": 1, "phaseOffsetBars": 0.0625, "tempoBpm": 376.0, "muted": false, "solo": false },
+            { "name": "image chord", "role": "chord", "baseHz": 164.81, "volume": 0.14, "pan": 0.16, "pulseTicks": 8, "openTicks": 3, "phaseOffsetBars": 0.375, "muted": false, "solo": false }
+          ]
+        }
+      ]
+    },
+    {
+      "tempoBpm": 164.0,
+      "timeSigNumerator": 7,
+      "timeSigDenominator": 8,
+      "tracks": [
+        {
+          "name": "SEVEN CUTS",
+          "tempoBpm": 164.0,
+          "clockBeatsPerBar": 7,
+          "clockQuarterNotesPerBar": 3.5,
+          "transitionProbabilityPercent": 48,
+          "lanes": [
+            { "name": "seven kick", "role": "drum", "baseHz": 46.0, "volume": 0.48, "pan": 0.0, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.0, "muted": false, "solo": false },
+            { "name": "seven snare", "role": "snare", "baseHz": 220.0, "volume": 0.38, "pan": 0.14, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.285, "muted": false, "solo": false },
+            { "name": "uneven sub", "role": "bass", "baseHz": 49.0, "volume": 0.33, "pan": -0.04, "pulseTicks": 3, "openTicks": 1, "phaseOffsetBars": 0.0, "muted": false, "solo": false },
+            { "name": "odd arp", "role": "arp", "baseHz": 554.37, "volume": 0.22, "pan": 0.32, "pulseTicks": 1, "openTicks": 1, "phaseOffsetBars": 0.142, "tempoBpm": 328.0, "muted": false, "solo": false },
+            { "name": "odd bell", "role": "arp", "baseHz": 415.30, "volume": 0.14, "pan": -0.34, "pulseTicks": 2, "openTicks": 1, "phaseOffsetBars": 0.428, "tempoBpm": 328.0, "muted": false, "solo": false },
+            { "name": "odd resolve", "role": "chord", "baseHz": 155.56, "volume": 0.12, "pan": 0.24, "pulseTicks": 7, "openTicks": 2, "phaseOffsetBars": 0.857, "duration": { "bars": 0, "beats": 1 }, "muted": false, "solo": false }
+          ]
+        },
+        {
+          "name": "FLOATING SPLICE",
+          "tempoBpm": 172.0,
+          "clockBeatsPerBar": 7,
+          "clockQuarterNotesPerBar": 3.5,
+          "transitionProbabilityPercent": 52,
+          "lanes": [
+            { "name": "splice kick", "role": "drum", "baseHz": 50.0, "volume": 0.43, "pan": -0.06, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.0, "muted": false, "solo": false },
+            { "name": "floating snare", "role": "snare", "baseHz": 235.0, "volume": 0.34, "pan": 0.18, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.428, "muted": false, "solo": false },
+            { "name": "phase bass", "role": "bass", "baseHz": 69.30, "volume": 0.28, "pan": 0.0, "pulseTicks": 2, "openTicks": 1, "phaseOffsetBars": 0.143, "muted": false, "solo": false },
+            { "name": "phase braid", "role": "arp", "baseHz": 740.0, "volume": 0.20, "pan": 0.38, "pulseTicks": 1, "openTicks": 1, "phaseOffsetBars": 0.285, "tempoBpm": 344.0, "muted": false, "solo": false },
+            { "name": "ceiling hook", "role": "arp", "baseHz": 554.37, "volume": 0.13, "pan": -0.38, "pulseTicks": 3, "openTicks": 1, "phaseOffsetBars": 0.571, "tempoBpm": 258.0, "muted": false, "solo": false },
+            { "name": "blur chord", "role": "chord", "baseHz": 185.0, "volume": 0.13, "pan": 0.10, "pulseTicks": 7, "openTicks": 3, "phaseOffsetBars": 0.0, "duration": { "bars": 1, "beats": 0 }, "muted": false, "solo": false }
+          ]
+        },
+        {
+          "name": "JUMP TABLE",
+          "tempoBpm": 196.0,
+          "clockBeatsPerBar": 7,
+          "clockQuarterNotesPerBar": 3.5,
+          "duration": { "bars": 1, "beats": 0 },
+          "lanes": [
+            { "name": "jump kick", "role": "drum", "baseHz": 54.0, "volume": 0.45, "pan": 0.05, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.0, "muted": false, "solo": false },
+            { "name": "jump snare", "role": "snare", "baseHz": 255.0, "volume": 0.36, "pan": -0.16, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.571, "muted": false, "solo": false },
+            { "name": "jump bass", "role": "bass", "baseHz": 77.78, "volume": 0.27, "pan": -0.04, "pulseTicks": 1, "openTicks": 1, "phaseOffsetBars": 0.0, "muted": false, "solo": false },
+            { "name": "jump arp", "role": "arp", "baseHz": 880.0, "volume": 0.20, "pan": 0.34, "pulseTicks": 1, "openTicks": 1, "phaseOffsetBars": 0.071, "tempoBpm": 392.0, "muted": false, "solo": false },
+            { "name": "jump counter", "role": "arp", "baseHz": 659.25, "volume": 0.13, "pan": -0.42, "pulseTicks": 2, "openTicks": 1, "phaseOffsetBars": 0.214, "tempoBpm": 392.0, "muted": false, "solo": false },
+            { "name": "jump chord", "role": "chord", "baseHz": 220.0, "volume": 0.12, "pan": 0.16, "pulseTicks": 4, "openTicks": 1, "phaseOffsetBars": 0.642, "duration": { "bars": 0, "beats": 3 }, "muted": false, "solo": false }
+          ]
+        },
+        {
+          "name": "AIRLOCK OUT",
+          "tempoBpm": 164.0,
+          "clockBeatsPerBar": 7,
+          "clockQuarterNotesPerBar": 3.5,
+          "duration": { "bars": 2, "beats": 0 },
+          "lanes": [
+            { "name": "airlock kick", "role": "drum", "baseHz": 42.0, "volume": 0.40, "pan": 0.0, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.0, "muted": false, "solo": false },
+            { "name": "airlock snare", "role": "snare", "baseHz": 170.0, "volume": 0.24, "pan": 0.12, "pulseTicks": 16, "openTicks": 1, "phaseOffsetBars": 0.5, "muted": false, "solo": false },
+            { "name": "held engine", "role": "bass", "baseHz": 36.71, "volume": 0.32, "pan": -0.04, "pulseTicks": 7, "openTicks": 3, "phaseOffsetBars": 0.0, "muted": false, "solo": false },
+            { "name": "thin radio", "role": "chord", "baseHz": 138.59, "volume": 0.12, "pan": -0.20, "pulseTicks": 7, "openTicks": 4, "phaseOffsetBars": 0.142, "muted": false, "solo": false },
+            { "name": "final spark", "role": "arp", "baseHz": 622.25, "volume": 0.17, "pan": 0.28, "pulseTicks": 1, "openTicks": 1, "phaseOffsetBars": 0.714, "duration": { "bars": 1, "beats": 0 }, "muted": false, "solo": false },
+            { "name": "soft debris", "role": "chord", "baseHz": 123.47, "volume": 0.13, "pan": 0.0, "pulseTicks": 7, "openTicks": 5, "phaseOffsetBars": 0.286, "muted": false, "solo": false }
+          ]
+        }
+      ]
+    }
+  ],
+  "importedAudio": []
+}
