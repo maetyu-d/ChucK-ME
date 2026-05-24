@@ -19,6 +19,7 @@
 #include <random>
 #include <regex>
 #include <string>
+#include <thread>
 
 namespace
 {
@@ -1538,6 +1539,7 @@ public:
         const auto wasPlaying = importedPlaying.load (std::memory_order_acquire);
         const juce::SpinLock::ScopedLockType lock (importedPlaybackLock);
         importedPlaybackSet = std::move (playbackSet);
+        pendingImportedSeekSamples.store (-1, std::memory_order_release);
         importedPositionSamples.store (restartPosition ? 0 : previousPosition, std::memory_order_release);
         const auto hasImportedClips = importedPlaybackSet != nullptr && ! importedPlaybackSet->clips.empty();
 
@@ -1561,6 +1563,7 @@ public:
     void startImportedAudioPlayback (float masterGain)
     {
         lastMasterGain.store (masterGain, std::memory_order_relaxed);
+        pendingImportedSeekSamples.store (-1, std::memory_order_release);
         importedPositionSamples.store (0, std::memory_order_release);
         importedPlaying.store (true, std::memory_order_release);
 
@@ -1579,6 +1582,7 @@ public:
     void stopImportedAudioPlayback()
     {
         importedPlaying.store (false, std::memory_order_release);
+        pendingImportedSeekSamples.store (-1, std::memory_order_release);
         importedPositionSamples.store (0, std::memory_order_release);
     }
 
@@ -1593,7 +1597,9 @@ public:
         if (sampleRate <= 0.0)
             return 0.0;
 
-        return static_cast<double> (importedPositionSamples.load (std::memory_order_acquire)) / sampleRate;
+        const auto pendingSeek = pendingImportedSeekSamples.load (std::memory_order_acquire);
+        const auto position = pendingSeek >= 0 ? pendingSeek : importedPositionSamples.load (std::memory_order_acquire);
+        return static_cast<double> (position) / sampleRate;
     }
 
     void setImportedPlaybackPositionSeconds (double seconds)
@@ -1603,7 +1609,7 @@ public:
             return;
 
         const auto sample = static_cast<int64_t> (std::round (juce::jmax (0.0, seconds) * sampleRate));
-        importedPositionSamples.store (juce::jmax<int64_t> (0, sample), std::memory_order_release);
+        pendingImportedSeekSamples.store (juce::jmax<int64_t> (0, sample), std::memory_order_release);
     }
 
     void useChucKPlayback()
@@ -1615,6 +1621,7 @@ public:
     void clearImportedAudioPlayback()
     {
         importedPlaying.store (false, std::memory_order_release);
+        pendingImportedSeekSamples.store (-1, std::memory_order_release);
         importedPositionSamples.store (0, std::memory_order_release);
         {
             const juce::SpinLock::ScopedLockType lock (importedPlaybackLock);
@@ -1754,10 +1761,14 @@ private:
         if (playbackSet == nullptr || playbackSet->clips.empty() || deviceSampleRate <= 0.0)
             return;
 
-        const auto startSample = importedPositionSamples.load (std::memory_order_acquire);
+        const auto requestedSeekSample = pendingImportedSeekSamples.exchange (-1, std::memory_order_acq_rel);
+        const auto startSample = requestedSeekSample >= 0
+            ? requestedSeekSample
+            : importedPositionSamples.load (std::memory_order_acquire);
         if (playbackSet->lengthSeconds > 0.0
             && static_cast<double> (startSample) / deviceSampleRate >= playbackSet->lengthSeconds)
         {
+            importedPositionSamples.store (startSample, std::memory_order_release);
             importedPlaying.store (false, std::memory_order_release);
             return;
         }
@@ -1893,9 +1904,12 @@ private:
         }
 
         const auto nextSample = startSample + numSamples;
-        importedPositionSamples.store (nextSample, std::memory_order_release);
+        const auto hasPendingSeek = pendingImportedSeekSamples.load (std::memory_order_acquire) >= 0;
+        if (! hasPendingSeek)
+            importedPositionSamples.store (nextSample, std::memory_order_release);
 
-        if (playbackSet->lengthSeconds > 0.0
+        if (! hasPendingSeek
+            && playbackSet->lengthSeconds > 0.0
             && static_cast<double> (nextSample) / deviceSampleRate >= playbackSet->lengthSeconds)
             importedPlaying.store (false, std::memory_order_release);
     }
@@ -1927,6 +1941,7 @@ private:
         }
 
         activeSlot.store (-1, std::memory_order_release);
+        pendingImportedSeekSamples.store (-1, std::memory_order_release);
         importedPositionSamples.store (0, std::memory_order_release);
         ready.store (prepared, std::memory_order_release);
         return prepared;
@@ -2106,6 +2121,7 @@ private:
     std::atomic<int> playbackMode { PlaybackMode::chuckEngine };
     std::atomic<bool> importedPlaying { false };
     std::atomic<int64_t> importedPositionSamples { 0 };
+    std::atomic<int64_t> pendingImportedSeekSamples { -1 };
     std::atomic<int> activeSlot { -1 };
     std::atomic<int> preparedBlockSize { 0 };
     std::atomic<double> lastSampleRate { 0.0 };
@@ -5690,6 +5706,10 @@ public:
 
     ~MainComponent() override
     {
+        pluginScanAbortRequested.store (true, std::memory_order_release);
+        if (pluginScanThread.joinable())
+            pluginScanThread.join();
+
         audioDeviceManager.removeAudioCallback (&audioCallback);
         setLookAndFeel (nullptr);
     }
@@ -9813,40 +9833,58 @@ private:
         static_cast<void> (rememberedPluginScanFile().replaceWithText (xml->toString(), false, false, "\n"));
     }
 
+    struct PluginScanResult
+    {
+        juce::KnownPluginList scannedList;
+        juce::StringArray failedFiles;
+    };
+
     void scanOrRescanEffectPlugins()
     {
         if (pluginScanInProgress)
             return;
 
+        if (pluginScanThread.joinable())
+            pluginScanThread.join();
+
         if (running)
             stopMainTransport();
 
+        pluginScanAbortRequested.store (false, std::memory_order_release);
         pluginScanInProgress = true;
         menuItemsChanged();
         statusLabel.setText ("scanning AU/VST3 plugins...", juce::dontSendNotification);
 
-        juce::MessageManager::callAsync ([this]
+        const juce::Component::SafePointer<MainComponent> safeThis (this);
+        auto* abortRequested = &pluginScanAbortRequested;
+        pluginScanThread = std::thread ([safeThis, abortRequested]
         {
-            performEffectPluginScan();
+            performEffectPluginScan (safeThis, abortRequested);
         });
     }
 
-    void performEffectPluginScan()
+    static void performEffectPluginScan (juce::Component::SafePointer<MainComponent> safeThis,
+                                         const std::atomic<bool>* abortRequested)
     {
         auto directory = pluginScanDirectory();
         static_cast<void> (directory.createDirectory());
         const auto deadMansPedal = pluginScanDeadMansPedalFile();
         static_cast<void> (deadMansPedal.deleteFile());
 
-        juce::KnownPluginList scannedList;
-        juce::StringArray failedFiles;
+        juce::AudioPluginFormatManager scanFormatManager;
+        juce::addDefaultFormatsToManager (scanFormatManager);
 
-        for (auto* format : pluginFormatManager.getFormats())
+        auto result = std::make_shared<PluginScanResult>();
+
+        for (auto* format : scanFormatManager.getFormats())
         {
             if (format == nullptr || ! isScannableEffectFormat (*format))
                 continue;
 
-            juce::PluginDirectoryScanner scanner (scannedList,
+            if (abortRequested != nullptr && abortRequested->load (std::memory_order_acquire))
+                break;
+
+            juce::PluginDirectoryScanner scanner (result->scannedList,
                                                   *format,
                                                   format->getDefaultLocationsToSearch(),
                                                   true,
@@ -9855,13 +9893,39 @@ private:
 
             juce::String currentPlugin;
             while (scanner.scanNextFile (false, currentPlugin))
-                statusLabel.setText ("scanning " + currentPlugin, juce::dontSendNotification);
+            {
+                if (abortRequested != nullptr && abortRequested->load (std::memory_order_acquire))
+                    break;
 
-            failedFiles.addArray (scanner.getFailedFiles());
+                const juce::String pluginName (currentPlugin);
+                juce::MessageManager::callAsync ([safeThis, pluginName]
+                {
+                    if (safeThis != nullptr && safeThis->pluginScanInProgress)
+                        safeThis->statusLabel.setText ("scanning " + pluginName, juce::dontSendNotification);
+                });
+            }
+
+            result->failedFiles.addArray (scanner.getFailedFiles());
+        }
+
+        juce::MessageManager::callAsync ([safeThis, result]
+        {
+            if (safeThis != nullptr)
+                safeThis->finishEffectPluginScan (result);
+        });
+    }
+
+    void finishEffectPluginScan (const std::shared_ptr<PluginScanResult>& result)
+    {
+        if (result == nullptr)
+        {
+            pluginScanInProgress = false;
+            menuItemsChanged();
+            return;
         }
 
         knownPluginList.clear();
-        for (const auto& description : scannedList.getTypes())
+        for (const auto& description : result->scannedList.getTypes())
             if (isUsableScannedEffect (description))
                 knownPluginList.addType (description);
 
@@ -9871,8 +9935,8 @@ private:
         const auto count = getScannedEffectPlugins().size();
         statusLabel.setText ("scanned " + juce::String (count) + " AU/VST3 effect"
                                 + (count == 1 ? juce::String() : "s")
-                                + (failedFiles.isEmpty() ? juce::String()
-                                                         : " (" + juce::String (failedFiles.size()) + " failed)"),
+                                + (result->failedFiles.isEmpty() ? juce::String()
+                                                                 : " (" + juce::String (result->failedFiles.size()) + " failed)"),
                              juce::dontSendNotification);
         pluginScanInProgress = false;
         menuItemsChanged();
@@ -11587,6 +11651,8 @@ private:
     juce::AudioDeviceManager audioDeviceManager;
     juce::AudioPluginFormatManager pluginFormatManager;
     juce::KnownPluginList knownPluginList;
+    std::thread pluginScanThread;
+    std::atomic<bool> pluginScanAbortRequested { false };
     std::unique_ptr<juce::FileChooser> renderChooser;
     std::unique_ptr<juce::FileChooser> projectChooser;
     juce::File currentProjectFile;
@@ -11750,7 +11816,7 @@ class WfApplication final : public juce::JUCEApplication
 {
 public:
     const juce::String getApplicationName() override { return "ChucK-ME"; }
-    const juce::String getApplicationVersion() override { return "0.1.9"; }
+    const juce::String getApplicationVersion() override { return "0.1.10"; }
     bool moreThanOneInstanceAllowed() override { return true; }
 
     void initialise (const juce::String&) override
