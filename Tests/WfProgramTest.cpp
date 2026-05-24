@@ -28,6 +28,19 @@ double bufferEnergy (const juce::AudioBuffer<float>& buffer)
     return energy;
 }
 
+bool bufferIsSilent (const juce::AudioBuffer<float>& buffer)
+{
+    for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+        {
+            const auto value = buffer.getSample (channel, sample);
+            if (! std::isfinite (value) || value != 0.0f)
+                return false;
+        }
+
+    return true;
+}
+
 double renderEnergy (EmbeddedChucKEngine& engine,
                      juce::AudioBuffer<float>& input,
                      juce::AudioBuffer<float>& output,
@@ -462,6 +475,82 @@ int main()
     {
         std::cerr << "empty-lane render leaked or failed: " << emptyLaneEnergy << '\n';
         return 21;
+    }
+
+    {
+        const std::array<double, 4> sampleRates { 44100.0, 48000.0, 88200.0, 96000.0 };
+        const std::array<int, 6> blockSizes { 64, 127, 256, 511, 1024, 2048 };
+        auto accumulatedMatrixEnergy = 0.0;
+
+        for (auto sampleRate : sampleRates)
+        {
+            for (auto matrixBlockSize : blockSizes)
+            {
+                EmbeddedChucKEngine matrixEngine;
+                if (! matrixEngine.prepare (sampleRate, matrixBlockSize, 0, 2))
+                {
+                    std::cerr << "matrix prepare failed: " << sampleRate << " / " << matrixBlockSize
+                              << " / " << matrixEngine.getLastError() << '\n';
+                    return 22;
+                }
+
+                auto matrixState = states.front();
+                matrixState.tempoBpm = 97.0;
+                if (! matrixEngine.loadProgram (Wf::buildStateProgram (matrixState), bindings))
+                {
+                    std::cerr << "matrix program failed: " << sampleRate << " / " << matrixBlockSize
+                              << " / " << matrixEngine.getLastError() << '\n';
+                    return 23;
+                }
+
+                static_cast<void> (matrixEngine.setParameterValue ("hostMasterGain", 0.22f));
+                static_cast<void> (matrixEngine.setParameterValue ("hostTempoHz", static_cast<float> (matrixState.tempoBpm / 60.0)));
+                static_cast<void> (matrixEngine.setParameterValue ("hostIntensity", 0.62f));
+                static_cast<void> (matrixEngine.setParameterValue ("hostBrightness", 0.56f));
+                static_cast<void> (matrixEngine.setParameterValue ("hostOrbitPhase", 0.33f));
+
+                juce::AudioBuffer<float> matrixInput (0, matrixBlockSize);
+                juce::AudioBuffer<float> matrixOutput (2, matrixBlockSize);
+                const auto blocksToRender = juce::jmax (8,
+                                                        static_cast<int> (std::ceil ((sampleRate * 0.30)
+                                                                                     / static_cast<double> (matrixBlockSize))));
+                const auto matrixEnergy = renderEnergy (matrixEngine, matrixInput, matrixOutput, blocksToRender);
+                const auto renderedFrames = static_cast<double> (blocksToRender * matrixBlockSize);
+                const auto energyDensity = matrixEnergy / juce::jmax (1.0, renderedFrames * 2.0);
+
+                if (matrixEnergy <= 0.0
+                    || energyDensity <= 0.0000001
+                    || energyDensity > 0.25
+                    || matrixEngine.getRenderExceptionCount() != 0
+                    || matrixEngine.getInternalErrorCount() != 0
+                    || matrixEngine.getSilentProcessCount() != 0)
+                {
+                    std::cerr << "sample-rate/block render matrix failed: " << sampleRate
+                              << " / " << matrixBlockSize
+                              << " energy=" << matrixEnergy
+                              << " density=" << energyDensity << '\n';
+                    return 24;
+                }
+
+                accumulatedMatrixEnergy += matrixEnergy;
+                matrixEngine.release();
+                matrixOutput.clear();
+                matrixOutput.setSample (0, 0, 1.0f);
+                matrixEngine.process (matrixInput, matrixOutput);
+
+                if (! bufferIsSilent (matrixOutput))
+                {
+                    std::cerr << "released matrix engine emitted audio\n";
+                    return 25;
+                }
+            }
+        }
+
+        if (accumulatedMatrixEnergy <= 0.0)
+        {
+            std::cerr << "sample-rate/block matrix rendered silence\n";
+            return 26;
+        }
     }
 
     return 0;

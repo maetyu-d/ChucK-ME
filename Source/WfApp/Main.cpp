@@ -3972,8 +3972,8 @@ public:
 
     void setZoom (double horizontalZoomToUse, double verticalZoomToUse)
     {
-        horizontalZoom = juce::jlimit (0.35, 3.25, horizontalZoomToUse);
-        verticalZoom = juce::jlimit (0.55, 3.0, verticalZoomToUse);
+        horizontalZoom = juce::jlimit (0.35, 6.50, horizontalZoomToUse);
+        verticalZoom = juce::jlimit (0.55, 6.0, verticalZoomToUse);
         repaint();
     }
 
@@ -4251,25 +4251,95 @@ private:
 
     void drawRuler (juce::Graphics& g, int timelineX, int timelineRight)
     {
-        const auto visibleBars = static_cast<int> (std::ceil (totalBars));
         const auto barWidth = getBarWidth();
         const auto labelEveryBars = juce::jmax (1, static_cast<int> (std::ceil (34.0 / juce::jmax (1.0, barWidth))));
         g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
 
+        double stepStartBars = 0.0;
+        for (int stepIndex = 0; stepIndex < static_cast<int> (steps.size()); ++stepIndex)
+        {
+            const auto& step = steps[static_cast<size_t> (stepIndex)];
+            const auto stepBars = juce::jmax (0.0, step.bars);
+            if (stepBars <= 0.0)
+                continue;
+
+            const auto accent = stateAccentForIndex (step.stateIndex);
+            const auto stepX = static_cast<float> (static_cast<double> (timelineX) + stepStartBars * barWidth);
+            const auto stepRight = static_cast<float> (static_cast<double> (timelineX) + (stepStartBars + stepBars) * barWidth);
+            g.setColour (accent.withAlpha (stepIndex % 2 == 0 ? 0.035f : 0.055f));
+            g.fillRect (juce::Rectangle<float> (stepX, 0.0f, juce::jmax (0.0f, stepRight - stepX), static_cast<float> (getHeight())));
+
+            const auto beatsPerBar = juce::jmax (1, static_cast<int> (std::round (stepQuarterNotesPerBar (step))));
+            const auto firstBar = static_cast<int> (std::floor (stepStartBars));
+            const auto lastBar = static_cast<int> (std::ceil (stepStartBars + stepBars));
+
+            for (int bar = firstBar; bar <= lastBar; ++bar)
+            {
+                const auto localBar = static_cast<double> (bar) - stepStartBars;
+                if (localBar < -0.0001 || localBar > stepBars + 0.0001)
+                    continue;
+
+                const auto x = static_cast<float> (static_cast<double> (timelineX) + static_cast<double> (bar) * barWidth);
+                if (x > static_cast<float> (timelineRight))
+                    break;
+
+                g.setColour (mutedInk().withAlpha (bar == firstBar ? 0.30f : 0.18f));
+                g.drawLine (x, 0.0f, x, static_cast<float> (getHeight()), bar == firstBar ? 1.2f : 0.8f);
+
+                if (bar > 0 && bar % labelEveryBars == 0)
+                {
+                    g.setColour (mutedInk().withAlpha (0.82f));
+                    g.drawFittedText (juce::String (bar),
+                                      juce::Rectangle<int> (static_cast<int> (x) + 5, 8, 44, 16),
+                                      juce::Justification::centredLeft,
+                                      1);
+                }
+
+                if (bar >= lastBar)
+                    continue;
+
+                for (int beat = 1; beat < beatsPerBar; ++beat)
+                {
+                    const auto beatBar = static_cast<double> (bar) + static_cast<double> (beat) / static_cast<double> (beatsPerBar);
+                    if (beatBar < stepStartBars || beatBar > stepStartBars + stepBars)
+                        continue;
+
+                    const auto beatX = static_cast<float> (static_cast<double> (timelineX) + beatBar * barWidth);
+                    if (beatX > static_cast<float> (timelineRight))
+                        break;
+
+                    const auto strongBeat = beatsPerBar >= 4 && beat == beatsPerBar / 2;
+                    g.setColour (mutedInk().withAlpha (strongBeat ? 0.10f : 0.055f));
+                    g.drawLine (beatX,
+                                static_cast<float> (headerHeight),
+                                beatX,
+                                static_cast<float> (getHeight()),
+                                strongBeat ? 0.8f : 0.55f);
+                }
+            }
+
+            stepStartBars += stepBars;
+        }
+
+        const auto visibleBars = static_cast<int> (std::ceil (totalBars));
         for (int bar = 0; bar <= visibleBars; ++bar)
         {
             const auto x = static_cast<float> (static_cast<double> (timelineX) + static_cast<double> (bar) * barWidth);
             if (x > static_cast<float> (timelineRight))
                 break;
 
-            g.setColour (mutedInk().withAlpha (bar == 0 ? 0.30f : 0.15f));
-            g.drawLine (x, 0.0f, x, static_cast<float> (getHeight()), bar == 0 ? 1.2f : 0.8f);
+            g.setColour (mutedInk().withAlpha (bar == 0 ? 0.36f : 0.16f));
+            g.drawLine (x, 0.0f, x, static_cast<float> (headerHeight), bar == 0 ? 1.4f : 0.9f);
+        }
 
-            if (bar > 0 && bar % labelEveryBars == 0)
-            {
-                g.setColour (mutedInk().withAlpha (0.82f));
-                g.drawFittedText (juce::String (bar), juce::Rectangle<int> (static_cast<int> (x) + 5, 8, 44, 16), juce::Justification::centredLeft, 1);
-            }
+        if (arrangementPlus)
+        {
+            g.setColour (mutedInk().withAlpha (0.58f));
+            g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
+            g.drawFittedText ("beat grid - hold Cmd for free trim",
+                              juce::Rectangle<int> (timelineX + 8, headerHeight - 18, 210, 14),
+                              juce::Justification::centredLeft,
+                              1);
         }
     }
 
@@ -4687,7 +4757,7 @@ private:
                                          sourceStartSeconds,
                                          lengthSeconds);
 
-        setDragReadout ("start " + formatTimelineSeconds (startSeconds)
+        setDragReadout ("start " + formatBarBeat (startSeconds)
                          + "  length " + formatTimelineSeconds (lengthSeconds),
                          position);
     }
@@ -4715,7 +4785,9 @@ private:
         editPlayheadSeconds = juce::jlimit (0.0, totalDurationSeconds(), timeForPosition (position.x, snapToGrid));
         if (onArrangementPlayheadChanged != nullptr)
             onArrangementPlayheadChanged (editPlayheadSeconds);
-        setDragReadout ("playhead " + formatTimelineSeconds (editPlayheadSeconds), position);
+        setDragReadout ("playhead " + formatBarBeat (editPlayheadSeconds)
+                         + "  " + formatTimelineSeconds (editPlayheadSeconds),
+                         position);
         repaint();
     }
 
@@ -4877,6 +4949,12 @@ private:
         g.setColour (laneColour.withAlpha (selected ? 0.96f : 0.82f));
         g.drawRoundedRectangle (laneArea, 2.0f, selected ? 1.65f : 1.1f);
 
+        if (selected)
+        {
+            g.setColour (laneColour.withAlpha (0.13f));
+            g.fillRoundedRectangle (laneArea.reduced (1.0f), 2.0f);
+        }
+
         auto waveArea = laneArea.reduced (5.0f, 4.0f);
         const auto centreY = waveArea.getCentreY();
         g.setColour (mutedInk().withAlpha (0.18f));
@@ -4921,9 +4999,19 @@ private:
         {
             g.setColour (cyan().withAlpha (0.88f));
             g.fillRoundedRectangle (laneArea.getCentreX() - 3.0f, gainY - 3.0f, 6.0f, 6.0f, 3.0f);
-            g.setColour (ink().withAlpha (0.86f));
-            g.fillRoundedRectangle (laneArea.getX() - 1.0f, laneArea.getY() + 3.0f, 3.0f, laneArea.getHeight() - 6.0f, 1.5f);
-            g.fillRoundedRectangle (laneArea.getRight() - 2.0f, laneArea.getY() + 3.0f, 3.0f, laneArea.getHeight() - 6.0f, 1.5f);
+            g.setColour (ink().withAlpha (0.92f));
+            g.fillRoundedRectangle (laneArea.getX() - 1.0f, laneArea.getY() + 2.0f, 4.0f, laneArea.getHeight() - 4.0f, 1.5f);
+            g.fillRoundedRectangle (laneArea.getRight() - 3.0f, laneArea.getY() + 2.0f, 4.0f, laneArea.getHeight() - 4.0f, 1.5f);
+
+            auto info = juce::String ("bar ") + formatBarBeat (region.startSeconds)
+                      + "  len " + formatTimelineSeconds (region.lengthSeconds)
+                      + "  gain " + juce::String (region.gain, 2);
+            auto infoArea = laneArea.withTrimmedLeft (juce::jmin (laneArea.getWidth() * 0.34f, 170.0f)).reduced (4.0f, 2.0f);
+            g.setColour (juce::Colour (0xff05080d).withAlpha (0.66f));
+            g.fillRoundedRectangle (infoArea, 2.0f);
+            g.setColour (ink().withAlpha (0.82f));
+            g.setFont (juce::FontOptions (8.8f, juce::Font::bold));
+            g.drawFittedText (info, infoArea.toNearestInt().reduced (5, 0), juce::Justification::centredLeft, 1);
         }
 
         auto labelArea = laneArea.withWidth (juce::jmin (laneArea.getWidth(), 320.0f)).reduced (4.0f, 2.0f);
@@ -5013,11 +5101,30 @@ private:
                                   1);
         }
 
-        g.setColour ((selected ? ink() : mutedInk()).withAlpha (selected ? 0.62f : 0.26f));
-        g.fillRoundedRectangle (laneArea.getX() + 2.0f, laneArea.getY() + 2.0f, 6.0f, 6.0f, 3.0f);
-        g.fillRoundedRectangle (laneArea.getRight() - 8.0f, laneArea.getY() + 2.0f, 6.0f, 6.0f, 3.0f);
-        g.drawLine (laneArea.getX(), laneArea.getY() + 3.0f, laneArea.getX(), laneArea.getBottom() - 3.0f, selected ? 1.1f : 0.7f);
-        g.drawLine (laneArea.getRight(), laneArea.getY() + 3.0f, laneArea.getRight(), laneArea.getBottom() - 3.0f, selected ? 1.1f : 0.7f);
+        const auto handleColour = selected ? ink() : mutedInk();
+        g.setColour (handleColour.withAlpha (selected ? 0.82f : 0.28f));
+        g.fillRoundedRectangle (laneArea.getX() + 2.0f, laneArea.getY() + 2.0f, 7.0f, 7.0f, 3.5f);
+        g.fillRoundedRectangle (laneArea.getRight() - 9.0f, laneArea.getY() + 2.0f, 7.0f, 7.0f, 3.5f);
+        g.drawLine (laneArea.getX(), laneArea.getY() + 2.0f, laneArea.getX(), laneArea.getBottom() - 2.0f, selected ? 1.3f : 0.75f);
+        g.drawLine (laneArea.getRight(), laneArea.getY() + 2.0f, laneArea.getRight(), laneArea.getBottom() - 2.0f, selected ? 1.3f : 0.75f);
+
+        if (selected)
+        {
+            g.setColour (laneColour.withAlpha (0.90f));
+            juce::Path leftHandle;
+            leftHandle.startNewSubPath (laneArea.getX() + 2.0f, laneArea.getY() + 2.0f);
+            leftHandle.lineTo (laneArea.getX() + 16.0f, laneArea.getY() + 2.0f);
+            leftHandle.lineTo (laneArea.getX() + 2.0f, laneArea.getY() + 16.0f);
+            leftHandle.closeSubPath();
+            g.fillPath (leftHandle);
+
+            juce::Path rightHandle;
+            rightHandle.startNewSubPath (laneArea.getRight() - 2.0f, laneArea.getY() + 2.0f);
+            rightHandle.lineTo (laneArea.getRight() - 16.0f, laneArea.getY() + 2.0f);
+            rightHandle.lineTo (laneArea.getRight() - 2.0f, laneArea.getY() + 16.0f);
+            rightHandle.closeSubPath();
+            g.fillPath (rightHandle);
+        }
     }
 
     double secondsAtX (float x) const
@@ -5071,6 +5178,32 @@ private:
         return juce::String (juce::jmax (0.0, seconds), 2) + "s";
     }
 
+    juce::String formatBarBeat (double seconds) const
+    {
+        const auto barPosition = juce::jmax (0.0, barAtSeconds (seconds));
+        const auto absoluteBar = static_cast<int> (std::floor (barPosition));
+        auto beatsPerBar = 4;
+        auto stepStartBars = 0.0;
+
+        for (const auto& step : steps)
+        {
+            const auto stepBars = juce::jmax (0.0, step.bars);
+            if (barPosition <= stepStartBars + stepBars + 0.0001)
+            {
+                beatsPerBar = juce::jmax (1, static_cast<int> (std::round (stepQuarterNotesPerBar (step))));
+                break;
+            }
+
+            stepStartBars += stepBars;
+        }
+
+        const auto beat = juce::jlimit (1,
+                                        beatsPerBar,
+                                        1 + static_cast<int> (std::floor ((barPosition - static_cast<double> (absoluteBar))
+                                                                          * static_cast<double> (beatsPerBar))));
+        return juce::String (absoluteBar + 1) + "." + juce::String (beat);
+    }
+
     void setDragReadout (const juce::String& text, juce::Point<float> position)
     {
         dragReadoutText = text;
@@ -5085,7 +5218,7 @@ private:
 
         auto readout = juce::Rectangle<float> (dragReadoutPosition.x,
                                                dragReadoutPosition.y,
-                                               146.0f,
+                                               190.0f,
                                                24.0f);
         readout = readout.getIntersection (getLocalBounds().toFloat().reduced (4.0f));
         if (readout.isEmpty())
@@ -5862,8 +5995,8 @@ public:
         arrangementHorizontalZoomLabel.setText ("H zoom", juce::dontSendNotification);
         styleLabel (arrangementHorizontalZoomLabel, 0.72f);
         addAndMakeVisible (arrangementHorizontalZoomLabel);
-        setupSlider (arrangementHorizontalZoomSlider, "Arrangement horizontal zoom", 0.35, 3.25, arrangementHorizontalZoom, cyan());
-        arrangementHorizontalZoomSlider.setRange (0.35, 3.25, 0.01);
+        setupSlider (arrangementHorizontalZoomSlider, "Arrangement horizontal zoom", 0.35, 6.50, arrangementHorizontalZoom, cyan());
+        arrangementHorizontalZoomSlider.setRange (0.35, 6.50, 0.01);
         arrangementHorizontalZoomSlider.setNumDecimalPlacesToDisplay (2);
         arrangementHorizontalZoomSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 44, 22);
         arrangementHorizontalZoomSlider.onDragStart = [this] { pushUndoSnapshot ("change arrangement zoom"); };
@@ -5872,8 +6005,8 @@ public:
         arrangementVerticalZoomLabel.setText ("V zoom", juce::dontSendNotification);
         styleLabel (arrangementVerticalZoomLabel, 0.72f);
         addAndMakeVisible (arrangementVerticalZoomLabel);
-        setupSlider (arrangementVerticalZoomSlider, "Arrangement vertical zoom", 0.55, 3.0, arrangementVerticalZoom, blue());
-        arrangementVerticalZoomSlider.setRange (0.55, 3.0, 0.01);
+        setupSlider (arrangementVerticalZoomSlider, "Arrangement vertical zoom", 0.55, 6.0, arrangementVerticalZoom, blue());
+        arrangementVerticalZoomSlider.setRange (0.55, 6.0, 0.01);
         arrangementVerticalZoomSlider.setNumDecimalPlacesToDisplay (2);
         arrangementVerticalZoomSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 44, 22);
         arrangementVerticalZoomSlider.onDragStart = [this] { pushUndoSnapshot ("change arrangement zoom"); };
@@ -6341,7 +6474,7 @@ public:
             if (arrangementPlusMode)
             {
                 auto inspector = area.removeFromTop (62).reduced (8, 4);
-                regionInspectorLabel.setBounds (inspector.removeFromLeft (86).reduced (0, 12));
+                regionInspectorLabel.setBounds (inspector.removeFromLeft (184).reduced (0, 12));
                 inspector.removeFromLeft (10);
 
                 auto placeRegionField = [&inspector] (juce::Label& label, juce::Component& field, int width)
@@ -7421,8 +7554,8 @@ private:
             globalScriptEditor.setText (stringFromJson (*object, "stateCode", defaultGlobalScriptText()), juce::dontSendNotification);
             globalScriptEditor.refreshBaseTextColour();
             gainSlider.setValue (juce::jlimit (0.0, 0.8, doubleFromJson (*object, "masterVolume", 0.18)), juce::dontSendNotification);
-            arrangementHorizontalZoom = juce::jlimit (0.35, 3.25, doubleFromJson (*object, "arrangementHorizontalZoom", 1.0));
-            arrangementVerticalZoom = juce::jlimit (0.55, 3.0, doubleFromJson (*object, "arrangementVerticalZoom", 1.0));
+            arrangementHorizontalZoom = juce::jlimit (0.35, 6.50, doubleFromJson (*object, "arrangementHorizontalZoom", 1.0));
+            arrangementVerticalZoom = juce::jlimit (0.55, 6.0, doubleFromJson (*object, "arrangementVerticalZoom", 1.0));
             arrangementHorizontalZoomSlider.setValue (arrangementHorizontalZoom, juce::dontSendNotification);
             arrangementVerticalZoomSlider.setValue (arrangementVerticalZoom, juce::dontSendNotification);
             laneCodeDirty = false;
@@ -10070,9 +10203,10 @@ private:
         auto* region = hasRegion ? selectedInspectorRegion() : nullptr;
 
         regionInspectorLabel.setText (hasRegion && clip != nullptr
-                                        ? "region S" + juce::String (clip->stateIndex + 1)
+                                        ? "S" + juce::String (clip->stateIndex + 1)
                                              + " T" + juce::String (clip->trackIndex + 1)
                                              + " L" + juce::String (clip->laneIndex + 1)
+                                             + "  " + clip->file.getFileNameWithoutExtension()
                                         : "region",
                                       juce::dontSendNotification);
 
@@ -12394,7 +12528,7 @@ class WfApplication final : public juce::JUCEApplication
 {
 public:
     const juce::String getApplicationName() override { return "ChucK-ME"; }
-    const juce::String getApplicationVersion() override { return "0.1.13"; }
+    const juce::String getApplicationVersion() override { return "0.1.14"; }
     bool moreThanOneInstanceAllowed() override { return true; }
 
     void initialise (const juce::String&) override

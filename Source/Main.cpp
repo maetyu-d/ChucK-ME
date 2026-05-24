@@ -243,6 +243,26 @@ bool bufferIsFiniteAndWithin (const juce::AudioBuffer<float>& buffer, float abso
     return true;
 }
 
+bool renderAudibleCallbackBlock (ChucKAudioCallback& callback, int numSamples, double& energy)
+{
+    juce::AudioBuffer<float> output (2, numSamples);
+    output.clear();
+    output.setSample (0, 0, 1.0f);
+
+    callback.audioDeviceIOCallbackWithContext (nullptr,
+                                               0,
+                                               output.getArrayOfWritePointers(),
+                                               output.getNumChannels(),
+                                               output.getNumSamples(),
+                                               {});
+
+    if (! bufferIsFiniteAndWithin (output, 0.981f))
+        return false;
+
+    energy = bufferEnergy (output);
+    return energy > 0.0;
+}
+
 bool valuesAreClose (float a, float b, float tolerance = 0.00001f) noexcept
 {
     return std::abs (a - b) <= tolerance;
@@ -1608,6 +1628,68 @@ int runCallbackTest()
     {
         juce::Logger::writeToLog ("Callback-test failed: callback did not recover after rejected device info");
         return 42;
+    }
+
+    {
+        ChucKAudioCallback switchingCallback;
+        const std::array<double, 4> sampleRates { 44100.0, 48000.0, 88200.0, 96000.0 };
+        const std::array<int, 5> reportedBlockSizes { 64, 128, 257, 512, 2048 };
+        const std::array<int, 4> callbackBlockSizes { 32, 64, 511, 2048 };
+        auto matrixEnergy = 0.0;
+
+        for (auto sampleRate : sampleRates)
+        {
+            for (auto reportedBlockSize : reportedBlockSizes)
+            {
+                if (! switchingCallback.prepareForDevice (sampleRate, reportedBlockSize)
+                    || ! switchingCallback.deviceReady.load (std::memory_order_acquire)
+                    || ! switchingCallback.engine.isReady())
+                {
+                    juce::Logger::writeToLog ("Callback-test failed: device switch prepare failed");
+                    return 46;
+                }
+
+                for (auto callbackBlockSize : callbackBlockSizes)
+                {
+                    double blockEnergy = 0.0;
+                    if (! renderAudibleCallbackBlock (switchingCallback, callbackBlockSize, blockEnergy))
+                    {
+                        juce::Logger::writeToLog ("Callback-test failed: switched callback rendered invalid or silent audio");
+                        return 47;
+                    }
+
+                    matrixEnergy += blockEnergy;
+                }
+
+                switchingCallback.audioDeviceStopped();
+
+                juce::AudioBuffer<float> stoppedOutput (2, 128);
+                stoppedOutput.clear();
+                stoppedOutput.setSample (0, 0, 1.0f);
+                switchingCallback.audioDeviceIOCallbackWithContext (nullptr,
+                                                                   0,
+                                                                   stoppedOutput.getArrayOfWritePointers(),
+                                                                   stoppedOutput.getNumChannels(),
+                                                                   stoppedOutput.getNumSamples(),
+                                                                   {});
+
+                if (! bufferIsSilent (stoppedOutput)
+                    || switchingCallback.deviceReady.load (std::memory_order_acquire)
+                    || switchingCallback.engine.isReady())
+                {
+                    juce::Logger::writeToLog ("Callback-test failed: stopped switched callback did not reset cleanly");
+                    return 48;
+                }
+            }
+        }
+
+        if (matrixEnergy <= 0.0
+            || switchingCallback.successfulPrepareCount.load (std::memory_order_relaxed) != sampleRates.size() * reportedBlockSizes.size()
+            || switchingCallback.callbackExceptionCount.load (std::memory_order_relaxed) != 0)
+        {
+            juce::Logger::writeToLog ("Callback-test failed: switch matrix diagnostics were inconsistent");
+            return 49;
+        }
     }
 
     reconfiguredCallback.audioDeviceStopped();
