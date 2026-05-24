@@ -5173,6 +5173,7 @@ class MainComponent final : public juce::Component,
         menuRenderLanes,
         menuRenderWav,
         menuRemoveRenderedAudio,
+        menuAbout,
         menuUndo,
         menuRedo,
         menuCopy,
@@ -5750,6 +5751,8 @@ public:
             menu.addItem (menuRenderLanes, "Render lanes");
             menu.addItem (menuRenderWav, arrangementPlusMode ? "Render WAV+..." : "Render WAV...");
             menu.addItem (menuRemoveRenderedAudio, "Remove Rendered Audio", arrangementPlusMode);
+            menu.addSeparator();
+            menu.addItem (menuAbout, "About ChucK-ME");
         }
         else if (menuIndex == 1)
         {
@@ -5778,6 +5781,7 @@ public:
             case menuRenderLanes: confirmPendingLaneCodeThen ([this] { chooseArrangementLaneRenderDirectory (false); }); break;
             case menuRenderWav: confirmPendingLaneCodeThen ([this] { chooseArrangementRenderFile(); }); break;
             case menuRemoveRenderedAudio: removeRenderedAudioAndReturnToCodePlayback(); break;
+            case menuAbout: showAboutDialog(); break;
             case menuUndo: performUndo(); break;
             case menuRedo: performRedo(); break;
             case menuCopy: performCopy(); break;
@@ -5785,6 +5789,15 @@ public:
             case menuDuplicate: performDuplicate(); break;
             default: break;
         }
+    }
+
+    void showAboutDialog()
+    {
+        juce::AlertWindow::showMessageBoxAsync (
+            juce::AlertWindow::InfoIcon,
+            "About ChucK-ME",
+            "ChucK-ME by matd.space is an app for Mac (Apple silicon only) that enables the building of ephemeral musical systems made up of states, tracks, and lanes (and linear or probabilistic transitions between them) in the ChucK programming language, then transforms (renders) the generative playback into audio files in a DAW-like arrangement for audio editing, mixing (including processing with AU and/or VST3 plugins), and WAV export. The transformation is integrated and seamless - no external ChucK application or process is required.",
+            "OK");
     }
 
     void confirmQuitThen (std::function<void()> quitAction)
@@ -11816,7 +11829,7 @@ class WfApplication final : public juce::JUCEApplication
 {
 public:
     const juce::String getApplicationName() override { return "ChucK-ME"; }
-    const juce::String getApplicationVersion() override { return "0.1.10"; }
+    const juce::String getApplicationVersion() override { return "0.1.11"; }
     bool moreThanOneInstanceAllowed() override { return true; }
 
     void initialise (const juce::String&) override
