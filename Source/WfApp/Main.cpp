@@ -13725,7 +13725,7 @@ class WfApplication final : public juce::JUCEApplication
 {
 public:
     const juce::String getApplicationName() override { return "ChucK-ME"; }
-    const juce::String getApplicationVersion() override { return "0.1.16"; }
+    const juce::String getApplicationVersion() override { return "0.1.17"; }
     bool moreThanOneInstanceAllowed() override { return true; }
 
     void initialise (const juce::String&) override
