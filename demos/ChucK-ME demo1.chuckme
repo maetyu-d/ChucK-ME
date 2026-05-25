@@ -1,14 +1,37 @@
 {
   "format": "ChucK-ME Project",
-  "version": 2,
+  "version": 4,
   "stateCode": "tempo(88); timeSig(4, 4); playState(1, 8);\ntempo(44); playState(2, 4);\nstop();",
   "masterVolume": 0.18,
+  "masterEffectSlots": [
+    {
+      "active": false,
+      "pluginName": "",
+      "pluginFormatName": "",
+      "pluginFileOrIdentifier": "",
+      "pluginIdentifier": ""
+    },
+    {
+      "active": false,
+      "pluginName": "",
+      "pluginFormatName": "",
+      "pluginFileOrIdentifier": "",
+      "pluginIdentifier": ""
+    },
+    {
+      "active": false,
+      "pluginName": "",
+      "pluginFormatName": "",
+      "pluginFileOrIdentifier": "",
+      "pluginIdentifier": ""
+    }
+  ],
   "viewedState": 0,
   "selectedTrack": 0,
   "selectedLane": 0,
   "arrangementPlusMode": true,
-  "arrangementHorizontalZoom": 1.0,
-  "arrangementVerticalZoom": 1.0,
+  "arrangementHorizontalZoom": 3.25,
+  "arrangementVerticalZoom": 3.0,
   "states": [
     {
       "tempoBpm": 88.0,
@@ -16,7 +39,7 @@
       "timeSigDenominator": 4,
       "tracks": [
         {
-          "name": "Pocket City",
+          "name": "POCKET CITY",
           "tempoBpm": 88.0,
           "clockBeatsPerBar": 4,
           "clockQuarterNotesPerBar": 4.0,
@@ -111,7 +134,7 @@
           ]
         },
         {
-          "name": "Chrome Avenue",
+          "name": "CHROME AVENUE",
           "tempoBpm": 92.0,
           "clockBeatsPerBar": 4,
           "clockQuarterNotesPerBar": 4.0,
@@ -206,7 +229,7 @@
           ]
         },
         {
-          "name": "Battery Love",
+          "name": "BATTERY LOVE",
           "tempoBpm": 96.0,
           "clockBeatsPerBar": 4,
           "clockQuarterNotesPerBar": 4.0,
@@ -301,7 +324,7 @@
           ]
         },
         {
-          "name": "Pocket Choir",
+          "name": "POCKET CHOIR",
           "tempoBpm": 84.0,
           "clockBeatsPerBar": 4,
           "clockQuarterNotesPerBar": 4.0,
@@ -396,7 +419,7 @@
           ]
         },
         {
-          "name": "Neon Postcard",
+          "name": "NEON POSTCARD",
           "tempoBpm": 90.0,
           "clockBeatsPerBar": 4,
           "clockQuarterNotesPerBar": 4.0,
@@ -498,7 +521,7 @@
       "timeSigDenominator": 4,
       "tracks": [
         {
-          "name": "Pocket City",
+          "name": "POCKET CITY",
           "tempoBpm": 88.0,
           "clockBeatsPerBar": 4,
           "clockQuarterNotesPerBar": 4.0,
@@ -593,7 +616,7 @@
           ]
         },
         {
-          "name": "Chrome Avenue",
+          "name": "CHROME AVENUE",
           "tempoBpm": 92.0,
           "clockBeatsPerBar": 4,
           "clockQuarterNotesPerBar": 4.0,
@@ -688,7 +711,7 @@
           ]
         },
         {
-          "name": "Battery Love",
+          "name": "BATTERY LOVE",
           "tempoBpm": 96.0,
           "clockBeatsPerBar": 4,
           "clockQuarterNotesPerBar": 4.0,
@@ -783,7 +806,7 @@
           ]
         },
         {
-          "name": "Pocket Choir",
+          "name": "POCKET CHOIR",
           "tempoBpm": 84.0,
           "clockBeatsPerBar": 4,
           "clockQuarterNotesPerBar": 4.0,
@@ -878,7 +901,7 @@
           ]
         },
         {
-          "name": "Neon Postcard",
+          "name": "NEON POSTCARD",
           "tempoBpm": 90.0,
           "clockBeatsPerBar": 4,
           "clockQuarterNotesPerBar": 4.0,
@@ -1050,7 +1073,8 @@
       "stateIndex": 0,
       "trackIndex": 0,
       "laneIndex": 0,
-      "file": "/Users/user/Desktop/test8/S1_T1_L1_Pocket_City_808_street.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/001_S1_T1_L1_Pocket_City_808_street.wav",
+      "mediaFile": "001_S1_T1_L1_Pocket_City_808_street.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1059,7 +1083,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1067,7 +1094,8 @@
       "stateIndex": 0,
       "trackIndex": 0,
       "laneIndex": 1,
-      "file": "/Users/user/Desktop/test8/S1_T1_L2_Pocket_City_Pocket_bass.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/002_S1_T1_L2_Pocket_City_Pocket_bass.wav",
+      "mediaFile": "002_S1_T1_L2_Pocket_City_Pocket_bass.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1076,7 +1104,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1084,7 +1115,8 @@
       "stateIndex": 0,
       "trackIndex": 0,
       "laneIndex": 2,
-      "file": "/Users/user/Desktop/test8/S1_T1_L3_Pocket_City_Signal_arp.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/003_S1_T1_L3_Pocket_City_Signal_arp.wav",
+      "mediaFile": "003_S1_T1_L3_Pocket_City_Signal_arp.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1093,7 +1125,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1101,7 +1136,8 @@
       "stateIndex": 0,
       "trackIndex": 0,
       "laneIndex": 3,
-      "file": "/Users/user/Desktop/test8/S1_T1_L4_Pocket_City_Glass_chorus.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/004_S1_T1_L4_Pocket_City_Glass_chorus.wav",
+      "mediaFile": "004_S1_T1_L4_Pocket_City_Glass_chorus.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1110,7 +1146,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1118,7 +1157,8 @@
       "stateIndex": 0,
       "trackIndex": 0,
       "laneIndex": 4,
-      "file": "/Users/user/Desktop/test8/S1_T1_L5_Pocket_City_Static_halo.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/005_S1_T1_L5_Pocket_City_Static_halo.wav",
+      "mediaFile": "005_S1_T1_L5_Pocket_City_Static_halo.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1127,7 +1167,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1135,7 +1178,8 @@
       "stateIndex": 0,
       "trackIndex": 1,
       "laneIndex": 0,
-      "file": "/Users/user/Desktop/test8/S1_T2_L1_Chrome_Avenue_808_avenue.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/006_S1_T2_L1_Chrome_Avenue_808_avenue.wav",
+      "mediaFile": "006_S1_T2_L1_Chrome_Avenue_808_avenue.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1144,7 +1188,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1152,7 +1199,8 @@
       "stateIndex": 0,
       "trackIndex": 1,
       "laneIndex": 1,
-      "file": "/Users/user/Desktop/test8/S1_T2_L2_Chrome_Avenue_Rubber_motor.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/007_S1_T2_L2_Chrome_Avenue_Rubber_motor.wav",
+      "mediaFile": "007_S1_T2_L2_Chrome_Avenue_Rubber_motor.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1161,7 +1209,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1169,7 +1220,8 @@
       "stateIndex": 0,
       "trackIndex": 1,
       "laneIndex": 2,
-      "file": "/Users/user/Desktop/test8/S1_T2_L3_Chrome_Avenue_Window_arp.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/008_S1_T2_L3_Chrome_Avenue_Window_arp.wav",
+      "mediaFile": "008_S1_T2_L3_Chrome_Avenue_Window_arp.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1178,7 +1230,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1186,7 +1241,8 @@
       "stateIndex": 0,
       "trackIndex": 1,
       "laneIndex": 3,
-      "file": "/Users/user/Desktop/test8/S1_T2_L4_Chrome_Avenue_Warm_display.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/009_S1_T2_L4_Chrome_Avenue_Warm_display.wav",
+      "mediaFile": "009_S1_T2_L4_Chrome_Avenue_Warm_display.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1195,7 +1251,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1203,7 +1262,8 @@
       "stateIndex": 0,
       "trackIndex": 1,
       "laneIndex": 4,
-      "file": "/Users/user/Desktop/test8/S1_T2_L5_Chrome_Avenue_Thin_skyline.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/010_S1_T2_L5_Chrome_Avenue_Thin_skyline.wav",
+      "mediaFile": "010_S1_T2_L5_Chrome_Avenue_Thin_skyline.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1212,7 +1272,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1220,7 +1283,8 @@
       "stateIndex": 0,
       "trackIndex": 2,
       "laneIndex": 0,
-      "file": "/Users/user/Desktop/test8/S1_T3_L1_Battery_Love_808_relay.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/011_S1_T3_L1_Battery_Love_808_relay.wav",
+      "mediaFile": "011_S1_T3_L1_Battery_Love_808_relay.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1229,7 +1293,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1237,7 +1304,8 @@
       "stateIndex": 0,
       "trackIndex": 2,
       "laneIndex": 1,
-      "file": "/Users/user/Desktop/test8/S1_T3_L2_Battery_Love_Battery_bass.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/012_S1_T3_L2_Battery_Love_Battery_bass.wav",
+      "mediaFile": "012_S1_T3_L2_Battery_Love_Battery_bass.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1246,7 +1314,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1254,7 +1325,8 @@
       "stateIndex": 0,
       "trackIndex": 2,
       "laneIndex": 2,
-      "file": "/Users/user/Desktop/test8/S1_T3_L3_Battery_Love_Simple_arp.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/013_S1_T3_L3_Battery_Love_Simple_arp.wav",
+      "mediaFile": "013_S1_T3_L3_Battery_Love_Simple_arp.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1263,7 +1335,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1271,7 +1346,8 @@
       "stateIndex": 0,
       "trackIndex": 2,
       "laneIndex": 3,
-      "file": "/Users/user/Desktop/test8/S1_T3_L4_Battery_Love_Major_lights.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/014_S1_T3_L4_Battery_Love_Major_lights.wav",
+      "mediaFile": "014_S1_T3_L4_Battery_Love_Major_lights.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1280,7 +1356,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1288,7 +1367,8 @@
       "stateIndex": 0,
       "trackIndex": 2,
       "laneIndex": 4,
-      "file": "/Users/user/Desktop/test8/S1_T3_L5_Battery_Love_Soft_carrier.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/015_S1_T3_L5_Battery_Love_Soft_carrier.wav",
+      "mediaFile": "015_S1_T3_L5_Battery_Love_Soft_carrier.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1297,7 +1377,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1305,7 +1388,8 @@
       "stateIndex": 0,
       "trackIndex": 3,
       "laneIndex": 0,
-      "file": "/Users/user/Desktop/test8/S1_T4_L1_Pocket_Choir_808_choir.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/016_S1_T4_L1_Pocket_Choir_808_choir.wav",
+      "mediaFile": "016_S1_T4_L1_Pocket_Choir_808_choir.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1314,7 +1398,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1322,7 +1409,8 @@
       "stateIndex": 0,
       "trackIndex": 3,
       "laneIndex": 1,
-      "file": "/Users/user/Desktop/test8/S1_T4_L2_Pocket_Choir_Round_bass.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/017_S1_T4_L2_Pocket_Choir_Round_bass.wav",
+      "mediaFile": "017_S1_T4_L2_Pocket_Choir_Round_bass.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1331,7 +1419,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1339,7 +1430,8 @@
       "stateIndex": 0,
       "trackIndex": 3,
       "laneIndex": 2,
-      "file": "/Users/user/Desktop/test8/S1_T4_L3_Pocket_Choir_Choir_arp.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/018_S1_T4_L3_Pocket_Choir_Choir_arp.wav",
+      "mediaFile": "018_S1_T4_L3_Pocket_Choir_Choir_arp.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1348,7 +1440,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1356,7 +1451,8 @@
       "stateIndex": 0,
       "trackIndex": 3,
       "laneIndex": 3,
-      "file": "/Users/user/Desktop/test8/S1_T4_L4_Pocket_Choir_Soft_buttons.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/019_S1_T4_L4_Pocket_Choir_Soft_buttons.wav",
+      "mediaFile": "019_S1_T4_L4_Pocket_Choir_Soft_buttons.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1365,7 +1461,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1373,7 +1472,8 @@
       "stateIndex": 0,
       "trackIndex": 3,
       "laneIndex": 4,
-      "file": "/Users/user/Desktop/test8/S1_T4_L5_Pocket_Choir_Air_tape.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/020_S1_T4_L5_Pocket_Choir_Air_tape.wav",
+      "mediaFile": "020_S1_T4_L5_Pocket_Choir_Air_tape.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1382,7 +1482,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1390,7 +1493,8 @@
       "stateIndex": 0,
       "trackIndex": 4,
       "laneIndex": 0,
-      "file": "/Users/user/Desktop/test8/S1_T5_L1_Neon_Postcard_808_postcard.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/021_S1_T5_L1_Neon_Postcard_808_postcard.wav",
+      "mediaFile": "021_S1_T5_L1_Neon_Postcard_808_postcard.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1399,7 +1503,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1407,7 +1514,8 @@
       "stateIndex": 0,
       "trackIndex": 4,
       "laneIndex": 1,
-      "file": "/Users/user/Desktop/test8/S1_T5_L2_Neon_Postcard_Postcard_bass.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/022_S1_T5_L2_Neon_Postcard_Postcard_bass.wav",
+      "mediaFile": "022_S1_T5_L2_Neon_Postcard_Postcard_bass.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1416,7 +1524,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1424,7 +1535,8 @@
       "stateIndex": 0,
       "trackIndex": 4,
       "laneIndex": 2,
-      "file": "/Users/user/Desktop/test8/S1_T5_L3_Neon_Postcard_Neon_arp.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/023_S1_T5_L3_Neon_Postcard_Neon_arp.wav",
+      "mediaFile": "023_S1_T5_L3_Neon_Postcard_Neon_arp.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1433,7 +1545,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1441,7 +1556,8 @@
       "stateIndex": 0,
       "trackIndex": 4,
       "laneIndex": 3,
-      "file": "/Users/user/Desktop/test8/S1_T5_L4_Neon_Postcard_Blue_chord.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/024_S1_T5_L4_Neon_Postcard_Blue_chord.wav",
+      "mediaFile": "024_S1_T5_L4_Neon_Postcard_Blue_chord.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1450,7 +1566,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1458,7 +1577,8 @@
       "stateIndex": 0,
       "trackIndex": 4,
       "laneIndex": 4,
-      "file": "/Users/user/Desktop/test8/S1_T5_L5_Neon_Postcard_Tape_star.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/025_S1_T5_L5_Neon_Postcard_Tape_star.wav",
+      "mediaFile": "025_S1_T5_L5_Neon_Postcard_Tape_star.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1467,7 +1587,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1475,7 +1598,8 @@
       "stateIndex": 1,
       "trackIndex": 0,
       "laneIndex": 0,
-      "file": "/Users/user/Desktop/test8/S2_T1_L1_Pocket_City_808_street.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/026_S2_T1_L1_Pocket_City_808_street.wav",
+      "mediaFile": "026_S2_T1_L1_Pocket_City_808_street.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1484,7 +1608,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1492,7 +1619,8 @@
       "stateIndex": 1,
       "trackIndex": 0,
       "laneIndex": 1,
-      "file": "/Users/user/Desktop/test8/S2_T1_L2_Pocket_City_Pocket_bass.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/027_S2_T1_L2_Pocket_City_Pocket_bass.wav",
+      "mediaFile": "027_S2_T1_L2_Pocket_City_Pocket_bass.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1501,7 +1629,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1509,7 +1640,8 @@
       "stateIndex": 1,
       "trackIndex": 0,
       "laneIndex": 2,
-      "file": "/Users/user/Desktop/test8/S2_T1_L3_Pocket_City_Signal_arp.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/028_S2_T1_L3_Pocket_City_Signal_arp.wav",
+      "mediaFile": "028_S2_T1_L3_Pocket_City_Signal_arp.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1518,7 +1650,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1526,7 +1661,8 @@
       "stateIndex": 1,
       "trackIndex": 0,
       "laneIndex": 3,
-      "file": "/Users/user/Desktop/test8/S2_T1_L4_Pocket_City_Glass_chorus.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/029_S2_T1_L4_Pocket_City_Glass_chorus.wav",
+      "mediaFile": "029_S2_T1_L4_Pocket_City_Glass_chorus.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1535,7 +1671,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1543,7 +1682,8 @@
       "stateIndex": 1,
       "trackIndex": 0,
       "laneIndex": 4,
-      "file": "/Users/user/Desktop/test8/S2_T1_L5_Pocket_City_Static_halo.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/030_S2_T1_L5_Pocket_City_Static_halo.wav",
+      "mediaFile": "030_S2_T1_L5_Pocket_City_Static_halo.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1552,7 +1692,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1560,7 +1703,8 @@
       "stateIndex": 1,
       "trackIndex": 1,
       "laneIndex": 0,
-      "file": "/Users/user/Desktop/test8/S2_T2_L1_Chrome_Avenue_808_avenue.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/031_S2_T2_L1_Chrome_Avenue_808_avenue.wav",
+      "mediaFile": "031_S2_T2_L1_Chrome_Avenue_808_avenue.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1569,7 +1713,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1577,7 +1724,8 @@
       "stateIndex": 1,
       "trackIndex": 1,
       "laneIndex": 1,
-      "file": "/Users/user/Desktop/test8/S2_T2_L2_Chrome_Avenue_Rubber_motor.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/032_S2_T2_L2_Chrome_Avenue_Rubber_motor.wav",
+      "mediaFile": "032_S2_T2_L2_Chrome_Avenue_Rubber_motor.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1586,7 +1734,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1594,7 +1745,8 @@
       "stateIndex": 1,
       "trackIndex": 1,
       "laneIndex": 2,
-      "file": "/Users/user/Desktop/test8/S2_T2_L3_Chrome_Avenue_Window_arp.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/033_S2_T2_L3_Chrome_Avenue_Window_arp.wav",
+      "mediaFile": "033_S2_T2_L3_Chrome_Avenue_Window_arp.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1603,7 +1755,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1611,7 +1766,8 @@
       "stateIndex": 1,
       "trackIndex": 1,
       "laneIndex": 3,
-      "file": "/Users/user/Desktop/test8/S2_T2_L4_Chrome_Avenue_Warm_display.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/034_S2_T2_L4_Chrome_Avenue_Warm_display.wav",
+      "mediaFile": "034_S2_T2_L4_Chrome_Avenue_Warm_display.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1620,7 +1776,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1628,7 +1787,8 @@
       "stateIndex": 1,
       "trackIndex": 1,
       "laneIndex": 4,
-      "file": "/Users/user/Desktop/test8/S2_T2_L5_Chrome_Avenue_Thin_skyline.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/035_S2_T2_L5_Chrome_Avenue_Thin_skyline.wav",
+      "mediaFile": "035_S2_T2_L5_Chrome_Avenue_Thin_skyline.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1637,7 +1797,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1645,7 +1808,8 @@
       "stateIndex": 1,
       "trackIndex": 2,
       "laneIndex": 0,
-      "file": "/Users/user/Desktop/test8/S2_T3_L1_Battery_Love_808_relay.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/036_S2_T3_L1_Battery_Love_808_relay.wav",
+      "mediaFile": "036_S2_T3_L1_Battery_Love_808_relay.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1654,7 +1818,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1662,7 +1829,8 @@
       "stateIndex": 1,
       "trackIndex": 2,
       "laneIndex": 1,
-      "file": "/Users/user/Desktop/test8/S2_T3_L2_Battery_Love_Battery_bass.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/037_S2_T3_L2_Battery_Love_Battery_bass.wav",
+      "mediaFile": "037_S2_T3_L2_Battery_Love_Battery_bass.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1671,7 +1839,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1679,7 +1850,8 @@
       "stateIndex": 1,
       "trackIndex": 2,
       "laneIndex": 2,
-      "file": "/Users/user/Desktop/test8/S2_T3_L3_Battery_Love_Simple_arp.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/038_S2_T3_L3_Battery_Love_Simple_arp.wav",
+      "mediaFile": "038_S2_T3_L3_Battery_Love_Simple_arp.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1688,7 +1860,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1696,7 +1871,8 @@
       "stateIndex": 1,
       "trackIndex": 2,
       "laneIndex": 3,
-      "file": "/Users/user/Desktop/test8/S2_T3_L4_Battery_Love_Major_lights.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/039_S2_T3_L4_Battery_Love_Major_lights.wav",
+      "mediaFile": "039_S2_T3_L4_Battery_Love_Major_lights.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1705,7 +1881,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1713,7 +1892,8 @@
       "stateIndex": 1,
       "trackIndex": 2,
       "laneIndex": 4,
-      "file": "/Users/user/Desktop/test8/S2_T3_L5_Battery_Love_Soft_carrier.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/040_S2_T3_L5_Battery_Love_Soft_carrier.wav",
+      "mediaFile": "040_S2_T3_L5_Battery_Love_Soft_carrier.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1722,7 +1902,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1730,7 +1913,8 @@
       "stateIndex": 1,
       "trackIndex": 3,
       "laneIndex": 0,
-      "file": "/Users/user/Desktop/test8/S2_T4_L1_Pocket_Choir_808_choir.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/041_S2_T4_L1_Pocket_Choir_808_choir.wav",
+      "mediaFile": "041_S2_T4_L1_Pocket_Choir_808_choir.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1739,7 +1923,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1747,7 +1934,8 @@
       "stateIndex": 1,
       "trackIndex": 3,
       "laneIndex": 1,
-      "file": "/Users/user/Desktop/test8/S2_T4_L2_Pocket_Choir_Round_bass.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/042_S2_T4_L2_Pocket_Choir_Round_bass.wav",
+      "mediaFile": "042_S2_T4_L2_Pocket_Choir_Round_bass.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1756,7 +1944,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1764,7 +1955,8 @@
       "stateIndex": 1,
       "trackIndex": 3,
       "laneIndex": 2,
-      "file": "/Users/user/Desktop/test8/S2_T4_L3_Pocket_Choir_Choir_arp.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/043_S2_T4_L3_Pocket_Choir_Choir_arp.wav",
+      "mediaFile": "043_S2_T4_L3_Pocket_Choir_Choir_arp.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1773,7 +1965,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1781,7 +1976,8 @@
       "stateIndex": 1,
       "trackIndex": 3,
       "laneIndex": 3,
-      "file": "/Users/user/Desktop/test8/S2_T4_L4_Pocket_Choir_Soft_buttons.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/044_S2_T4_L4_Pocket_Choir_Soft_buttons.wav",
+      "mediaFile": "044_S2_T4_L4_Pocket_Choir_Soft_buttons.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1790,7 +1986,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     },
@@ -1798,7 +1997,8 @@
       "stateIndex": 1,
       "trackIndex": 3,
       "laneIndex": 4,
-      "file": "/Users/user/Desktop/test8/S2_T4_L5_Pocket_Choir_Air_tape.wav",
+      "file": "/Users/user/Downloads/weld/demos/ChucK-ME demo1 Media/045_S2_T4_L5_Pocket_Choir_Air_tape.wav",
+      "mediaFile": "045_S2_T4_L5_Pocket_Choir_Air_tape.wav",
       "mixGain": 1.0,
       "mixPan": 0.0,
       "regions": [
@@ -1807,7 +2007,10 @@
           "sourceStartSeconds": 0.0,
           "lengthSeconds": 44.336374999999997,
           "fadeInSeconds": 0.0,
-          "fadeOutSeconds": 0.0
+          "fadeOutSeconds": 0.0,
+          "gain": 1.0,
+          "fadeInCurve": 1,
+          "fadeOutCurve": 1
         }
       ]
     }
