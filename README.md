@@ -1,6 +1,6 @@
 # ChucK-ME
 
-ChucK-ME by matd.space is an app for Mac (Apple silicon only) that enables the building of ephemeral musical systems made up of states, tracks, and lanes (and linear or probabilistic transitions between them) in the ChucK programming language, then transforms (renders) the generative playback into audio files in a DAW-like arrangement for audio editing, mixing (including processing with AU and/or VST3 plugins), and WAV export. The transformation is integrated and seamless - no external ChucK application or process is required.
+ChucK-ME is a Mac app (currently tested on Apple silicon only) that enables the building of ephemeral musical systems made up of states, tracks, and lanes (and linear or probabilistic transitions between them) in the ChucK programming language, then transforms (renders) the generative playback into audio files in a DAW-like arrangement for audio editing, mixing (including processing with AU and/or VST3 plugins), and WAV export. The transformation is integrated and seamless - no external ChucK application or process is required.
 
 ## Weld ChucK
 
