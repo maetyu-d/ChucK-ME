@@ -3922,11 +3922,14 @@ public:
         bool nearGain = false;
     };
 
-    enum class ActiveDrag { none, fade, trimStart, trimEnd, gain, playhead, marquee };
+    enum class ActiveDrag { none, move, fade, trimStart, trimEnd, gain, playhead, marquee };
 
     std::function<void (int, int, bool)> onImportedRegionClicked;
     std::function<void (std::vector<ArrangementAudioSelection>, bool)> onImportedRegionsMarqueeSelected;
     std::function<void (int, int, double)> onImportedRegionSplit;
+    std::function<void (int, int)> onImportedRegionMoveEditStarted;
+    std::function<void (double)> onImportedRegionMoveDeltaChanged;
+    std::function<void()> onImportedRegionMoveEditEnded;
     std::function<void (int, int)> onImportedRegionTrimEditStarted;
     std::function<void (int, int, double, double, double)> onImportedRegionTrimChanged;
     std::function<void()> onImportedRegionTrimEditEnded;
@@ -4087,6 +4090,9 @@ public:
             if (onImportedRegionClicked != nullptr)
                 onImportedRegionClicked (hit->clipIndex, hit->regionIndex, event.mods.isShiftDown());
 
+            if (event.mods.isShiftDown())
+                return;
+
             if (audioTool == ArrangementAudioTool::scissors)
             {
                 if (onImportedRegionSplit != nullptr)
@@ -4131,6 +4137,13 @@ public:
                 return;
             }
 
+            activeFadeDrag = *hit;
+            activeDrag = ActiveDrag::move;
+            moveDragAnchorSeconds = timeForPosition (event.position.x, ! event.mods.isCommandDown());
+            if (onImportedRegionMoveEditStarted != nullptr)
+                onImportedRegionMoveEditStarted (hit->clipIndex, hit->regionIndex);
+
+            setDragReadout ("move " + formatBarBeat (hit->timeSeconds), event.position);
             return;
         }
 
@@ -4150,6 +4163,8 @@ public:
     {
         if (activeDrag == ActiveDrag::fade && activeFadeDrag.has_value())
             updateActiveFadeDrag (event.position);
+        else if (activeDrag == ActiveDrag::move && activeFadeDrag.has_value())
+            updateActiveMoveDrag (event.position, ! event.mods.isCommandDown());
         else if ((activeDrag == ActiveDrag::trimStart || activeDrag == ActiveDrag::trimEnd) && activeFadeDrag.has_value())
             updateActiveTrimDrag (event.position, ! event.mods.isCommandDown());
         else if (activeDrag == ActiveDrag::gain && activeFadeDrag.has_value())
@@ -4167,6 +4182,9 @@ public:
     {
         if (activeDrag == ActiveDrag::fade && activeFadeDrag.has_value() && onImportedRegionFadeEditEnded != nullptr)
             onImportedRegionFadeEditEnded();
+
+        if (activeDrag == ActiveDrag::move && activeFadeDrag.has_value() && onImportedRegionMoveEditEnded != nullptr)
+            onImportedRegionMoveEditEnded();
 
         if ((activeDrag == ActiveDrag::trimStart || activeDrag == ActiveDrag::trimEnd)
             && activeFadeDrag.has_value()
@@ -4225,7 +4243,7 @@ public:
             else if (hit->nearGain)
                 setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
             else
-                setMouseCursor (juce::MouseCursor::NormalCursor);
+                setMouseCursor (juce::MouseCursor::DraggingHandCursor);
 
             return;
         }
@@ -4352,8 +4370,8 @@ private:
         {
             g.setColour (mutedInk().withAlpha (0.58f));
             g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
-            g.drawFittedText ("beat grid - hold Cmd for free trim",
-                              juce::Rectangle<int> (timelineX + 8, headerHeight - 18, 210, 14),
+            g.drawFittedText ("beat grid - drag regions, hold Cmd for free edit",
+                              juce::Rectangle<int> (timelineX + 8, headerHeight - 18, 290, 14),
                               juce::Justification::centredLeft,
                               1);
         }
@@ -4724,6 +4742,20 @@ private:
 
         setDragReadout ((activeFadeDragEditingOut ? "fade out " : "fade in ")
                          + formatTimelineSeconds (activeFadeDragEditingOut ? fadeOut : fadeIn),
+                         position);
+    }
+
+    void updateActiveMoveDrag (juce::Point<float> position, bool snapToGrid)
+    {
+        if (! activeFadeDrag.has_value())
+            return;
+
+        const auto targetSeconds = timeForPosition (position.x, snapToGrid);
+        const auto deltaSeconds = targetSeconds - moveDragAnchorSeconds;
+        if (onImportedRegionMoveDeltaChanged != nullptr)
+            onImportedRegionMoveDeltaChanged (deltaSeconds);
+
+        setDragReadout ("move " + formatSignedTimelineSeconds (deltaSeconds),
                          position);
     }
 
@@ -5194,6 +5226,13 @@ private:
         return juce::String (juce::jmax (0.0, seconds), 2) + "s";
     }
 
+    static juce::String formatSignedTimelineSeconds (double seconds)
+    {
+        return juce::String (seconds >= 0.0 ? "+" : "-")
+             + juce::String (std::abs (seconds), 2)
+             + "s";
+    }
+
     juce::String formatBarBeat (double seconds) const
     {
         const auto barPosition = juce::jmax (0.0, barAtSeconds (seconds));
@@ -5370,6 +5409,7 @@ private:
     juce::String dragReadoutText;
     double totalBars = 0.0;
     double editPlayheadSeconds = 0.0;
+    double moveDragAnchorSeconds = 0.0;
     int maxTracks = 1;
     int maxLanesInAnyTrack = 1;
     int playingState = 0;
@@ -5848,6 +5888,12 @@ class MainComponent final : public juce::Component,
         double anchorStartSeconds = 0.0;
     };
 
+    struct ImportedRegionMoveDragItem
+    {
+        ArrangementAudioSelection selection;
+        ImportedAudioRegion originalRegion;
+    };
+
     struct ProjectUndoSnapshot
     {
         juce::var project;
@@ -6246,6 +6292,18 @@ public:
         {
             splitImportedAudioRegion (clipIndex, regionIndex, splitSeconds);
         };
+        arrangementTimelineCanvas.onImportedRegionMoveEditStarted = [this] (int clipIndex, int regionIndex)
+        {
+            beginImportedRegionMoveEdit (clipIndex, regionIndex);
+        };
+        arrangementTimelineCanvas.onImportedRegionMoveDeltaChanged = [this] (double deltaSeconds)
+        {
+            setImportedAudioRegionMoveDelta (deltaSeconds);
+        };
+        arrangementTimelineCanvas.onImportedRegionMoveEditEnded = [this]
+        {
+            finishImportedRegionMoveEdit();
+        };
         arrangementTimelineCanvas.onImportedRegionTrimEditStarted = [this] (int clipIndex, int regionIndex)
         {
             beginImportedRegionTrimEdit (clipIndex, regionIndex);
@@ -6583,6 +6641,17 @@ public:
             }
 
             deleteViewedTopLevelState();
+            return true;
+        }
+
+        if ((keyCode == juce::KeyPress::leftKey || keyCode == juce::KeyPress::rightKey)
+            && mainView == MainView::timeline
+            && arrangementPlusMode
+            && hasImportedRegionSelection()
+            && ! isInlineTextEditorFocused())
+        {
+            nudgeSelectedImportedAudioRegions (keyCode == juce::KeyPress::rightKey ? 1 : -1,
+                                               modifiers.isShiftDown());
             return true;
         }
 
@@ -7817,6 +7886,8 @@ private:
         importedFadeDragUndoStarted = false;
         importedTrimDragUndoStarted = false;
         importedGainDragUndoStarted = false;
+        importedMoveDragUndoStarted = false;
+        importedRegionMoveDragItems.clear();
         arrangementPlusMode = false;
         missingImportedAudioOnLastLoad = 0;
 
@@ -7992,6 +8063,8 @@ private:
         importedFadeDragUndoStarted = false;
         importedTrimDragUndoStarted = false;
         importedGainDragUndoStarted = false;
+        importedMoveDragUndoStarted = false;
+        importedRegionMoveDragItems.clear();
 
         for (auto& slot : topLevelStates)
             slot.reset();
@@ -9952,6 +10025,8 @@ private:
         importedFadeDragUndoStarted = false;
         importedTrimDragUndoStarted = false;
         importedGainDragUndoStarted = false;
+        importedMoveDragUndoStarted = false;
+        importedRegionMoveDragItems.clear();
 
         if (arrangementPlusMode)
             static_cast<void> (audioCallback.loadImportedAudioClips (importedLaneAudioClips, &topLevelStates, true, &masterEffectSlots));
@@ -10003,6 +10078,8 @@ private:
         importedFadeDragUndoStarted = false;
         importedTrimDragUndoStarted = false;
         importedGainDragUndoStarted = false;
+        importedMoveDragUndoStarted = false;
+        importedRegionMoveDragItems.clear();
         if (! audioCallback.loadImportedAudioClips (importedLaneAudioClips, &topLevelStates, true, &masterEffectSlots))
         {
             importedLaneAudioClips.clear();
@@ -10034,6 +10111,8 @@ private:
         importedFadeDragUndoStarted = false;
         importedTrimDragUndoStarted = false;
         importedGainDragUndoStarted = false;
+        importedMoveDragUndoStarted = false;
+        importedRegionMoveDragItems.clear();
         scriptRunning = false;
         running = false;
         audioCallback.clearImportedAudioPlayback();
@@ -10622,6 +10701,11 @@ private:
                 selectedImportedRegion = selection;
             }
         }
+        else if (std::find (selectedImportedRegions.begin(), selectedImportedRegions.end(), selection) != selectedImportedRegions.end()
+                 && selectedImportedRegions.size() > 1)
+        {
+            selectedImportedRegion = selection;
+        }
         else
         {
             selectedImportedRegion = selection;
@@ -10745,6 +10829,219 @@ private:
 
         if (splitAny)
             refreshAfterImportedAudioEdit ("split audio at playhead");
+    }
+
+    void captureImportedRegionMoveDragItems()
+    {
+        importedRegionMoveDragItems.clear();
+        auto selections = importedRegionSelectionForEdit();
+        importedRegionMoveDragItems.reserve (selections.size());
+
+        for (const auto& selection : selections)
+        {
+            if (! importedRegionExists (selection))
+                continue;
+
+            ImportedRegionMoveDragItem item;
+            item.selection = selection;
+            item.originalRegion = importedLaneAudioClips[static_cast<size_t> (selection.clipIndex)]
+                                    .regions[static_cast<size_t> (selection.regionIndex)];
+            importedRegionMoveDragItems.push_back (item);
+        }
+    }
+
+    void beginImportedRegionMoveEdit (int clipIndex, int regionIndex)
+    {
+        ArrangementAudioSelection selection { clipIndex, regionIndex };
+        if (! importedRegionExists (selection))
+            return;
+
+        selectedImportedRegion = selection;
+        if (std::find (selectedImportedRegions.begin(), selectedImportedRegions.end(), selection) == selectedImportedRegions.end())
+            selectedImportedRegions = { selection };
+
+        pruneImportedRegionSelection();
+        if (! importedMoveDragUndoStarted)
+        {
+            pushUndoSnapshot (selectedImportedRegions.size() > 1 ? "move audio regions" : "move audio region");
+            importedMoveDragUndoStarted = true;
+        }
+
+        captureImportedRegionMoveDragItems();
+        importedMoveDragLastDeltaSeconds = std::numeric_limits<double>::quiet_NaN();
+    }
+
+    double clampedImportedRegionMoveDelta (double deltaSeconds) const
+    {
+        if (importedRegionMoveDragItems.empty())
+            return 0.0;
+
+        auto minStart = std::numeric_limits<double>::max();
+        auto maxEnd = 0.0;
+        for (const auto& item : importedRegionMoveDragItems)
+        {
+            minStart = juce::jmin (minStart, item.originalRegion.startSeconds);
+            maxEnd = juce::jmax (maxEnd, regionEndSeconds (item.originalRegion));
+        }
+
+        if (! std::isfinite (minStart))
+            return 0.0;
+
+        const auto arrangementEnd = arrangementDurationSecondsForEditing();
+        const auto minDelta = -minStart;
+        const auto maxDelta = arrangementEnd > 0.0 ? arrangementEnd - maxEnd : std::numeric_limits<double>::max();
+        return juce::jlimit (minDelta, juce::jmax (minDelta, maxDelta), deltaSeconds);
+    }
+
+    void setImportedAudioRegionMoveDelta (double deltaSeconds)
+    {
+        if (! arrangementPlusMode || importedRegionMoveDragItems.empty())
+            return;
+
+        deltaSeconds = clampedImportedRegionMoveDelta (deltaSeconds);
+        if (std::isfinite (importedMoveDragLastDeltaSeconds)
+            && std::abs (importedMoveDragLastDeltaSeconds - deltaSeconds) < 0.0001)
+            return;
+
+        importedMoveDragLastDeltaSeconds = deltaSeconds;
+        selectedImportedRegions.clear();
+
+        for (const auto& item : importedRegionMoveDragItems)
+        {
+            if (! importedRegionExists (item.selection))
+                continue;
+
+            auto& region = importedLaneAudioClips[static_cast<size_t> (item.selection.clipIndex)]
+                            .regions[static_cast<size_t> (item.selection.regionIndex)];
+            region = item.originalRegion;
+            region.startSeconds = juce::jmax (0.0, item.originalRegion.startSeconds + deltaSeconds);
+            selectedImportedRegions.push_back (item.selection);
+        }
+
+        selectedImportedRegion = selectedImportedRegions.empty() ? ArrangementAudioSelection {} : selectedImportedRegions.front();
+        refreshAfterImportedAudioEdit ("moving audio");
+    }
+
+    void finishImportedRegionMoveEdit()
+    {
+        if (importedRegionMoveDragItems.empty())
+        {
+            importedMoveDragUndoStarted = false;
+            importedMoveDragLastDeltaSeconds = std::numeric_limits<double>::quiet_NaN();
+            return;
+        }
+
+        const auto deltaSeconds = std::isfinite (importedMoveDragLastDeltaSeconds)
+            ? importedMoveDragLastDeltaSeconds
+            : 0.0;
+
+        std::vector<std::pair<int, ImportedAudioRegion>> movedRegions;
+        movedRegions.reserve (importedRegionMoveDragItems.size());
+        std::vector<int> clipsToSanitise;
+
+        for (const auto& item : importedRegionMoveDragItems)
+        {
+            if (! importedRegionExists (item.selection))
+                continue;
+
+            auto movedRegion = item.originalRegion;
+            movedRegion.startSeconds = juce::jmax (0.0, item.originalRegion.startSeconds + deltaSeconds);
+            movedRegions.push_back ({ item.selection.clipIndex, movedRegion });
+            if (std::find (clipsToSanitise.begin(), clipsToSanitise.end(), item.selection.clipIndex) == clipsToSanitise.end())
+                clipsToSanitise.push_back (item.selection.clipIndex);
+        }
+
+        for (const auto clipIndex : clipsToSanitise)
+            if (clipIndex >= 0 && clipIndex < static_cast<int> (importedLaneAudioClips.size()))
+                sanitiseImportedClipRegions (importedLaneAudioClips[static_cast<size_t> (clipIndex)]);
+
+        selectedImportedRegions.clear();
+        for (const auto& [clipIndex, movedRegion] : movedRegions)
+        {
+            if (clipIndex < 0 || clipIndex >= static_cast<int> (importedLaneAudioClips.size()))
+                continue;
+
+            const auto regionIndex = findMatchingImportedRegionIndex (importedLaneAudioClips[static_cast<size_t> (clipIndex)], movedRegion);
+            if (regionIndex >= 0)
+                selectedImportedRegions.push_back ({ clipIndex, regionIndex });
+        }
+
+        selectedImportedRegion = selectedImportedRegions.empty() ? ArrangementAudioSelection {} : selectedImportedRegions.front();
+        importedRegionMoveDragItems.clear();
+        importedMoveDragUndoStarted = false;
+        importedMoveDragLastDeltaSeconds = std::numeric_limits<double>::quiet_NaN();
+        refreshAfterImportedAudioEdit ("moved audio");
+    }
+
+    void nudgeSelectedImportedAudioRegions (int direction, bool byBar)
+    {
+        if (! arrangementPlusMode || direction == 0)
+            return;
+
+        auto selections = importedRegionSelectionForEdit();
+        if (selections.empty())
+            return;
+
+        pushUndoSnapshot (selections.size() > 1 ? "nudge audio regions" : "nudge audio region");
+        captureImportedRegionMoveDragItems();
+        importedMoveDragLastDeltaSeconds = std::numeric_limits<double>::quiet_NaN();
+        const auto deltaSeconds = static_cast<double> (direction) * arrangementNudgeStepSeconds (byBar);
+        setImportedAudioRegionMoveDelta (deltaSeconds);
+        finishImportedRegionMoveEdit();
+    }
+
+    double arrangementDurationSecondsForEditing() const
+    {
+        const auto windows = buildArrangementStepWindows (parseGlobalScript());
+        if (! windows.empty())
+        {
+            const auto& last = windows.back();
+            return last.startSeconds + last.lengthSeconds;
+        }
+
+        auto endSeconds = 0.0;
+        for (const auto& clip : importedLaneAudioClips)
+            for (const auto& region : clip.regions)
+                endSeconds = juce::jmax (endSeconds, regionEndSeconds (region));
+
+        return endSeconds;
+    }
+
+    double arrangementNudgeStepSeconds (bool byBar) const
+    {
+        const auto steps = parseGlobalScript();
+        if (steps.empty())
+            return byBar ? 1.0 : 0.25;
+
+        auto targetSeconds = arrangementEditPlayheadSeconds;
+        if (importedRegionExists (selectedImportedRegion))
+            targetSeconds = importedLaneAudioClips[static_cast<size_t> (selectedImportedRegion.clipIndex)]
+                                .regions[static_cast<size_t> (selectedImportedRegion.regionIndex)]
+                                .startSeconds;
+
+        auto cursor = 0.0;
+        for (const auto& step : steps)
+        {
+            const auto stepSeconds = durationSecondsForArrangementStep (step);
+            if (targetSeconds <= cursor + stepSeconds + 0.0001)
+            {
+                const auto barSeconds = step.bars > 0.0 ? stepSeconds / step.bars : stepSeconds;
+                if (byBar)
+                    return juce::jmax (0.001, barSeconds);
+
+                const auto index = static_cast<size_t> (juce::jlimit (0, maxTopLevelStates - 1, step.stateIndex));
+                const auto numerator = static_cast<double> (step.timeSigNumerator.value_or (topLevelTimeSigNumerators[index]));
+                const auto denominator = static_cast<double> (juce::jmax (1, step.timeSigDenominator.value_or (topLevelTimeSigDenominators[index])));
+                const auto quarterNotesPerBar = juce::jmax (1.0, numerator * 4.0 / denominator);
+                return juce::jmax (0.001, barSeconds / quarterNotesPerBar);
+            }
+
+            cursor += stepSeconds;
+        }
+
+        const auto lastStepSeconds = durationSecondsForArrangementStep (steps.back());
+        return byBar ? juce::jmax (0.001, lastStepSeconds / juce::jmax (0.001, steps.back().bars))
+                     : 0.25;
     }
 
     void beginImportedRegionFadeEdit (int clipIndex, int regionIndex)
@@ -13381,6 +13678,7 @@ private:
     std::optional<Wf::StateSpec> copiedTrack;
     std::optional<Wf::LaneSpec> copiedLane;
     std::vector<ImportedRegionClipboardItem> copiedImportedRegions;
+    std::vector<ImportedRegionMoveDragItem> importedRegionMoveDragItems;
     juce::TextEditor* activeUndoTextEditor = nullptr;
     size_t scriptStepIndex = 0;
     double scriptStepElapsedBars = 0.0;
@@ -13402,6 +13700,7 @@ private:
     bool importedFadeDragUndoStarted = false;
     bool importedTrimDragUndoStarted = false;
     bool importedGainDragUndoStarted = false;
+    bool importedMoveDragUndoStarted = false;
     bool laneCodeDirty = false;
     bool projectDirty = false;
     bool pluginScanInProgress = false;
@@ -13418,6 +13717,7 @@ private:
     double nextBarTransitionCheck = 1.0;
     bool running = false;
     static constexpr double minImportedRegionLengthSeconds = 0.025;
+    double importedMoveDragLastDeltaSeconds = std::numeric_limits<double>::quiet_NaN();
     double lastTimerMs = 0.0;
 };
 
@@ -13425,7 +13725,7 @@ class WfApplication final : public juce::JUCEApplication
 {
 public:
     const juce::String getApplicationName() override { return "ChucK-ME"; }
-    const juce::String getApplicationVersion() override { return "0.1.15"; }
+    const juce::String getApplicationVersion() override { return "0.1.16"; }
     bool moreThanOneInstanceAllowed() override { return true; }
 
     void initialise (const juce::String&) override
