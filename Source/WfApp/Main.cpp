@@ -53,6 +53,15 @@ juce::String defaultGlobalScriptText()
            "stop();";
 }
 
+juce::String defaultBendScriptText()
+{
+    return "// Bend code is live, reversible app-music control.\n"
+           "// Examples:\n"
+           "// everyBar(2, nextTrack());\n"
+           "// everyBeat(4, randomizeLaneVolumes(0.08));\n"
+           "// tempo(1, 96); laneVolume(1, 1, 1, 0.55);\n";
+}
+
 std::array<float, maxTopLevelStates> defaultTopLevelTempos()
 {
     return
@@ -796,7 +805,13 @@ private:
 
     static bool isConductorWord (const juce::String& word)
     {
-        return wordIn (word, { "bar", "bars", "bpm", "meter", "playState", "state", "stop", "tempo", "timeSig" }, true);
+        return wordIn (word,
+                       { "bar", "bars", "beat", "beats", "bpm", "everyBar", "everyBeat",
+                         "laneGain", "lanePan", "laneVolume", "meter", "muteLane",
+                         "nextTrack", "phase", "phaseOffset", "play", "playState", "playTrack",
+                         "probability", "randomizeLaneVolumes", "resetTrack", "soloLane",
+                         "start", "state", "stop", "tempo", "timeSig", "trackGain", "trackVolume" },
+                       true);
     }
 
     static bool isPunctuationBracket (juce::juce_wchar character) noexcept
@@ -5858,6 +5873,156 @@ private:
     std::vector<MediaManagerItem> items;
 };
 
+class BendCodePane final : public juce::Component
+{
+public:
+    BendCodePane()
+    {
+        title.setText ("Bend", juce::dontSendNotification);
+        title.setFont (juce::FontOptions (22.0f, juce::Font::bold));
+        title.setColour (juce::Label::textColourId, ink());
+        addAndMakeVisible (title);
+
+        subtitle.setText ("Safe musical mutations. Run live, Apply Once, Revert, or Commit.", juce::dontSendNotification);
+        subtitle.setFont (juce::FontOptions (13.0f));
+        subtitle.setColour (juce::Label::textColourId, mutedInk().withAlpha (0.82f));
+        addAndMakeVisible (subtitle);
+
+        editor.setSyntaxMode (CodeTextEditor::SyntaxMode::conductor);
+        editor.setText (defaultBendScriptText(), juce::dontSendNotification);
+        editor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff0a1018));
+        editor.setColour (juce::TextEditor::textColourId, ink().withAlpha (0.92f));
+        editor.refreshBaseTextColour();
+        editor.setColour (juce::TextEditor::outlineColourId, cyan().withAlpha (0.16f));
+        editor.setColour (juce::TextEditor::focusedOutlineColourId, cyan().withAlpha (0.54f));
+        editor.setColour (juce::TextEditor::highlightColourId, cyan().withAlpha (0.22f));
+        editor.setCodeFontSize (12.5f);
+        editor.onTextChange = [this]
+        {
+            if (onTextChanged != nullptr)
+                onTextChanged();
+        };
+        addAndMakeVisible (editor);
+
+        setupPaneButton (runButton, "Run", cyan(), [this] { if (onRun != nullptr) onRun(); });
+        setupPaneButton (applyOnceButton, "Apply Once", blue(), [this] { if (onApplyOnce != nullptr) onApplyOnce(); });
+        setupPaneButton (stopButton, "Stop", amber(), [this] { if (onStop != nullptr) onStop(); });
+        setupPaneButton (revertButton, "Revert", coral(), [this] { if (onRevert != nullptr) onRevert(); });
+        setupPaneButton (commitButton, "Commit", violet(), [this] { if (onCommit != nullptr) onCommit(); });
+        setupPaneButton (closeButton, "Close", mutedInk(), [this] { if (onClose != nullptr) onClose(); });
+
+        status.setText ("Press B or Cmd+B to hide/show.", juce::dontSendNotification);
+        status.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+        status.setColour (juce::Label::textColourId, mutedInk().withAlpha (0.76f));
+        status.setJustificationType (juce::Justification::centredRight);
+        addAndMakeVisible (status);
+
+        setWantsKeyboardFocus (true);
+    }
+
+    juce::String getCode() const { return editor.getText(); }
+
+    void setCode (const juce::String& code)
+    {
+        editor.setText (code, juce::dontSendNotification);
+        editor.refreshBaseTextColour();
+    }
+
+    void setStatusText (const juce::String& text, juce::Colour colour)
+    {
+        status.setText (text, juce::dontSendNotification);
+        status.setColour (juce::Label::textColourId, colour);
+    }
+
+    void setRunning (bool shouldBeRunning)
+    {
+        runButton.setButtonText (shouldBeRunning ? "Running" : "Run");
+        runButton.setToggleState (shouldBeRunning, juce::dontSendNotification);
+        stopButton.setEnabled (shouldBeRunning);
+    }
+
+    bool keyPressed (const juce::KeyPress& key) override
+    {
+        if (key.getKeyCode() == juce::KeyPress::escapeKey)
+        {
+            if (onClose != nullptr)
+                onClose();
+            return true;
+        }
+
+        return false;
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto bounds = getLocalBounds().toFloat();
+        g.setColour (juce::Colour (0xff0d141d).withAlpha (0.98f));
+        g.fillRoundedRectangle (bounds, 7.0f);
+
+        juce::ColourGradient strip (cyan().withAlpha (0.92f), bounds.getTopLeft(),
+                                    violet().withAlpha (0.92f), bounds.getTopRight(), false);
+        strip.addColour (0.34, blue().withAlpha (0.90f));
+        strip.addColour (0.68, amber().withAlpha (0.88f));
+        g.setGradientFill (strip);
+        g.fillRoundedRectangle (bounds.withHeight (3.0f), 2.0f);
+
+        g.setColour (cyan().withAlpha (0.18f));
+        g.drawRoundedRectangle (bounds.reduced (0.5f), 7.0f, 1.0f);
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds().reduced (28, 22);
+        auto header = area.removeFromTop (52);
+        title.setBounds (header.removeFromLeft (190));
+        subtitle.setBounds (header.reduced (0, 6));
+
+        auto footer = area.removeFromBottom (42);
+        auto buttonRow = footer.removeFromLeft (540);
+        runButton.setBounds (buttonRow.removeFromLeft (72).reduced (0, 4));
+        buttonRow.removeFromLeft (8);
+        applyOnceButton.setBounds (buttonRow.removeFromLeft (104).reduced (0, 4));
+        buttonRow.removeFromLeft (8);
+        stopButton.setBounds (buttonRow.removeFromLeft (72).reduced (0, 4));
+        buttonRow.removeFromLeft (8);
+        revertButton.setBounds (buttonRow.removeFromLeft (82).reduced (0, 4));
+        buttonRow.removeFromLeft (8);
+        commitButton.setBounds (buttonRow.removeFromLeft (82).reduced (0, 4));
+        closeButton.setBounds (footer.removeFromRight (78).reduced (0, 4));
+        status.setBounds (footer.reduced (8, 5));
+
+        editor.setBounds (area.reduced (0, 6));
+    }
+
+    std::function<void()> onRun;
+    std::function<void()> onApplyOnce;
+    std::function<void()> onStop;
+    std::function<void()> onRevert;
+    std::function<void()> onCommit;
+    std::function<void()> onClose;
+    std::function<void()> onTextChanged;
+
+private:
+    void setupPaneButton (juce::TextButton& button, const juce::String& text, juce::Colour colour, std::function<void()> action)
+    {
+        button.setButtonText (text);
+        styleButton (button, colour);
+        button.onClick = std::move (action);
+        addAndMakeVisible (button);
+    }
+
+    juce::Label title;
+    juce::Label subtitle;
+    CodeTextEditor editor;
+    juce::TextButton runButton;
+    juce::TextButton applyOnceButton;
+    juce::TextButton stopButton;
+    juce::TextButton revertButton;
+    juce::TextButton commitButton;
+    juce::TextButton closeButton;
+    juce::Label status;
+};
+
 class MainComponent final : public juce::Component,
                             public juce::MenuBarModel,
                             private juce::Timer
@@ -5910,6 +6075,19 @@ class MainComponent final : public juce::Component,
         {
             return external > 0 || missing > 0;
         }
+    };
+
+    struct BendScheduledRule
+    {
+        enum class Period
+        {
+            beat,
+            bar
+        };
+
+        Period period = Period::bar;
+        int interval = 1;
+        juce::String command;
     };
 
     enum MenuIds
@@ -6460,6 +6638,7 @@ public:
         }
 
         configureWelcomeScreen();
+        configureBendCodePane();
 
         audioDeviceManager.initialiseWithDefaultDevices (0, 2);
         audioDeviceManager.addAudioCallback (&audioCallback);
@@ -6587,6 +6766,21 @@ public:
     {
         const auto keyCode = key.getKeyCode();
         const auto modifiers = key.getModifiers();
+        if (bendCodePane.isVisible())
+        {
+            if (keyCode == juce::KeyPress::escapeKey)
+            {
+                hideBendCodePane();
+                return true;
+            }
+
+            if (modifiers.isCommandDown() && (keyCode == 'b' || keyCode == 'B'))
+            {
+                toggleBendCodePane();
+                return true;
+            }
+        }
+
         if (welcomeScreen.isVisible())
         {
             if (keyCode == juce::KeyPress::escapeKey)
@@ -6623,6 +6817,18 @@ public:
                 performDuplicate();
                 return true;
             }
+
+            if (keyCode == 'b' || keyCode == 'B')
+            {
+                toggleBendCodePane();
+                return true;
+            }
+        }
+
+        if ((keyCode == 'b' || keyCode == 'B') && ! isInlineTextEditorFocused())
+        {
+            toggleBendCodePane();
+            return true;
         }
 
         if (keyCode == juce::KeyPress::escapeKey && mainView == MainView::track)
@@ -6774,6 +6980,12 @@ public:
         welcomeScreen.setBounds (getLocalBounds());
         if (welcomeScreen.isVisible())
             welcomeScreen.toFront (false);
+
+        const auto bendWidth = juce::jmin (860, juce::jmax (620, getWidth() - 180));
+        const auto bendHeight = juce::jmin (520, juce::jmax (380, getHeight() - 180));
+        bendCodePane.setBounds (juce::Rectangle<int> (bendWidth, bendHeight).withCentre (getLocalBounds().getCentre()));
+        if (bendCodePane.isVisible())
+            bendCodePane.toFront (false);
 
         auto area = getLocalBounds().reduced (34);
         const auto stateGridRight = stateButtonRowRightEdge (area);
@@ -7183,6 +7395,24 @@ private:
         welcomeScreen.setVisible (false);
     }
 
+    void configureBendCodePane()
+    {
+        bendCodePane.onRun = [this] { runBendScript(); };
+        bendCodePane.onApplyOnce = [this] { applyBendScriptOnce(); };
+        bendCodePane.onStop = [this] { stopBendScript (false); };
+        bendCodePane.onRevert = [this] { revertBendScript(); };
+        bendCodePane.onCommit = [this] { commitBendScript(); };
+        bendCodePane.onClose = [this] { hideBendCodePane(); };
+        bendCodePane.onTextChanged = [this]
+        {
+            if (! suppressBendCodeCallbacks)
+                markProjectDirty();
+        };
+        addAndMakeVisible (bendCodePane);
+        bendCodePane.setVisible (false);
+        bendCodePane.setRunning (false);
+    }
+
     void showWelcomeScreen()
     {
         welcomeScreen.setBounds (getLocalBounds());
@@ -7195,6 +7425,30 @@ private:
     void hideWelcomeScreen()
     {
         welcomeScreen.setVisible (false);
+        grabKeyboardFocus();
+        repaint();
+    }
+
+    void toggleBendCodePane()
+    {
+        if (bendCodePane.isVisible())
+            hideBendCodePane();
+        else
+            showBendCodePane();
+    }
+
+    void showBendCodePane()
+    {
+        bendCodePane.setVisible (true);
+        bendCodePane.toFront (false);
+        bendCodePane.grabKeyboardFocus();
+        resized();
+        repaint();
+    }
+
+    void hideBendCodePane()
+    {
+        bendCodePane.setVisible (false);
         grabKeyboardFocus();
         repaint();
     }
@@ -7812,6 +8066,7 @@ private:
         setJsonProperty (*object, "format", "ChucK-ME Project");
         setJsonProperty (*object, "version", 4);
         setJsonProperty (*object, "stateCode", globalScriptEditor.getText());
+        setJsonProperty (*object, "bendCode", bendCodePane.getCode());
         setJsonProperty (*object, "masterVolume", gainSlider.getValue());
         juce::Array<juce::var> masterEffects;
         for (const auto& slot : masterEffectSlots)
@@ -7877,6 +8132,9 @@ private:
         juce::ScopedValueSetter<bool> dirtyGuard (suppressProjectDirty, true);
         running = false;
         scriptRunning = false;
+        bendScriptRunning = false;
+        bendScheduledRules.clear();
+        bendLiveBaseProject.reset();
         audioCallback.clearImportedAudioPlayback();
         importedLaneAudioClips.clear();
         selectedImportedRegion = {};
@@ -7949,6 +8207,7 @@ private:
             juce::ScopedValueSetter<bool> laneGuard (suppressLaneCodeCallbacks, true);
             globalScriptEditor.setText (stringFromJson (*object, "stateCode", defaultGlobalScriptText()), juce::dontSendNotification);
             globalScriptEditor.refreshBaseTextColour();
+            bendCodePane.setCode (stringFromJson (*object, "bendCode", defaultBendScriptText()));
             gainSlider.setValue (juce::jlimit (0.0, 0.8, doubleFromJson (*object, "masterVolume", 0.18)), juce::dontSendNotification);
             arrangementHorizontalZoom = juce::jlimit (0.35, 6.50, doubleFromJson (*object, "arrangementHorizontalZoom", 1.0));
             arrangementVerticalZoom = juce::jlimit (0.55, 6.0, doubleFromJson (*object, "arrangementVerticalZoom", 1.0));
@@ -8049,6 +8308,9 @@ private:
     {
         running = false;
         scriptRunning = false;
+        bendScriptRunning = false;
+        bendScheduledRules.clear();
+        bendLiveBaseProject.reset();
         scriptStepIndex = 0;
         scriptStepElapsedBars = 0.0;
         globalScriptSteps.clear();
@@ -8079,6 +8341,7 @@ private:
             juce::ScopedValueSetter<bool> laneGuard (suppressLaneCodeCallbacks, true);
             globalScriptEditor.setText ({}, juce::dontSendNotification);
             globalScriptEditor.refreshBaseTextColour();
+            bendCodePane.setCode (defaultBendScriptText());
             gainSlider.setValue (0.18, juce::dontSendNotification);
             laneCodeDirty = false;
             laneCodeRunButton.setEnabled (false);
@@ -9238,6 +9501,7 @@ private:
         }
 
         currentProjectFile = file;
+        bendLiveBaseProject.reset();
         clearUndoHistory();
         updateProjectDirtyState (false);
         statusLabel.setText ("saved " + file.getFileName()
@@ -12082,7 +12346,8 @@ private:
 
     bool isInlineTextEditorFocused() const
     {
-        return globalScriptEditor.hasKeyboardFocus (true)
+        return bendCodePane.isVisible()
+            || globalScriptEditor.hasKeyboardFocus (true)
             || laneCodeEditor.hasKeyboardFocus (true)
             || trackNameEditor.hasKeyboardFocus (true)
             || trackDurationEditor.hasKeyboardFocus (true)
@@ -12092,6 +12357,467 @@ private:
             || laneCountEditor.hasKeyboardFocus (true)
             || stateTrackCountEditor.hasKeyboardFocus (true)
             || orbitCanvas.isEditingTransitionProbability();
+    }
+
+    static juce::String stripBendComments (juce::String text)
+    {
+        juce::StringArray lines;
+        lines.addLines (text);
+        for (auto& line : lines)
+        {
+            const auto comment = line.indexOf ("//");
+            if (comment >= 0)
+                line = line.substring (0, comment);
+        }
+
+        return lines.joinIntoString ("\n");
+    }
+
+    static juce::StringArray splitBendArgs (juce::String args)
+    {
+        juce::StringArray split;
+        split.addTokens (args, ",", {});
+        split.trim();
+        split.removeEmptyStrings();
+        return split;
+    }
+
+    static std::optional<int> bendIndexArg (const juce::StringArray& args, int index, int maximum)
+    {
+        if (index < 0 || index >= args.size())
+            return {};
+
+        const auto value = args[index].trim().getIntValue() - 1;
+        if (value < 0 || value >= maximum)
+            return {};
+
+        return value;
+    }
+
+    static bool bendBoolArg (const juce::StringArray& args, int index, bool fallback)
+    {
+        if (index < 0 || index >= args.size())
+            return fallback;
+
+        const auto text = args[index].trim().toLowerCase();
+        if (text == "true" || text == "on" || text == "yes" || text == "1")
+            return true;
+        if (text == "false" || text == "off" || text == "no" || text == "0")
+            return false;
+
+        return fallback;
+    }
+
+    std::vector<juce::String> bendStatementsForOneShot (juce::String code) const
+    {
+        code = stripBendComments (code);
+        std::vector<juce::String> statements;
+        juce::String current;
+        int parenDepth = 0;
+
+        for (int i = 0; i < code.length(); ++i)
+        {
+            const auto c = code[i];
+            current += c;
+
+            if (c == '(')
+                ++parenDepth;
+            else if (c == ')')
+                parenDepth = juce::jmax (0, parenDepth - 1);
+
+            if (c == ';' && parenDepth == 0)
+            {
+                auto statement = current.trim();
+                current.clear();
+                const auto lower = statement.toLowerCase();
+                if (! lower.startsWith ("everybeat") && ! lower.startsWith ("everybar"))
+                    statements.push_back (statement.upToLastOccurrenceOf (";", false, false).trim());
+            }
+        }
+
+        auto tail = current.trim();
+        if (tail.isNotEmpty()
+            && ! tail.toLowerCase().startsWith ("everybeat")
+            && ! tail.toLowerCase().startsWith ("everybar"))
+            statements.push_back (tail);
+
+        return statements;
+    }
+
+    std::vector<BendScheduledRule> parseBendScheduledRules (juce::String code, juce::String& error) const
+    {
+        std::vector<BendScheduledRule> rules;
+        const auto text = stripBendComments (code).toStdString();
+        const std::regex ruleRegex (R"((everyBeat|everyBar)\s*\(\s*(\d+)\s*,\s*([A-Za-z_]\w*\s*\([^;]*\))\s*\)\s*;?)",
+                                    std::regex_constants::icase);
+
+        for (std::sregex_iterator it (text.begin(), text.end(), ruleRegex), end; it != end; ++it)
+        {
+            BendScheduledRule rule;
+            const auto period = juce::String ((*it)[1].str()).toLowerCase();
+            rule.period = period == "everybeat" ? BendScheduledRule::Period::beat : BendScheduledRule::Period::bar;
+            rule.interval = juce::jlimit (1, 1024, juce::String ((*it)[2].str()).getIntValue());
+            rule.command = juce::String ((*it)[3].str()).trim();
+            rules.push_back (rule);
+        }
+
+        if (rules.empty() && stripBendComments (code).containsIgnoreCase ("every"))
+            error = "Bend schedule syntax: everyBar(2, nextTrack());";
+
+        return rules;
+    }
+
+    bool evaluateBendCommand (juce::String command, juce::String& error, bool allowTransport)
+    {
+        command = command.trim().upToLastOccurrenceOf (";", false, false).trim();
+        const auto open = command.indexOfChar ('(');
+        const auto close = command.lastIndexOfChar (')');
+        if (open <= 0 || close <= open)
+        {
+            if (command.isEmpty())
+                return true;
+
+            error = "Bend command needs function(args) syntax";
+            return false;
+        }
+
+        const auto name = command.substring (0, open).trim().toLowerCase();
+        const auto args = splitBendArgs (command.substring (open + 1, close));
+
+        auto requireState = [&] (int argIndex) -> std::optional<int>
+        {
+            return bendIndexArg (args, argIndex, maxTopLevelStates);
+        };
+
+        auto requireTrack = [&] (int stateIndex, int argIndex) -> std::optional<int>
+        {
+            if (! isTopLevelStatePopulated (stateIndex))
+                return {};
+
+            return bendIndexArg (args, argIndex, static_cast<int> (topLevelStates[static_cast<size_t> (stateIndex)]->size()));
+        };
+
+        auto requireLane = [&] (int stateIndex, int trackIndex, int argIndex) -> std::optional<int>
+        {
+            if (! isTopLevelStatePopulated (stateIndex))
+                return {};
+
+            const auto& tracks = *topLevelStates[static_cast<size_t> (stateIndex)];
+            if (trackIndex < 0 || trackIndex >= static_cast<int> (tracks.size()))
+                return {};
+
+            return bendIndexArg (args, argIndex, static_cast<int> (tracks[static_cast<size_t> (trackIndex)].lanes.size()));
+        };
+
+        if (name == "play" || name == "start")
+        {
+            if (! allowTransport)
+                return true;
+            if (! running)
+                playFromBeginning();
+            return true;
+        }
+
+        if (name == "stop")
+        {
+            if (! allowTransport)
+                return true;
+            stopMainTransport();
+            return true;
+        }
+
+        if (name == "playstate")
+        {
+            const auto state = requireState (0);
+            if (! state.has_value())
+            {
+                error = "playState(state) needs a populated state number";
+                return false;
+            }
+
+            if (allowTransport)
+            {
+                if (! running)
+                    running = true;
+                setPerformingTopLevelState (*state, true);
+                syncTransportButtons();
+            }
+            return true;
+        }
+
+        if (name == "playtrack" || name == "resettrack")
+        {
+            const auto* tracks = getPerformingTracks();
+            if (tracks == nullptr || tracks->empty())
+                return true;
+
+            const auto track = name == "resettrack"
+                ? performingTrackIndex
+                : juce::jlimit (0, static_cast<int> (tracks->size()) - 1, args.isEmpty() ? 0 : args[0].getIntValue() - 1);
+            performingTrackIndex = track;
+            trackElapsedBars = 0.0;
+            nextBarTransitionCheck = 1.0;
+            orbitPhase = 0.0f;
+            loadSelectedContentForCurrentState();
+            refreshLabels();
+            return true;
+        }
+
+        if (name == "nexttrack")
+        {
+            advancePerformingTrack();
+            return true;
+        }
+
+        if (name == "tempo")
+        {
+            const auto state = requireState (0);
+            if (! state.has_value() || args.size() < 2)
+            {
+                error = "tempo(state, bpm) needs state and bpm";
+                return false;
+            }
+
+            topLevelTemposBpm[static_cast<size_t> (*state)] = sanitizeScriptTempo (static_cast<float> (args[1].getDoubleValue()));
+            if (*state == performingTopLevelState)
+                applyCurrentAudioControls();
+            return true;
+        }
+
+        if (name == "timesig" || name == "meter")
+        {
+            const auto state = requireState (0);
+            if (! state.has_value() || args.size() < 3)
+            {
+                error = "timeSig(state, numerator, denominator) needs three values";
+                return false;
+            }
+
+            topLevelTimeSigNumerators[static_cast<size_t> (*state)] = sanitizeScriptTimeSigNumerator (args[1].getIntValue());
+            topLevelTimeSigDenominators[static_cast<size_t> (*state)] = sanitizeScriptTimeSigDenominator (args[2].getIntValue());
+            return true;
+        }
+
+        if (name == "probability")
+        {
+            const auto state = requireState (0);
+            if (! state.has_value() || args.size() < 3)
+            {
+                error = "probability(state, track, percent) needs three values";
+                return false;
+            }
+            const auto track = requireTrack (*state, 1);
+            if (! track.has_value())
+                return false;
+
+            auto& target = (*topLevelStates[static_cast<size_t> (*state)])[static_cast<size_t> (*track)];
+            const auto percent = args[2].getIntValue();
+            if (percent < 0)
+                target.transitionProbabilityPercent.reset();
+            else
+                target.transitionProbabilityPercent = juce::jlimit (0, 100, percent);
+            return true;
+        }
+
+        if (name == "trackvolume" || name == "trackgain")
+        {
+            const auto state = requireState (0);
+            if (! state.has_value() || args.size() < 3)
+            {
+                error = "trackVolume(state, track, gain) needs three values";
+                return false;
+            }
+            const auto track = requireTrack (*state, 1);
+            if (! track.has_value())
+                return false;
+
+            auto& target = (*topLevelStates[static_cast<size_t> (*state)])[static_cast<size_t> (*track)];
+            const auto gain = juce::jlimit (0.0f, 1.0f, static_cast<float> (args[2].getDoubleValue()));
+            for (auto& lane : target.lanes)
+                lane.volume = gain;
+            return true;
+        }
+
+        if (name == "lanevolume" || name == "lanegain" || name == "lanepan" || name == "phase" || name == "phaseoffset"
+            || name == "mutelane" || name == "sololane")
+        {
+            const auto state = requireState (0);
+            if (! state.has_value() || args.size() < 4)
+            {
+                error = name + "(state, track, lane, value) needs four values";
+                return false;
+            }
+            const auto track = requireTrack (*state, 1);
+            if (! track.has_value())
+                return false;
+            const auto lane = requireLane (*state, *track, 2);
+            if (! lane.has_value())
+                return false;
+
+            auto& target = (*topLevelStates[static_cast<size_t> (*state)])[static_cast<size_t> (*track)].lanes[static_cast<size_t> (*lane)];
+            if (name == "lanevolume" || name == "lanegain")
+                target.volume = juce::jlimit (0.0f, 1.0f, static_cast<float> (args[3].getDoubleValue()));
+            else if (name == "lanepan")
+                target.pan = juce::jlimit (-1.0f, 1.0f, static_cast<float> (args[3].getDoubleValue()));
+            else if (name == "phase" || name == "phaseoffset")
+                target.phaseOffsetBars = juce::jlimit (0.0f, 0.999f, static_cast<float> (args[3].getDoubleValue()));
+            else if (name == "mutelane")
+                target.muted = bendBoolArg (args, 3, ! target.muted);
+            else if (name == "sololane")
+                target.solo = bendBoolArg (args, 3, ! target.solo);
+            return true;
+        }
+
+        if (name == "randomizelanevolumes")
+        {
+            const auto amount = args.isEmpty() ? 0.10f : juce::jlimit (0.0f, 1.0f, static_cast<float> (args[0].getDoubleValue()));
+            if (! isTopLevelStatePopulated (performingTopLevelState))
+                return true;
+
+            std::uniform_real_distribution<float> distribution (-amount, amount);
+            auto& tracks = *topLevelStates[static_cast<size_t> (performingTopLevelState)];
+            for (auto& track : tracks)
+                for (auto& lane : track.lanes)
+                    lane.volume = juce::jlimit (0.0f, 1.0f, lane.volume + distribution (random));
+            return true;
+        }
+
+        error = "Unknown Bend command: " + name;
+        return false;
+    }
+
+    void ensureBendLiveSnapshot()
+    {
+        if (! bendLiveBaseProject.has_value())
+            bendLiveBaseProject = projectToVar();
+    }
+
+    void applyBendScriptOnce()
+    {
+        ensureBendLiveSnapshot();
+        juce::String error;
+        auto applied = 0;
+        for (const auto& statement : bendStatementsForOneShot (bendCodePane.getCode()))
+        {
+            if (! evaluateBendCommand (statement, error, true))
+                break;
+            ++applied;
+        }
+
+        if (error.isNotEmpty())
+        {
+            bendCodePane.setStatusText (error, coral().withAlpha (0.94f));
+            return;
+        }
+
+        markProjectDirty();
+        refreshLabels();
+        loadSelectedContentForCurrentState();
+        bendCodePane.setStatusText ("applied " + juce::String (applied) + " Bend command" + (applied == 1 ? "" : "s"), cyan().withAlpha (0.88f));
+    }
+
+    void runBendScript()
+    {
+        ensureBendLiveSnapshot();
+        juce::String error;
+        bendScheduledRules = parseBendScheduledRules (bendCodePane.getCode(), error);
+        if (error.isNotEmpty())
+        {
+            bendCodePane.setStatusText (error, coral().withAlpha (0.94f));
+            return;
+        }
+
+        bendScriptRunning = true;
+        bendBeatCounter = 0;
+        bendBarCounter = 0;
+        bendBeatAccumulator = 0.0;
+        bendBarAccumulator = 0.0;
+        bendCodePane.setRunning (true);
+
+        applyBendScriptOnce();
+        bendCodePane.setStatusText ("Bend running: " + juce::String (static_cast<int> (bendScheduledRules.size())) + " scheduled rule"
+                                    + (bendScheduledRules.size() == 1 ? "" : "s"),
+                                    cyan().withAlpha (0.88f));
+    }
+
+    void stopBendScript (bool quiet)
+    {
+        bendScriptRunning = false;
+        bendScheduledRules.clear();
+        bendCodePane.setRunning (false);
+        if (! quiet)
+            bendCodePane.setStatusText ("Bend stopped. Live mutations remain until Revert, Commit, or Save.", amber().withAlpha (0.90f));
+    }
+
+    void revertBendScript()
+    {
+        stopBendScript (true);
+        if (! bendLiveBaseProject.has_value())
+        {
+            bendCodePane.setStatusText ("No live Bend changes to revert.", mutedInk().withAlpha (0.78f));
+            return;
+        }
+
+        juce::ScopedValueSetter<bool> undoGuard (suppressProjectUndo, true);
+        const auto snapshot = *bendLiveBaseProject;
+        const auto currentBendCode = bendCodePane.getCode();
+        bendLiveBaseProject.reset();
+        if (applyProjectVar (snapshot))
+        {
+            bendCodePane.setCode (currentBendCode);
+            bendCodePane.setVisible (true);
+            bendCodePane.toFront (false);
+            bendCodePane.setStatusText ("Bend reverted.", cyan().withAlpha (0.88f));
+            updateProjectDirtyState (true);
+        }
+    }
+
+    void commitBendScript()
+    {
+        stopBendScript (true);
+        bendLiveBaseProject.reset();
+        markProjectDirty();
+        bendCodePane.setStatusText ("Bend committed into the project.", violet().withAlpha (0.90f));
+    }
+
+    void advanceBendScript (double deltaSeconds, double tempoBpm)
+    {
+        if (! bendScriptRunning || bendScheduledRules.empty() || ! running)
+            return;
+
+        bendBeatAccumulator += deltaSeconds * tempoBpm / 60.0;
+        bendBarAccumulator += deltaSeconds * tempoBpm / 60.0 / juce::jmax (0.25, getPerformingQuarterNotesPerBar());
+
+        auto fireRules = [this] (BendScheduledRule::Period period, int tick)
+        {
+            juce::String error;
+            for (const auto& rule : bendScheduledRules)
+            {
+                if (rule.period == period && tick % rule.interval == 0)
+                {
+                    if (! evaluateBendCommand (rule.command, error, true))
+                    {
+                        stopBendScript (true);
+                        bendCodePane.setStatusText (error, coral().withAlpha (0.94f));
+                        return;
+                    }
+                }
+            }
+        };
+
+        while (bendBeatAccumulator >= 1.0)
+        {
+            bendBeatAccumulator -= 1.0;
+            fireRules (BendScheduledRule::Period::beat, ++bendBeatCounter);
+        }
+
+        while (bendBarAccumulator >= 1.0)
+        {
+            bendBarAccumulator -= 1.0;
+            fireRules (BendScheduledRule::Period::bar, ++bendBarCounter);
+        }
+
+        refreshLabels();
     }
 
     std::vector<GlobalScriptStep> parseGlobalScript() const
@@ -12285,6 +13011,8 @@ private:
     {
         scriptRunning = false;
         running = false;
+        bendBeatAccumulator = 0.0;
+        bendBarAccumulator = 0.0;
         syncTransportButtons();
         if (isUsingImportedAudioPlayback())
         {
@@ -13251,6 +13979,7 @@ private:
         {
             trackElapsedBars += deltaSeconds * (tempoBpm / 60.0) * static_cast<double> (rate) / getPerformingQuarterNotesPerBar();
             advanceGlobalScript (deltaSeconds, tempoBpm, rate);
+            advanceBendScript (deltaSeconds, tempoBpm);
 
             if (running)
             {
@@ -13568,6 +14297,7 @@ private:
     std::mt19937 random { 0x5eed1234u };
 
     WelcomeScreen welcomeScreen;
+    BendCodePane bendCodePane;
     juce::Label titleLabel;
     juce::Label statusLabel;
     juce::Label volumeLabel;
@@ -13671,6 +14401,7 @@ private:
     int trackFocusCodePaneWidthPx = defaultTrackFocusCodePaneWidth;
     int trackFocusCodePaneDragStartWidth = defaultTrackFocusCodePaneWidth;
     std::vector<GlobalScriptStep> globalScriptSteps;
+    std::vector<BendScheduledRule> bendScheduledRules;
     std::vector<ProjectUndoSnapshot> undoStack;
     std::vector<ProjectUndoSnapshot> redoStack;
     ObjectClipboardKind objectClipboardKind = ObjectClipboardKind::none;
@@ -13684,6 +14415,7 @@ private:
     double scriptStepElapsedBars = 0.0;
     bool scriptRunning = false;
     bool scriptShouldStopAtEnd = false;
+    bool bendScriptRunning = false;
     bool arrangementPlusMode = false;
     ArrangementAudioTool arrangementAudioTool = ArrangementAudioTool::pointer;
     ArrangementAudioSelection selectedImportedRegion;
@@ -13694,6 +14426,7 @@ private:
     bool suppressStateControlCallbacks = false;
     bool suppressEditCallbacks = false;
     bool suppressLaneCodeCallbacks = false;
+    bool suppressBendCodeCallbacks = false;
     bool suppressRegionInspectorCallbacks = false;
     bool suppressProjectDirty = false;
     bool suppressProjectUndo = false;
@@ -13715,6 +14448,11 @@ private:
     float orbitPhase = 0.0f;
     double trackElapsedBars = 0.0;
     double nextBarTransitionCheck = 1.0;
+    double bendBeatAccumulator = 0.0;
+    double bendBarAccumulator = 0.0;
+    int bendBeatCounter = 0;
+    int bendBarCounter = 0;
+    std::optional<juce::var> bendLiveBaseProject;
     bool running = false;
     static constexpr double minImportedRegionLengthSeconds = 0.025;
     double importedMoveDragLastDeltaSeconds = std::numeric_limits<double>::quiet_NaN();
@@ -13725,7 +14463,7 @@ class WfApplication final : public juce::JUCEApplication
 {
 public:
     const juce::String getApplicationName() override { return "ChucK-ME"; }
-    const juce::String getApplicationVersion() override { return "0.1.17"; }
+    const juce::String getApplicationVersion() override { return "0.1.18"; }
     bool moreThanOneInstanceAllowed() override { return true; }
 
     void initialise (const juce::String&) override

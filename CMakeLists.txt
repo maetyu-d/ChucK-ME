@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(WeldChucK VERSION 0.1.17 LANGUAGES C CXX)
+project(WeldChucK VERSION 0.1.18 LANGUAGES C CXX)
 enable_testing()
 
 set(CMAKE_CXX_STANDARD 17)
